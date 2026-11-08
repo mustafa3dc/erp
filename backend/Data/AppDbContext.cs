@@ -19,7 +19,7 @@ public class AppDbContext : DbContext
         TenantProvider = tenantProvider;
     }
 
-    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<ERP.Warehouse.Api.Models.Warehouse> Warehouses => Set<ERP.Warehouse.Api.Models.Warehouse>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<WarehouseStock> WarehouseStocks => Set<WarehouseStock>();

@@ -119,7 +119,7 @@ public class WarehousesController : ControllerBase
             query = query.Where(w => w.TenantId == tenantGuid.Value);
         }
 
-        Warehouse? warehouse = null;
+        ERP.Warehouse.Api.Models.Warehouse? warehouse = null;
         if (Guid.TryParse(id, out var whGuid))
         {
             warehouse = await query.FirstOrDefaultAsync(w => w.Id == whGuid);
@@ -154,7 +154,7 @@ public class WarehousesController : ControllerBase
     /// Creates a new warehouse strictly assigned to the caller's tenant.
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<object>> CreateWarehouse([FromBody] Warehouse input)
+    public async Task<ActionResult<object>> CreateWarehouse([FromBody] ERP.Warehouse.Api.Models.Warehouse input)
     {
         var tenantIdClaim = User.FindFirst("tenant_id")?.Value ?? Request.Headers["X-Tenant-Id"].FirstOrDefault();
         Guid? tenantGuid = null;
@@ -206,7 +206,7 @@ public class WarehousesController : ControllerBase
             query = query.Where(w => w.TenantId == tenantGuid.Value);
         }
 
-        Warehouse? warehouse = null;
+        ERP.Warehouse.Api.Models.Warehouse? warehouse = null;
         if (Guid.TryParse(id, out var whGuid))
         {
             warehouse = await query.FirstOrDefaultAsync(w => w.Id == whGuid);

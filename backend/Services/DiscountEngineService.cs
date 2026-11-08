@@ -215,7 +215,7 @@ public class DiscountEngineService : IDiscountEngineService
             ? request.TargetWarehouseId.Value
             : request.WarehouseId;
 
-        Warehouse fulfillmentWarehouse = warehouse;
+        ERP.Warehouse.Api.Models.Warehouse fulfillmentWarehouse = warehouse;
         if (isWarehouseDispatch && request.TargetWarehouseId.HasValue && request.TargetWarehouseId.Value != Guid.Empty && request.TargetWarehouseId.Value != warehouse.Id)
         {
             var targetWh = await _context.Warehouses

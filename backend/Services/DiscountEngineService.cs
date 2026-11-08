@@ -3,7 +3,6 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
-using Warehouse = ERP.Warehouse.Api.Models.Warehouse;
 
 namespace ERP.Warehouse.Api.Services;
 

@@ -1,0 +1,36 @@
+# ==============================================================================
+# Render Blueprint Specification (render.yaml)
+# Automated Infrastructure-as-Code for ZiloX ERP Suite
+# ==============================================================================
+
+services:
+  # 1. Unified Enterprise ERP Web Application (Backend API + Frontend Dashboard)
+  - type: web
+    name: zilox-erp
+    runtime: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ENABLE_SWAGGER
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: erp-postgres
+          property: connectionString
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: erp-postgres
+          property: connectionString
+
+databases:
+  # 2. Managed PostgreSQL 16 Relational Database
+  - name: erp-postgres
+    databaseName: erp_warehouse_db
+    user: erp_admin
+    plan: free
+    region: frankfurt
+

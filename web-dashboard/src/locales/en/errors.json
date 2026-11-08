@@ -1,0 +1,26 @@
+{
+  "ERR": {
+    "INVENTORY": {
+      "INSUFFICIENT_STOCK": "Available warehouse stock is insufficient to complete the dispatch operation",
+      "INVALID_INITIAL_STOCK": "Initial stock value is invalid, must be greater than or equal to zero",
+      "INVALID_DISPATCH_QUANTITY": "Dispatch quantity is invalid, must be greater than zero",
+      "INVALID_INCOMING_QUANTITY": "Inbound quantity is invalid, must be greater than zero"
+    },
+    "CONCURRENCY": {
+      "RESOURCE_BUSY": "This item is currently being modified by another transaction, please retry",
+      "VERSION_CONFLICT": "Stock record was modified by another user during processing; operation cancelled to maintain inventory integrity"
+    },
+    "DATABASE": {
+      "SECURITY": {
+        "IMMUTABLE_AUDIT_LOG_MODIFICATION_PROHIBITED": "Strictly prohibited to modify or delete immutable ledger audit logs"
+      }
+    },
+    "CUSTOMER": {
+      "CREDIT_LIMIT_EXCEEDED": "This invoice exceeds the customer credit limit"
+    },
+    "LEDGER": {
+      "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",
+      "BALANCE_MISMATCH": "Discrepancy detected between recorded journal balance and system accounts"
+    }
+  }
+}

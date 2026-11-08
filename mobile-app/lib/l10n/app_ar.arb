@@ -1,0 +1,15 @@
+{
+  "@@locale": "ar",
+  "posScreenTitle": "نقطة البيع السريعة (POS)",
+  "@posScreenTitle": {
+    "description": "عنوان شاشة نقطة البيع في شريط التطبيق"
+  },
+  "salesSummary": "ملخص المبيعات والفاتورة",
+  "@salesSummary": {
+    "description": "عنوان قسم ملخص الفاتورة الحالية"
+  },
+  "btnCompleteSale": "إتمام عملية البيع وطباعة الإيصال",
+  "@btnCompleteSale": {
+    "description": "نص زر تأكيد وإنهاء عملية البيع"
+  }
+}

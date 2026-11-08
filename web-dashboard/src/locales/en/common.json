@@ -1,0 +1,21 @@
+{
+  "systemTitle": "Bontu Integrated ERP & WMS Suite",
+  "dashboard": "Dashboard & Live KPIs",
+  "warehouses": "Warehouses & Storage Hubs",
+  "products": "Products & Item Catalog",
+  "inventory": "Inventory Management",
+  "invoices": "Sales Invoices",
+  "suppliers": "Suppliers & Purchasing",
+  "customers": "Customers & Loyalty",
+  "pos": "Cloud POS Terminal",
+  "settings": "System Settings",
+  "shifts": "Shifts & Drawer Balancing",
+  "actions": {
+    "save": "Save Changes",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search...",
+    "confirm": "Confirm"
+  }
+}

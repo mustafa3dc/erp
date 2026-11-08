@@ -1,0 +1,51 @@
+{
+  "name": "zilox-erp-pos",
+  "version": "1.0.0",
+  "description": "ZiloX ERP & Cloud POS Windows Desktop Application",
+  "main": "main.js",
+  "author": "ZiloX Enterprise",
+  "scripts": {
+    "dist:win": "electron-builder --win portable nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "28.3.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.zilox.erp",
+    "productName": "ZiloX ERP & POS",
+    "directories": {
+      "output": "../dist-windows-exe"
+    },
+    "files": [
+      "main.js",
+      "app.ico",
+      "app-dist/**/*"
+    ],
+    "win": {
+      "icon": "app.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ZiloX ERP & POS",
+      "artifactName": "ZiloX-ERP-Setup-1.0.0.exe"
+    },
+    "portable": {
+      "artifactName": "ZiloX-ERP-Portable-1.0.0.exe"
+    }
+  }
+}
+

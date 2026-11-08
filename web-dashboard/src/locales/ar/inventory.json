@@ -1,0 +1,25 @@
+{
+  "stockTitle": "أرصدة المستودعات",
+  "quantityOnHand": "الكمية المتوفرة",
+  "quantityReserved": "الكمية المحجوزة",
+  "availableQuantity": "الكمية القابلة للبيع",
+  "lastMovement": "آخر حركة",
+  "unitCost": "سعر التكلفة",
+  "sellingPrice": "سعر البيع",
+  "minStockAlert": "تنبيه الحد الأدنى",
+  "dispatchStock": "صرف بضاعة من المخزن",
+  "receiveStock": "استلام توريد جديد",
+  "transferStock": "تحويل بين المستودعات",
+  "fields": {
+    "quantity": "الكمية المراد صرفها",
+    "warehouse": "المستودع",
+    "item": "الصنف / المادة"
+  },
+  "placeholders": {
+    "enter_quantity": "أدخل الكمية بدقة (مثال: 10.0000)"
+  },
+  "actions": {
+    "confirm_dispatch": "تأكيد صرف الكمية",
+    "processing": "جارٍ التحقق والقفل والتنفيذ..."
+  }
+}

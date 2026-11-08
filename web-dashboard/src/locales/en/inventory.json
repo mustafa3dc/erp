@@ -1,0 +1,25 @@
+{
+  "stockTitle": "Warehouse Stock Balances",
+  "quantityOnHand": "Quantity on Hand",
+  "quantityReserved": "Quantity Reserved",
+  "availableQuantity": "Available to Sell",
+  "lastMovement": "Last Stock Movement",
+  "unitCost": "Cost Price",
+  "sellingPrice": "Selling Price",
+  "minStockAlert": "Min Stock Alert",
+  "dispatchStock": "Dispatch Stock from Warehouse",
+  "receiveStock": "Inbound Restock Receipt",
+  "transferStock": "Inter-Warehouse Transfer",
+  "fields": {
+    "quantity": "Quantity to Dispatch",
+    "warehouse": "Warehouse Hub",
+    "item": "Product / SKU"
+  },
+  "placeholders": {
+    "enter_quantity": "Enter exact quantity (e.g. 10.0000)"
+  },
+  "actions": {
+    "confirm_dispatch": "Confirm Stock Dispatch",
+    "processing": "Verifying, locking, and processing..."
+  }
+}

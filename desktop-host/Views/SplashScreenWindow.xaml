@@ -1,0 +1,52 @@
+<Window x:Class="DesktopHost.Views.SplashScreenWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ZiloX ERP - Initializing"
+        Height="320" Width="520"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        FlowDirection="RightToLeft"
+        FontFamily="Segoe UI, Tahoma, Arial">
+
+    <Border CornerRadius="16" Background="#0F172A" BorderBrush="#1E293B" BorderThickness="1.5">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="30" ShadowDepth="6" Opacity="0.5" Color="Black"/>
+        </Border.Effect>
+
+        <Grid Margin="30">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Brand Logo & Title -->
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,10,0,0">
+                <TextBlock Text="⚡ ZiloX Business Suite" FontSize="22" FontWeight="ExtraBold" Foreground="#38BDF8" HorizontalAlignment="Center"/>
+                <TextBlock Text="Cloud POS, Inventory &amp; Multi-Branch ERP" FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- Center Graphic / Status Animation -->
+            <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="🖥️" FontSize="36" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="TxtStatus" Text="جاري تهيئة خدمات النظام والمحرك المحلي..." FontSize="13" FontWeight="SemiBold" Foreground="#E2E8F0" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+            </StackPanel>
+
+            <!-- Progress Bar -->
+            <ProgressBar Grid.Row="2" Height="6" IsIndeterminate="True" Background="#1E293B" Foreground="#2563EB" BorderThickness="0" Margin="20,0,20,16">
+                <ProgressBar.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="3"/>
+                    </Style>
+                </ProgressBar.Resources>
+            </ProgressBar>
+
+            <!-- Subtitle -->
+            <TextBlock Grid.Row="3" Text="نسخة الإنتاج المستقلة المعتمدة • محرك WebView2 &amp; .NET Core" FontSize="10" Foreground="#64748B" HorizontalAlignment="Center"/>
+        </Grid>
+    </Border>
+</Window>
+

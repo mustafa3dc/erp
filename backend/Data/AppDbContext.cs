@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Models;
 using ERP.Warehouse.Api.Domain.Entities;
 using ERP.Warehouse.Api.Services;
+using Warehouse = ERP.Warehouse.Api.Models.Warehouse;
 
 namespace ERP.Warehouse.Api.Data;
 

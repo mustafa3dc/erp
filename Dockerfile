@@ -25,6 +25,9 @@ COPY backend/*.csproj ./
 RUN dotnet restore
 
 COPY backend/ ./
+# Copy built frontend assets directly into backend's static wwwroot before publish
+COPY --from=frontend-builder /build/frontend/dist ./wwwroot
+
 RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
 # ------------------------------------------------------------------------------

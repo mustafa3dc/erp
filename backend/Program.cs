@@ -149,8 +149,23 @@ if (enableSwagger)
 }
 
 // Enable Static Files for Serving the React/Vite Single Page Application
-app.UseDefaultFiles();
-app.UseStaticFiles();
+var wwwrootDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+if (!Directory.Exists(wwwrootDir))
+{
+    wwwrootDir = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+}
+
+if (Directory.Exists(wwwrootDir))
+{
+    var fileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(wwwrootDir);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+}
+else
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
 
 app.UseCors("AllowAll");
 app.UseAuthentication();
@@ -167,7 +182,30 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 // Fallback to index.html for React SPA Routes (e.g. /dashboard, /inventory, /pos)
-app.MapFallbackToFile("index.html");
+app.MapFallback(async context =>
+{
+    var path = context.Request.Path.Value ?? "";
+    if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) || 
+        path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = 404;
+        return;
+    }
+
+    var targetWwwroot = Directory.Exists(wwwrootDir) ? wwwrootDir : Path.Combine(AppContext.BaseDirectory, "wwwroot");
+    var indexPath = Path.Combine(targetWwwroot, "index.html");
+
+    if (File.Exists(indexPath))
+    {
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.SendFileAsync(indexPath);
+    }
+    else
+    {
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync("<h1>ZiloX ERP API is Running</h1><p>Frontend assets are being prepared. Access <a href='/swagger'>Swagger API Documentation</a> or <a href='/health'>Health Check</a>.</p>");
+    }
+});
 
 // Automatic Database Schema Bootstrap on Startup
 using (var scope = app.Services.CreateScope())

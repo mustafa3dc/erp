@@ -169,7 +169,7 @@ public class PublicTenantsController : ControllerBase
             await _dbContext.Tenants.AddAsync(tenant);
 
             // Create Default Main Warehouse
-            var warehouse = new Warehouse
+            var warehouse = new ERP.Warehouse.Api.Models.Warehouse
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenant.Id,

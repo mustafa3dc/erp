@@ -1,6 +1,9 @@
 namespace Erp.Domain.Common;
 
-public sealed record ErrorDetail(string Field, string Code, object? AttemptedValue = null);
+public sealed record ErrorDetail(string Field, string Code, object? AttemptedValue = null)
+{
+    public string ErrorMessage => !string.IsNullOrEmpty(Code) ? $"{Field}: {Code}" : Field;
+}
 
 public sealed class Result<T>
 {
@@ -9,6 +12,7 @@ public sealed class Result<T>
     public string? ErrorCode { get; }
     public string? Domain { get; }
     public IReadOnlyCollection<ErrorDetail> Details { get; }
+    public IReadOnlyCollection<ErrorDetail> Errors => Details;
 
     private Result(T value)
     {

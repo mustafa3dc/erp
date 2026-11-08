@@ -84,6 +84,12 @@ public class Category : ITenantEntity
     [Column("description")]
     public string? Description { get; set; }
 
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
+
     public ICollection<Product> Products { get; set; } = new List<Product>();
 }
 
@@ -144,6 +150,9 @@ public class Product : ITenantEntity
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<WarehouseStock> WarehouseStocks { get; set; } = new List<WarehouseStock>();
 }
@@ -529,6 +538,13 @@ public class Supplier : ITenantEntity
     [Column("current_balance")]
     public decimal CurrentBalance { get; set; } = 0.0000m;
 
+    [NotMapped]
+    public decimal Balance
+    {
+        get => CurrentBalance;
+        set => CurrentBalance = value;
+    }
+
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
@@ -890,6 +906,13 @@ public class CashBox : ITenantEntity
 
     [Column("current_balance")]
     public decimal CurrentBalance { get; set; } = 0.0000m;
+
+    [NotMapped]
+    public decimal Balance
+    {
+        get => CurrentBalance;
+        set => CurrentBalance = value;
+    }
 
     [Column("is_active")]
     public bool IsActive { get; set; } = true;

@@ -106,7 +106,7 @@ public sealed class PayInstallmentCommandHandler
 
             if (activeCashBox != null && cmd.PaymentMethod.ToUpperInvariant() == "CASH")
             {
-                activeCashBox.Balance += cmd.PaidAmount;
+                activeCashBox.CurrentBalance += cmd.PaidAmount;
                 activeCashBox.UpdatedAt = DateTime.UtcNow;
             }
 

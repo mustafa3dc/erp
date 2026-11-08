@@ -211,9 +211,10 @@ public class InvoicesController : ControllerBase
             }
 
             // 2. Mandatory Validation Rule: Quantity cannot exceed remaining returnable quantity
+            var productSku = invoiceItem.Product?.Sku;
             var alreadyReturnedQty = await _context.RmaReturnRequests
                 .Where(r => (r.InvoiceId == invoice.Id || r.InvoiceNumber == invoice.InvoiceNumber) 
-                            && (r.ProductId == invoiceItem.ProductId || r.Sku == invoiceItem.Product?.Sku)
+                            && (r.ProductId == invoiceItem.ProductId || (productSku != null && r.Sku == productSku))
                             && r.Decision != "REJECTED")
                 .SumAsync(r => r.ReturnQuantity);
 

@@ -6,11 +6,11 @@
 # ------------------------------------------------------------------------------
 # 1. Build Frontend SPA (React + TypeScript + Vite)
 # ------------------------------------------------------------------------------
-FROM node:22-alpine AS frontend-builder
+FROM node:20-slim AS frontend-builder
 WORKDIR /build/frontend
 
 COPY web-dashboard/package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY web-dashboard/ ./
 RUN npm run build
@@ -18,7 +18,7 @@ RUN npm run build
 # ------------------------------------------------------------------------------
 # 2. Build Backend (.NET 8 Web API)
 # ------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS backend-builder
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-builder
 WORKDIR /build/backend
 
 COPY backend/*.csproj ./
@@ -30,7 +30,7 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 # ------------------------------------------------------------------------------
 # 3. Final Production Runtime Image
 # ------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS final
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 
 # Copy compiled backend binaries
@@ -50,4 +50,3 @@ ENV ASPNETCORE_URLS=http://+:10000
 EXPOSE 10000
 
 ENTRYPOINT ["dotnet", "ERP.Warehouse.Api.dll"]
-

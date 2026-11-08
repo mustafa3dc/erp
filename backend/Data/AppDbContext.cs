@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseBill> PurchaseBills => Set<PurchaseBill>();
     public DbSet<PurchaseBillItem> PurchaseBillItems => Set<PurchaseBillItem>();
     public DbSet<FifoCostBatch> FifoCostBatches => Set<FifoCostBatch>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplierLedger> SupplierLedgers => Set<SupplierLedger>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<CashBox> CashBoxes => Set<CashBox>();

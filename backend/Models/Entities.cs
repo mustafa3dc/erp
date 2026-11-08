@@ -494,6 +494,51 @@ public class DiscountAuditLog : ITenantEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+[Table("suppliers")]
+public class Supplier : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Column("code")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(255)]
+    [Column("company_name")]
+    public string CompanyName { get; set; } = string.Empty;
+
+    [MaxLength(150)]
+    [Column("contact_person")]
+    public string? ContactPerson { get; set; }
+
+    [MaxLength(50)]
+    [Column("phone")]
+    public string? Phone { get; set; }
+
+    [MaxLength(150)]
+    [Column("email")]
+    public string? Email { get; set; }
+
+    [Column("current_balance")]
+    public decimal CurrentBalance { get; set; } = 0.0000m;
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 [Table("purchase_bills")]
 public class PurchaseBill : ITenantEntity
 {

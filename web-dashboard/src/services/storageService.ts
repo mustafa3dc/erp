@@ -1632,8 +1632,13 @@ export function saveStoredAuthSession(user: UserProfile | null): void {
 }
 
 export function clearStoredAuthSession(): void {
-  localStorage.removeItem(KEYS.AUTH_SESSION);
   if (typeof window !== 'undefined') {
+    localStorage.removeItem(KEYS.AUTH_SESSION);
+    localStorage.removeItem('logistock_erp_v3_auth_session');
+    localStorage.removeItem('zilox_sys_auth_session');
+    localStorage.removeItem('token');
+    localStorage.removeItem('zilox_token');
+    localStorage.removeItem('token_expires_at');
     sessionStorage.removeItem('zilox_impersonating_superadmin');
     sessionStorage.clear();
   }

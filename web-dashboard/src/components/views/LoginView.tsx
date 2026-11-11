@@ -41,27 +41,62 @@ export default function LoginView({
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setIsLoading(true);
 
+    const cleanUser = username.trim().toLowerCase();
+
+    if (!cleanUser) {
+      setIsLoading(false);
+      setErrorMessage(isAr ? 'يرجى إدخال اسم المستخدم ورمز المنشأة.' : 'Please enter your username and company slug.');
+      return;
+    }
+
+    if (!password) {
+      setIsLoading(false);
+      setErrorMessage(isAr ? 'يرجى إدخال كلمة المرور.' : 'Please enter your password.');
+      return;
+    }
+
+    // 1. Try Backend Authentication API First
+    try {
+      const apiRes = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanUser, password })
+      });
+
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (data && data.user) {
+          if (data.token) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('zilox_token', data.token);
+          }
+          setIsLoading(false);
+          const serverProfile: UserProfile = {
+            ...data.user,
+            defaultRoute: getRoleDefaultNav(data.user.role)
+          };
+          onLoginSuccess(serverProfile, data.user);
+          return;
+        }
+      } else if (apiRes.status === 401 || apiRes.status === 403) {
+        const err = await apiRes.json().catch(() => ({}));
+        setIsLoading(false);
+        setErrorMessage(err.message || (isAr ? 'اسم المستخدم أو كلمة المرور غير صحيحة.' : 'Invalid credentials.'));
+        return;
+      }
+    } catch {
+      // Backend unreachable / offline - seamlessly fallback to local identity matching below
+    }
+
+    // 2. Client-Side Offline / Fallback Authentication Pipeline
     setTimeout(() => {
       const currentUsers = getAllStoredUsersMaster();
       const currentTenants = getStoredTenants();
-      const cleanUser = username.trim().toLowerCase();
-
-      if (!cleanUser) {
-        setIsLoading(false);
-        setErrorMessage(isAr ? 'يرجى إدخال اسم المستخدم ورمز المنشأة.' : 'Please enter your username and company slug.');
-        return;
-      }
-
-      if (!password) {
-        setIsLoading(false);
-        setErrorMessage(isAr ? 'يرجى إدخال كلمة المرور.' : 'Please enter your password.');
-        return;
-      }
 
       // Case A: Platform Super Admin Exemption
       if (cleanUser === 'superadmin' || cleanUser === 'superadmin@platform') {
@@ -115,8 +150,8 @@ export default function LoginView({
       // Case B: Tenant-Scoped Identity (username@company_slug)
       if (cleanUser.includes('@')) {
         const parts = cleanUser.split('@');
-        const userPrefix = parts[0].trim();
-        const tenantSlug = parts[1].trim();
+        const userPrefix = parts[0].trim().toLowerCase();
+        const tenantSlug = parts[1].trim().toLowerCase();
 
         if (!userPrefix || !tenantSlug) {
           setIsLoading(false);
@@ -145,12 +180,39 @@ export default function LoginView({
           return;
         }
 
-        // 3. Match User under Tenant strictly
-        const matched = currentUsers.find(u => 
-          (u.tenantSlug?.toLowerCase() === tenantSlug && (u.username.toLowerCase() === cleanUser || u.username.toLowerCase().split('@')[0] === userPrefix)) ||
-          (cleanUser === `${userPrefix}@${tenantSlug}` && u.tenantSlug?.toLowerCase() === tenantSlug) ||
-          (tenantSlug === 'm' && (u.username.toLowerCase() === userPrefix || u.email?.toLowerCase().startsWith(userPrefix)))
-        );
+        // 3. Strict User Identification by Username & Tenant (NEVER match arbitrary user)
+        let matched = currentUsers.find(u => {
+          const userSlug = (u.tenantSlug || (u.username.includes('@') ? u.username.split('@')[1] : '')).toLowerCase().trim();
+          if (userSlug !== tenantSlug) return false;
+
+          const rawUname = (u.username.includes('@') ? u.username.split('@')[0] : u.username).toLowerCase().trim();
+          const fullUname = u.username.toLowerCase().trim();
+          const uEmail = (u.email || '').toLowerCase().trim();
+
+          return rawUname === userPrefix || fullUname === cleanUser || (uEmail && uEmail.startsWith(userPrefix));
+        });
+
+        // 3.1 If not found in user list, check if matching tenant administrator
+        if (!matched && tenant.adminUsername) {
+          const tenantAdminUname = tenant.adminUsername.toLowerCase().trim();
+          const adminPrefix = tenantAdminUname.includes('@') ? tenantAdminUname.split('@')[0] : tenantAdminUname;
+          if (adminPrefix === userPrefix || tenantAdminUname === cleanUser) {
+            matched = {
+              id: `USR-${tenant.id.slice(0, 8)}-ADMIN`,
+              fullName: tenant.adminFullName || 'المدير العام للمنشأة',
+              username: userPrefix,
+              email: `${userPrefix}@${tenant.slug}.zilox.com`,
+              password: '123',
+              role: 'SuperAdmin',
+              branchId: 'ALL',
+              branchName: 'كافة الفروع والمستودعات',
+              assignedBranches: ['WH-01'],
+              isActive: true,
+              createdAt: tenant.createdAt || new Date().toISOString().split('T')[0],
+              tenantSlug: tenant.slug
+            };
+          }
+        }
 
         if (!matched) {
           setIsLoading(false);
@@ -198,7 +260,7 @@ export default function LoginView({
       setErrorMessage(isAr 
         ? 'صيغة اسم المستخدم غير صحيحة. يجب كتابة: اسم_المستخدم@رمز_الشركة (مثال: mustafa@m أو admin@m). لحساب المالك اكتب: superadmin' 
         : 'Invalid username format. Must be username@company_slug (e.g. mustafa@m). For platform owner, use superadmin.');
-    }, 350);
+    }, 150);
   };
 
   return (

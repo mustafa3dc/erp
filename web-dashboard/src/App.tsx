@@ -301,12 +301,14 @@ function DashboardApp() {
     sessionStorage.removeItem('zilox_impersonating_superadmin');
     setImpersonatingSuperAdminProfile(null);
     setCurrentUser(null);
+    setActiveNav('Dashboard');
     // Flush in-memory tenant data to eliminate cross-tenant bleeding
     setProducts([]);
     setInvoices([]);
     setTransactions([]);
     setWarehouses([]);
     setSelectedWarehouseId('ALL');
+    navigateToPublic('login');
     showToast(isAr ? 'تم تسجيل الخروج بنجاح' : 'Signed out successfully');
   };
 

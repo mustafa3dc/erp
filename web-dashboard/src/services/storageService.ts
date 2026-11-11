@@ -2338,73 +2338,28 @@ export interface EmployeeStatementDto {
   items: StatementLineItemDto[];
 }
 
-export function getStoredEmployeeTransactions(employeeId: string, employeeName = 'موظف'): StatementLineItemDto[] {
+export function getStoredEmployeeTransactions(employeeId: string, _employeeName = 'موظف'): StatementLineItemDto[] {
   const allStored = safeGet<Record<string, StatementLineItemDto[]> | null>(KEYS.EMPLOYEE_TRANSACTIONS, null) || {};
   if (allStored[employeeId] && Array.isArray(allStored[employeeId])) {
-    return allStored[employeeId];
+    // Purge any dummy test constants from stored cache
+    const dummyRefs = new Set(['ADV-2026-102', 'COM-2026-044', 'DED-2026-019', 'SFT-2026-009']);
+    const cleanItems = allStored[employeeId].filter(t => 
+      !dummyRefs.has(t.referenceNumber) &&
+      !t.referenceNumber?.startsWith('SAL-2026') &&
+      !t.description?.includes('سلفة نقدية عاجلة على حساب الراتب') &&
+      !t.description?.includes('حافز وعمولة تحقيق تارجت') &&
+      !t.description?.includes('استحقاق الراتب الأساسي لشهر') &&
+      !t.description?.includes('تسوية فارق ونقص صندوق كاشير') &&
+      !t.description?.includes('خصم تأخير ومخالفة إدارية')
+    );
+    if (cleanItems.length !== allStored[employeeId].length) {
+      allStored[employeeId] = cleanItems;
+      safeSet(KEYS.EMPLOYEE_TRANSACTIONS, allStored);
+    }
+    return cleanItems;
   }
 
-  // Seed default realistic entries if none exist
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-based
-
-  const sampleItems: StatementLineItemDto[] = [
-    {
-      transactionId: `TX-${employeeId.slice(0, 4)}-01`,
-      transactionDate: new Date(year, month - 1, 28, 10, 0).toISOString(),
-      referenceNumber: `SAL-${year}-${String(month).padStart(2, '0')}`,
-      transactionType: 'راتب شهري',
-      description: `استحقاق الراتب الأساسي لشهر ${month}/${year}`,
-      debit: 0,
-      credit: 850000,
-      runningBalance: 850000
-    },
-    {
-      transactionId: `TX-${employeeId.slice(0, 4)}-02`,
-      transactionDate: new Date(year, month, 3, 14, 30).toISOString(),
-      referenceNumber: `ADV-${year}-102`,
-      transactionType: 'سلفة نقدية',
-      description: 'سلفة نقدية عاجلة على حساب الراتب',
-      debit: 150000,
-      credit: 0,
-      runningBalance: 700000
-    },
-    {
-      transactionId: `TX-${employeeId.slice(0, 4)}-03`,
-      transactionDate: new Date(year, month, 12, 11, 15).toISOString(),
-      referenceNumber: `COM-${year}-044`,
-      transactionType: 'عمولة مبيعات',
-      description: 'حافز وعمولة تحقيق تارجت مبيعات الأسبوع الثاني',
-      debit: 0,
-      credit: 75000,
-      runningBalance: 775000
-    },
-    {
-      transactionId: `TX-${employeeId.slice(0, 4)}-04`,
-      transactionDate: new Date(year, month, 18, 16, 45).toISOString(),
-      referenceNumber: `DED-${year}-019`,
-      transactionType: 'خصم',
-      description: 'خصم تأخير ومخالفة إدارية معتمدة',
-      debit: 25000,
-      credit: 0,
-      runningBalance: 750000
-    },
-    {
-      transactionId: `TX-${employeeId.slice(0, 4)}-05`,
-      transactionDate: new Date(year, month, now.getDate(), 9, 30).toISOString(),
-      referenceNumber: `SFT-${year}-009`,
-      transactionType: 'عجز وردية',
-      description: 'تسوية فارق ونقص صندوق كاشير لوردية سابقة',
-      debit: 10000,
-      credit: 0,
-      runningBalance: 740000
-    }
-  ];
-
-  allStored[employeeId] = sampleItems;
-  safeSet(KEYS.EMPLOYEE_TRANSACTIONS, allStored);
-  return sampleItems;
+  return [];
 }
 
 export function saveStoredEmployeeTransaction(

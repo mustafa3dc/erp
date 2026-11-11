@@ -178,11 +178,11 @@ export default function EmployeeStatementModal({
     <DialogPortal>
       <DialogOverlay onClick={onClose} />
       <DialogContent
-        className="statement-printable-container w-full max-w-5xl bg-card border border-border/80 shadow-2xl rounded-2xl p-0 text-foreground overflow-hidden flex flex-col my-auto"
+        className="statement-printable-container w-full max-w-6xl bg-card border border-border/80 shadow-2xl rounded-2xl p-0 text-foreground overflow-hidden flex flex-col my-auto"
         style={{
-          maxWidth: '1000px',
-          width: '96%',
-          maxHeight: '94vh',
+          maxWidth: '1240px',
+          width: '96vw',
+          maxHeight: '92vh',
           padding: 0,
           borderRadius: '1rem',
           backgroundColor: 'var(--card)',
@@ -506,27 +506,43 @@ export default function EmployeeStatementModal({
           {/* 3. STATEMENT DATA TABLE */}
           <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-2xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right" dir={isAr ? 'rtl' : 'ltr'}>
+              <table className="w-full text-xs text-right table-fixed" dir={isAr ? 'rtl' : 'ltr'}>
                 <thead>
                   <tr className="bg-muted/60 border-b border-border/60 text-[11px] font-bold text-muted-foreground">
-                    <th className="p-3 text-start">{isAr ? 'التاريخ والوقت' : 'Date & Time'}</th>
-                    <th className="p-3 text-start">{isAr ? 'رقم الحركة / المرجع' : 'Ref Number'}</th>
-                    <th className="p-3 text-start">{isAr ? 'نوع الحركة' : 'Transaction Type'}</th>
-                    <th className="p-3 text-start">{isAr ? 'البيان / الشرح التفصيلي' : 'Description'}</th>
-                    <th className="p-3 text-center">{isAr ? 'مدين (عليه)' : 'Debit (Out)'}</th>
-                    <th className="p-3 text-center">{isAr ? 'دائن (له)' : 'Credit (In)'}</th>
-                    <th className="p-3 text-center">{isAr ? 'الرصيد التراكمي' : 'Running Balance'}</th>
-                    <th className="no-print p-3 text-center">{isAr ? 'فحص السند' : 'Action'}</th>
+                    <th className="px-3 py-2.5 text-start w-[15%]">{isAr ? 'التاريخ والوقت' : 'Date & Time'}</th>
+                    <th className="px-3 py-2.5 text-start w-[13%]">{isAr ? 'رقم الحركة / المرجع' : 'Ref Number'}</th>
+                    <th className="px-3 py-2.5 text-start w-[11%]">{isAr ? 'نوع الحركة' : 'Transaction Type'}</th>
+                    <th className="px-3 py-2.5 text-start w-[23%]">{isAr ? 'البيان / الشرح التفصيلي' : 'Description'}</th>
+                    <th className="px-3 py-2.5 text-center w-[11%]">{isAr ? 'مدين (عليه)' : 'Debit (Out)'}</th>
+                    <th className="px-3 py-2.5 text-center w-[11%]">{isAr ? 'دائن (له)' : 'Credit (In)'}</th>
+                    <th className="px-3 py-2.5 text-center w-[11%]">{isAr ? 'الرصيد التراكمي' : 'Running Balance'}</th>
+                    <th className="no-print px-2 py-2.5 text-center w-[5%]">{isAr ? 'فحص' : 'Action'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                        <FileText className="w-6 h-6 mx-auto mb-2 text-muted-foreground/60" />
-                        <span className="text-xs font-medium">
-                          {isAr ? 'لا توجد حركات مالية مسجلة خلال الفترة المحددة' : 'No transactions recorded within this timeframe'}
-                        </span>
+                      <td colSpan={8} className="py-12 px-4 text-center text-muted-foreground">
+                        <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/80 flex items-center justify-center mx-auto mb-3 text-muted-foreground/60 shadow-2xs">
+                          <Receipt className="w-6 h-6" />
+                        </div>
+                        <h4 className="text-sm font-bold text-foreground mb-1">
+                          {isAr ? 'لا توجد حركات مالية مسجلة' : 'No Financial Transactions Recorded'}
+                        </h4>
+                        <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4 leading-relaxed">
+                          {isAr 
+                            ? 'لم يتم تسجيل أي سلف، رواتب، عمولات، أو خصومات لهذا الموظف خلال الفترة المحددة.'
+                            : 'No advances, salaries, commissions, or deductions have been logged for this staff member in this timeframe.'}
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={() => setIsNewTxModalOpen(true)}
+                          size="sm"
+                          className="h-8 px-4 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{isAr ? 'تسجيل أول قيد مالي الآن' : 'Record First Entry Now'}</span>
+                        </Button>
                       </td>
                     </tr>
                   ) : (
@@ -535,7 +551,7 @@ export default function EmployeeStatementModal({
                       return (
                         <tr key={item.transactionId} className="hover:bg-muted/30 transition-colors">
                           {/* 1. Date & Time */}
-                          <td className="p-3 font-mono text-[11.5px] text-muted-foreground whitespace-nowrap" dir="ltr">
+                          <td className="px-3 py-2.5 font-mono text-[11px] text-muted-foreground whitespace-nowrap" dir="ltr">
                             {new Date(item.transactionDate).toLocaleString('en-US', {
                               year: 'numeric',
                               month: '2-digit',
@@ -547,13 +563,13 @@ export default function EmployeeStatementModal({
                           </td>
 
                           {/* 2. Reference Number */}
-                          <td className="p-3 font-mono font-bold text-primary whitespace-nowrap" dir="ltr">
+                          <td className="px-3 py-2.5 font-mono font-bold text-primary whitespace-nowrap text-xs" dir="ltr">
                             {item.referenceNumber}
                           </td>
 
                           {/* 3. Transaction Type */}
-                          <td className="p-3 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10.5px] font-bold ${
                               item.transactionType.includes('راتب')
                                 ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20'
                                 : item.transactionType.includes('عمولة')
@@ -569,43 +585,44 @@ export default function EmployeeStatementModal({
                           </td>
 
                           {/* 4. Description */}
-                          <td className="p-3 font-medium text-foreground max-w-xs truncate" title={item.description}>
+                          <td className="px-3 py-2.5 font-medium text-foreground text-xs truncate" title={item.description}>
                             {item.description}
                           </td>
 
                           {/* 5. Debit (عليه) */}
-                          <td className="p-3 text-center font-mono font-extrabold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                          <td className="px-3 py-2.5 text-center font-mono font-extrabold text-rose-600 dark:text-rose-400 whitespace-nowrap text-xs">
                             {item.debit > 0 ? `${item.debit.toLocaleString()} ${effectiveCurrency}` : '—'}
                           </td>
 
                           {/* 6. Credit (له) */}
-                          <td className="p-3 text-center font-mono font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          <td className="px-3 py-2.5 text-center font-mono font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap text-xs">
                             {item.credit > 0 ? `+${item.credit.toLocaleString()} ${effectiveCurrency}` : '—'}
                           </td>
 
                           {/* 7. Running Balance */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border font-mono font-extrabold text-xs shadow-2xs">
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg border font-mono font-extrabold text-[11px] shadow-2xs">
                               <span className={isLineCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                                 {Math.abs(item.runningBalance).toLocaleString()} {effectiveCurrency}
                               </span>
-                              <span className={`text-[9px] px-1 rounded ${isLineCredit ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-rose-500/20 text-rose-700 dark:text-rose-400'}`}>
+                              <span className={`text-[8.5px] px-1 rounded ${isLineCredit ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-rose-500/20 text-rose-700 dark:text-rose-400'}`}>
                                 {isLineCredit ? (isAr ? 'له' : 'CR') : (isAr ? 'عليه' : 'DR')}
                               </span>
                             </div>
                           </td>
 
                           {/* 8. Inspect Voucher */}
-                          <td className="no-print p-3 text-center">
+                          <td className="no-print px-1 py-2.5 text-center">
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               onClick={() => setInspectingItem(item)}
-                              className="h-7 px-2 text-[11px] gap-1 text-primary hover:bg-primary/10"
+                              className="h-7 px-1.5 text-[11px] gap-1 text-primary hover:bg-primary/10 rounded-md"
+                              title={isAr ? 'فحص تفاصيل السند' : 'Inspect Voucher'}
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>{isAr ? 'فحص' : 'View'}</span>
+                              <span className="hidden sm:inline">{isAr ? 'فحص' : 'View'}</span>
                             </Button>
                           </td>
                         </tr>

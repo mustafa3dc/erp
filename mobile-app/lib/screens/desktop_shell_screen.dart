@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import 'desktop_pos_screen.dart';
+import 'desktop_settings_screen.dart';
 
 class DesktopShellScreen extends StatefulWidget {
   const DesktopShellScreen({super.key});
@@ -49,7 +50,7 @@ class _DesktopShellScreenState extends State<DesktopShellScreen> {
       case 4:
         return _buildPlaceholderScreen('إدارة الورديات وتقرير Z-Report', Icons.lock_clock_outlined);
       case 5:
-        return _buildSettingsScreen();
+        return const DesktopSettingsScreen();
       default:
         return const DesktopPosScreen();
     }

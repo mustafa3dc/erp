@@ -75,6 +75,19 @@ export interface UserSettings {
   multiCurrencyEnabled?: boolean;
   secondaryCurrencies?: SecondaryCurrencyConfig[];
   scaleSettings?: ScaleSettings;
+  // Tab 1: Company Identity & Receipt
+  phone?: string;
+  address?: string;
+  commercialRegister?: string;
+  logoUrl?: string;
+  receiptHeader?: string;
+  receiptFooter?: string;
+  // Tab 2: Financial & Currency
+  autoRoundCash?: boolean; // Iraqi cash auto-rounding (nearest 250 IQD)
+  // Tab 3: POS & Hardware
+  paperWidth?: '80mm' | '58mm';
+  autoPrintReceipt?: boolean;
+  openCashDrawerOnCashSale?: boolean;
 }
 
 export const CURRENCY_REGISTRY: Record<string, { code: string; nameAr: string; nameEn: string; symbolAr: string; symbolEn: string; defaultRateVsUsd: number }> = {
@@ -147,7 +160,17 @@ const DEFAULT_SETTINGS: UserSettings = {
     itemCodeLength: 5,
     weightUnit: 'KG',
     directScaleBaudRate: 9600
-  }
+  },
+  phone: '',
+  address: '',
+  commercialRegister: '',
+  logoUrl: '',
+  receiptHeader: 'أهلاً وسهلاً بكم - نشكر زيارتكم',
+  receiptFooter: 'البضاعة المباعة ترد وتستبدل خلال 3 أيام بموجب الوصل',
+  autoRoundCash: true,
+  paperWidth: '80mm',
+  autoPrintReceipt: true,
+  openCashDrawerOnCashSale: true
 };
 
 // Cookie Helpers

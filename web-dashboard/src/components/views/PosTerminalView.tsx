@@ -990,7 +990,7 @@ export default function PosTerminalView({
                   outline: 'none'
                 }}
               >
-                <option value="ALL">{isAr ? '🌐 جميع المستودعات والفروع (الكل)' : '🌐 All Warehouses & Hubs'}</option>
+                <option value="ALL">{isAr ? 'جميع المستودعات والفروع (الكل)' : 'All Warehouses & Hubs'}</option>
                 {availableWarehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.nameAr} ({w.code})</option>
                 ))}

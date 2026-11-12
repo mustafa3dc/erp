@@ -71,27 +71,52 @@ export function useAuth() {
  * Hook to retrieve and check tenant feature flags (Super Admin feature matrix).
  */
 export function useTenantFeatures(userOverride?: UserProfile | null) {
-  const { currentUser } = useAuth();
-  const session = userOverride !== undefined ? userOverride : (currentUser || getStoredAuthSession());
-  const features: CompanyFeatures | undefined = session?.features;
+  const { currentUser, refreshUser } = useAuth();
+  const [session, setSession] = useState<UserProfile | null>(() => getStoredAuthSession() || currentUser || userOverride || null);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const fresh = getStoredAuthSession();
+      setSession(fresh);
+      refreshUser();
+    };
+
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('zilox_query_invalidate', handleUpdate);
+    window.addEventListener('zilox_features_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('zilox_query_invalidate', handleUpdate);
+      window.removeEventListener('zilox_features_updated', handleUpdate);
+    };
+  }, [refreshUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setSession(currentUser);
+    }
+  }, [currentUser]);
+
+  const activeProfile = session || currentUser || userOverride || getStoredAuthSession();
+  const features: CompanyFeatures | undefined = activeProfile?.features;
 
   const isFeatureEnabled = useCallback((key: keyof CompanyFeatures): boolean => {
-    if (session?.role === 'PlatformSuperAdmin') return true;
+    if (activeProfile?.role === 'PlatformSuperAdmin') return true;
     if (!features) {
       if (key === 'enableBarcodeScales') {
-        return session?.businessPreset === 'Grocery';
+        return activeProfile?.businessPreset === 'Grocery';
       }
       return true;
     }
     return features[key] !== false;
-  }, [features, session]);
+  }, [features, activeProfile]);
 
   return {
     features,
     isFeatureEnabled,
-    tenantId: session?.tenantId,
-    tenantSlug: session?.tenantSlug,
-    businessPreset: session?.businessPreset
+    tenantId: activeProfile?.tenantId,
+    tenantSlug: activeProfile?.tenantSlug,
+    businessPreset: activeProfile?.businessPreset
   };
 }
 

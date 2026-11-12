@@ -161,7 +161,7 @@ export default function ElectronicScaleModal({
             const parsed = parseFloat(match[1]);
             if (!isNaN(parsed) && parsed > 0) {
               setWeightKg(Math.round(parsed * 1000) / 1000);
-              setSerialStatus(isAr ? `تمت قراءة الوزن: ${parsed} كغم ✅` : `Weight Read: ${parsed} kg ✅`);
+              setSerialStatus(isAr ? `تمت قراءة الوزن: ${parsed} كغم` : `Weight Read: ${parsed} kg`);
             }
           }
           if (buffer.length > 100) buffer = buffer.slice(-50);
@@ -260,7 +260,7 @@ export default function ElectronicScaleModal({
                   {isAr ? 'اختر الصنف المراد وزنه:' : 'Select Item to Weigh:'}
                 </label>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                  {isAr ? 'أصناف وزنية فقط ⚖️' : 'Weighted Items Only ⚖️'}
+                  {isAr ? 'أصناف وزنية فقط' : 'Weighted Items Only'}
                 </span>
               </div>
 

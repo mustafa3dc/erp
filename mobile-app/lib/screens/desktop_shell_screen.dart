@@ -127,7 +127,7 @@ class _DesktopShellScreenState extends State<DesktopShellScreen> {
               color: const Color(0xFF0B1120),
               child: Row(
                 children: [
-                  const Text('⚡ ZiloX ERP & Cloud POS', 
+                  const Text('ZiloX ERP & Cloud POS', 
                     style: TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.w900, fontSize: 15)),
                   const SizedBox(width: 8),
                   Container(

@@ -407,8 +407,8 @@ export default function EditProductModal({
                           className="w-full h-9 rounded-lg border border-border/80 bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
                         >
                           <option value="قطعة">{isAr ? 'قطعة (Piece)' : 'Piece'}</option>
-                          <option value="كجم">{isAr ? 'كجم (كيلوغرام) ⚖️' : 'Kg (Scale ⚖️)'}</option>
-                          <option value="غرام">{isAr ? 'غرام (Gram) ⚖️' : 'Gram ⚖️'}</option>
+                          <option value="كجم">{isAr ? 'كجم (كيلوغرام)' : 'Kg (Scale)'}</option>
+                          <option value="غرام">{isAr ? 'غرام (Gram)' : 'Gram'}</option>
                           <option value="صندوق">{isAr ? 'صندوق (Box)' : 'Box'}</option>
                           <option value="طرد">{isAr ? 'طرد (Package)' : 'Package'}</option>
                           <option value="بكرة">{isAr ? 'بكرة (Roll)' : 'Roll'}</option>

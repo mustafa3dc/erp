@@ -257,6 +257,22 @@ function DashboardApp() {
     return getStoredAuthSession();
   });
 
+  // Keep currentUser synchronized across tabs and live feature toggles
+  useEffect(() => {
+    const syncSession = () => {
+      const fresh = getStoredAuthSession();
+      setCurrentUser(fresh);
+    };
+    window.addEventListener('storage', syncSession);
+    window.addEventListener('zilox_query_invalidate', syncSession);
+    window.addEventListener('zilox_features_updated', syncSession);
+    return () => {
+      window.removeEventListener('storage', syncSession);
+      window.removeEventListener('zilox_query_invalidate', syncSession);
+      window.removeEventListener('zilox_features_updated', syncSession);
+    };
+  }, []);
+
   // Guard role routes: Prevent Cashier / Storekeeper from ever getting stuck on /dashboard
   useEffect(() => {
     if (currentUser) {

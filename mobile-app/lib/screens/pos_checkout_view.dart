@@ -111,7 +111,7 @@ class _PosCheckoutViewState extends ConsumerState<PosCheckoutView> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم اعتماد الخصم بواسطة: ${result.managerName}'),
+            content: Text('تم اعتماد الخصم بواسطة: ${result.managerName}'),
             backgroundColor: const Color(0xFF4F46E5),
           ),
         );
@@ -261,7 +261,7 @@ class _PosCheckoutViewState extends ConsumerState<PosCheckoutView> {
                                 if (hasDiscount) ...[
                                   const SizedBox(width: 8),
                                   Text(
-                                    '➔ \$${item.finalUnitPrice.toStringAsFixed(2)}',
+                                    '-> \$${item.finalUnitPrice.toStringAsFixed(2)}',
                                     style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 12),
                                   ),
                                 ],
@@ -277,7 +277,7 @@ class _PosCheckoutViewState extends ConsumerState<PosCheckoutView> {
                                   border: Border.all(color: const Color(0x666366F1)),
                                 ),
                                 child: Text(
-                                  '🛡️ معتمد: ${item.approvedByManagerName?.split(' ')[0]} (%${item.discountValue.toStringAsFixed(0)})',
+                                  'معتمد: ${item.approvedByManagerName?.split(' ')[0]} (%${item.discountValue.toStringAsFixed(0)})',
                                   style: const TextStyle(color: Color(0xFFA5B4FC), fontSize: 11, fontWeight: FontWeight.bold),
                                 ),
                               )
@@ -308,9 +308,9 @@ class _PosCheckoutViewState extends ConsumerState<PosCheckoutView> {
                             const SizedBox(width: 6),
                             _buildDiscountPill(item, '5%', 5),
                             const SizedBox(width: 6),
-                            _buildDiscountPill(item, '10% 🛡️', 10, isOverride: true),
+                            _buildDiscountPill(item, '10% (مدير)', 10, isOverride: true),
                             const SizedBox(width: 6),
-                            _buildDiscountPill(item, '15% 🛡️', 15, isOverride: true),
+                            _buildDiscountPill(item, '15% (مدير)', 15, isOverride: true),
                           ],
                         ),
                       ],

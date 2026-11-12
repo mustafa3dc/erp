@@ -277,15 +277,20 @@ export default function PosTerminalView({
   ) : false;
 
   // Super Admin Feature Flag & Tenant Settings check for Electronic Scales
-  const { isFeatureEnabled } = useTenantFeatures(currentUser);
-  const isScaleFeatureActive = useMemo(() => {
-    // 1. Super Admin Feature Flag: enableBarcodeScales must be true for the tenant activity (e.g. Grocery/Spices)
-    const allowedBySuperAdmin = isFeatureEnabled('enableBarcodeScales');
-    if (!allowedBySuperAdmin) return false;
+  const { features } = useTenantFeatures(currentUser);
+  
+  // Strict Boolean Check: never default to true
+  const isScaleEnabled = Boolean(
+    (currentUser?.role === 'PlatformSuperAdmin' || features?.enableBarcodeScales === true) &&
+    settings?.scaleSettings?.enabled !== false
+  );
 
-    // 2. Tenant Settings: scaleSettings.enabled must not be disabled
-    return settings?.scaleSettings?.enabled !== false;
-  }, [isFeatureEnabled, settings?.scaleSettings?.enabled]);
+  // Auto-reset active category filter if scale is disabled while active
+  useEffect(() => {
+    if (!isScaleEnabled && (selectedCategory === 'scale' || selectedCategory === 'SCALE')) {
+      setSelectedCategory('ALL');
+    }
+  }, [isScaleEnabled, selectedCategory]);
 
   // Listen for storage shift events (e.g., opened/closed in another tab or in ShiftsView)
   React.useEffect(() => {
@@ -395,8 +400,11 @@ export default function PosTerminalView({
     const selectedCatObj = categories.find(c => c.id === selectedCategory);
     const selectedCatName = selectedCatObj ? selectedCatObj.name.toLowerCase() : selectedCategory.toLowerCase();
 
+    const isScaleItem = p.unit === 'كغم' || p.unit === 'كجم' || p.unit?.toLowerCase() === 'kg' || p.unit === 'غرام' || p.unit?.toLowerCase() === 'g' || (p.barcode && (p.barcode.startsWith('20') || p.barcode.startsWith('21') || p.barcode.startsWith('22')));
+
     const matchesCat = 
       selectedCategory === 'ALL' ||
+      (selectedCategory.toLowerCase() === 'scale' && isScaleItem) ||
       p.categoryId === selectedCategory ||
       (p.category && (
         p.category.toLowerCase() === selectedCatName ||
@@ -1183,7 +1191,7 @@ export default function PosTerminalView({
                     if (!raw) return;
 
                     // 1. Check if input matches an Electronic Scale Barcode (only if scale feature is active)
-                    if (isScaleFeatureActive) {
+                    if (isScaleEnabled) {
                       const scaleMatch = parseScaleBarcode(raw, products, settings?.scaleSettings);
                       if (scaleMatch) {
                         addToCart(scaleMatch.product, scaleMatch.quantity);
@@ -1191,8 +1199,8 @@ export default function PosTerminalView({
                         const unitStr = isAr ? 'كغم' : 'kg';
                         showPaymentToast(
                           isAr 
-                            ? `⚖️ ميزان باركود: تم إضافة (${scaleMatch.product.nameAr}) بوزن ${scaleMatch.quantity} ${unitStr}`
-                            : `⚖️ Scale Item: Added (${scaleMatch.product.nameAr}) [${scaleMatch.quantity} ${unitStr}]`
+                            ? `ميزان باركود: تم إضافة (${scaleMatch.product.nameAr}) بوزن ${scaleMatch.quantity} ${unitStr}`
+                            : `Scale Item: Added (${scaleMatch.product.nameAr}) [${scaleMatch.quantity} ${unitStr}]`
                         );
                         return;
                       }
@@ -1238,34 +1246,28 @@ export default function PosTerminalView({
               lang={lang}
             />
 
-            {/* Quick Smart Scale Launcher Button (Conditionally rendered by Super Admin Feature Flag) */}
-            {isScaleFeatureActive && (
+            {/* Quick Smart Scale Filter & Launcher Button */}
+            {isScaleEnabled && (
               <button
                 type="button"
                 onClick={() => {
-                  setScaleTargetProduct(null);
-                  setIsScaleModalOpen(true);
+                  if (selectedCategory === 'scale') {
+                    setSelectedCategory('ALL');
+                  } else {
+                    setSelectedCategory('scale');
+                    setScaleTargetProduct(null);
+                    setIsScaleModalOpen(true);
+                  }
                 }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  height: '38px',
-                  padding: '0 12px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(245, 158, 11, 0.35)',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  color: '#d97706',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  whiteSpace: 'nowrap'
-                }}
-                title={isAr ? 'الميزان الإلكتروني الذكي (قراءة مباشرة أو وزن سريع)' : 'Smart Electronic Scale'}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0 ${
+                  selectedCategory === 'scale'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+                }`}
+                title={isAr ? 'أصناف الميزان والميزان الذكي' : 'Scale Items & Smart Scale'}
               >
-                <Scale size={16} />
-                <span>{isAr ? 'الميزان' : 'Scale'}</span>
+                <Scale className="w-4 h-4" />
+                <span>{t('pos.filters.scale', isAr ? 'الميزان' : 'Scale')}</span>
               </button>
             )}
           </div>
@@ -2609,7 +2611,7 @@ export default function PosTerminalView({
       />
 
       {/* Smart Electronic Scale Modal */}
-      {isScaleFeatureActive && (
+      {isScaleEnabled && (
         <ElectronicScaleModal
           isOpen={isScaleModalOpen}
           onClose={() => {
@@ -2623,8 +2625,8 @@ export default function PosTerminalView({
             addToCart(product, weightKg);
             showPaymentToast(
               isAr 
-                ? `⚖️ تم إضافة (${getProductName(product)}) بوزن ${weightKg} كغم`
-                : `⚖️ Added (${getProductName(product)}) [${weightKg} kg]`
+                ? `تم إضافة (${getProductName(product)}) بوزن ${weightKg} كغم`
+                : `Added (${getProductName(product)}) [${weightKg} kg]`
             );
           }}
         />

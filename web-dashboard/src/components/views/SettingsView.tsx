@@ -35,7 +35,18 @@ import {
   ScaleSettings
 } from '../../context/settings-context';
 import { Warehouse } from '../../types/warehouse';
-import { getStoredWarehouses, resetToCleanSlate, getStoredProducts, getStoredInvoices, getStoredTransactions } from '../../services/storageService';
+import { 
+  getStoredWarehouses, 
+  resetToCleanSlate, 
+  getStoredProducts, 
+  getStoredInvoices, 
+  getStoredTransactions,
+  getStoredAuthSession,
+  saveStoredAuthSession,
+  safeSet,
+  KEYS
+} from '../../services/storageService';
+import { updateTenantFeatures } from '../../services/tenantService';
 import { useTenantFeatures } from '../../hooks/useAuth';
 import { toast } from 'sonner';
 
@@ -102,6 +113,55 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     }
     const updated = { ...currentScaleSettings, [key]: val };
     updateSetting('scaleSettings', updated);
+
+    // Immediate multi-layer state & cache synchronization
+    if (key === 'enabled') {
+      const boolVal = Boolean(val);
+      const currentSession = getStoredAuthSession();
+      if (currentSession) {
+        if (!currentSession.features) {
+          currentSession.features = {
+            enablePOS: true,
+            multiWarehouse: true,
+            maxWarehouses: 5,
+            enableInstallments: true,
+            enableSerialNumbers: false,
+            enableVariants: false,
+            enableMultiCurrency: true,
+            enableCreditLimits: true,
+            enableBarcodeScales: boolVal,
+            enableExpiryDates: false,
+          };
+        } else {
+          currentSession.features.enableBarcodeScales = boolVal;
+        }
+        saveStoredAuthSession(currentSession);
+        safeSet(KEYS.AUTH_SESSION, currentSession);
+
+        if (currentSession.tenantId) {
+          updateTenantFeatures(currentSession.tenantId, { enableBarcodeScales: boolVal }).catch(() => {});
+        }
+      }
+
+      // Sync backend API
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || localStorage.getItem('zilox_token')) : null;
+      if (token) {
+        fetch('/api/company/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ enableBarcodeScales: boolVal })
+        }).catch(() => {});
+      }
+
+      // Invalidate and sync all tabs and global state instantly
+      window.dispatchEvent(new CustomEvent('zilox_features_updated', { detail: { enableBarcodeScales: boolVal } }));
+      window.dispatchEvent(new CustomEvent('zilox_query_invalidate', { detail: { queryKey: ['currentUser', 'auth', 'companySettings', 'tenantFeatures'] } }));
+      window.dispatchEvent(new StorageEvent('storage', { key: KEYS.AUTH_SESSION }));
+    }
+
     toast.success(isAr ? 'تم تحديث إعدادات الميزان' : 'Scale settings updated');
   };
 
@@ -930,72 +990,71 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
         {/* ==========================================================
             SECTION 4.5: الموازين الإلكترونية وموازين الباركود (ELECTRONIC SCALES)
             ========================================================== */}
-        <div 
-          className="settings-section-card" 
-          style={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '1.25rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-          }}
-        >
-          <div 
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '1rem',
-              paddingBottom: '0.75rem',
-              borderBottom: '1px solid var(--border)'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Scale size={18} style={{ color: '#d97706' }} />
+        <div className="rounded-xl border border-slate-200 dark:border-border/80 bg-white dark:bg-card p-4 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            {/* Start (Right in RTL): Soft Icon Box + Title & Description */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Scale className="w-5 h-5" />
+              </div>
               <div>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--foreground)' }}>
-                  {isAr ? 'الموازين الإلكترونية وموازين الباركود (Barcode & POS Scales)' : 'Electronic Weighing Scales'}
+                <h4 className="m-0 text-sm font-bold text-foreground leading-snug">
+                  {isAr ? 'الموازين الإلكترونية وموازين الباركود' : 'Electronic Weighing Scales'}
                 </h4>
-                <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: 'var(--muted-foreground)' }}>
+                <p className="m-0 mt-0.5 text-xs text-muted-foreground leading-normal">
                   {isAr 
-                    ? 'دعم موازين طباعة الملصقات (CAS, Rongta, Dibal, Toledo) والموازين المباشرة عبر USB' 
+                    ? 'دعم موازين طباعة الملصقات الباركودية والموازين المباشرة لنقاط البيع' 
                     : 'Configure EAN-13 scale barcodes and direct USB checkstand scales'}
                 </p>
               </div>
             </div>
 
-            {/* Enable Scale Feature Toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {!isScaleAllowedBySuperAdmin && (
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                  {isAr ? 'غير مشمولة في باقة المنشأة 🔒' : 'Locked by Super Admin 🔒'}
+            {/* End (Left in RTL): Clean Status Badge + Modern Pill Switch */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              {!isScaleAllowedBySuperAdmin ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {isAr ? 'غير مشمولة في الباقة' : 'Locked by Plan'}
+                </span>
+              ) : currentScaleSettings.enabled ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                  {isAr ? 'مفعلة' : 'Enabled'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {isAr ? 'معطلة' : 'Disabled'}
                 </span>
               )}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isScaleAllowedBySuperAdmin ? 'pointer' : 'not-allowed', opacity: isScaleAllowedBySuperAdmin ? 1 : 0.6 }}>
-                <input 
-                  type="checkbox"
-                  disabled={!isScaleAllowedBySuperAdmin}
-                  checked={isScaleAllowedBySuperAdmin && currentScaleSettings.enabled}
-                  onChange={(e) => handleUpdateScaleSetting('enabled', e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: isScaleAllowedBySuperAdmin ? 'pointer' : 'not-allowed' }}
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={currentScaleSettings.enabled}
+                disabled={!isScaleAllowedBySuperAdmin}
+                onClick={() => handleUpdateScaleSetting('enabled', !currentScaleSettings.enabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                  currentScaleSettings.enabled ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'
+                } ${!isScaleAllowedBySuperAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={!isScaleAllowedBySuperAdmin ? (isAr ? 'غير مفعلة من الإدارة' : 'Disabled by Admin') : (currentScaleSettings.enabled ? (isAr ? 'تعطيل الميزان' : 'Disable Scale') : (isAr ? 'تفعيل الميزان' : 'Enable Scale'))}
+              >
+                <span
+                  style={{
+                    transform: currentScaleSettings.enabled
+                      ? (isAr ? 'translateX(-20px)' : 'translateX(20px)')
+                      : 'translateX(0)'
+                  }}
+                  className="inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out pointer-events-none"
                 />
-                <span style={{ fontSize: '12px', fontWeight: 700, color: (isScaleAllowedBySuperAdmin && currentScaleSettings.enabled) ? '#059669' : '#64748b' }}>
-                  {!isScaleAllowedBySuperAdmin
-                    ? (isAr ? 'معطلة من الإدارة' : 'Disabled by Admin')
-                    : currentScaleSettings.enabled 
-                    ? (isAr ? 'الميزة مفعلة ✅' : 'Enabled ✅') 
-                    : (isAr ? 'معطلة ❌' : 'Disabled ❌')}
-                </span>
-              </label>
+              </button>
             </div>
           </div>
 
+          {/* Sub-settings: Only visible when enabled */}
           {isScaleAllowedBySuperAdmin && currentScaleSettings.enabled && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+            <div className="pt-4 border-t border-border/60 flex flex-col gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* 1. Scale Prefixes */}
-                <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-foreground">
                     {isAr ? 'بادئات باركود الميزان المعتمدة (مفصولة بفاصلة):' : 'Allowed Scale Prefixes (Comma-separated):'}
                   </label>
                   <input 
@@ -1003,40 +1062,40 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                     value={currentScaleSettings.prefix}
                     onChange={(e) => handleUpdateScaleSetting('prefix', e.target.value)}
                     placeholder="20, 21, 22, 99"
-                    style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--card)', padding: '0 12px', fontSize: '12.5px', color: 'var(--foreground)', fontWeight: 600, fontFamily: 'monospace' }}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono font-semibold text-foreground"
                   />
-                  <span style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                  <span className="text-[11px] text-muted-foreground block">
                     {isAr ? 'المعيار الدولي لباركود الموازين يبدأ عادة بـ 20 أو 21 أو 22 أو 99' : 'Standard GS1 prefixes: 20, 21, 22, 99'}
                   </span>
                 </div>
 
                 {/* 2. Barcode Type (Weight vs Price) */}
-                <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-foreground">
                     {isAr ? 'نوع البيانات المشفرة في ملصق الميزان:' : 'Scale Label Data Encoding:'}
                   </label>
                   <select 
                     value={currentScaleSettings.barcodeType}
                     onChange={(e) => handleUpdateScaleSetting('barcodeType', e.target.value as any)}
-                    style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--card)', padding: '0 12px', fontSize: '12.5px', color: 'var(--foreground)', fontWeight: 500 }}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground"
                   >
                     <option value="WEIGHT">{isAr ? 'وزني بالجرام (Weight in Grams) — النمط الشائع' : 'Weight-Based (Grams / 1000)'}</option>
                     <option value="PRICE">{isAr ? 'سعري بالقيمة الإجمالية (Total Price in Barcode)' : 'Price-Based (Total Amount)'}</option>
                   </select>
-                  <span style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
+                  <span className="text-[11px] text-muted-foreground block">
                     {isAr ? 'إذا كان الميزان يطبع الوزن الصافي، اختر وزني. إذا كان يطبع السعر الإجمالي، اختر سعري.' : 'Choose whether the scale outputs net weight or calculated amount.'}
                   </span>
                 </div>
 
                 {/* 3. PLU Item Code Digits */}
-                <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    {isAr ? 'عدد خانات كود الصنف (PLU Digits):' : 'PLU Item Code Length:'}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-foreground">
+                    {isAr ? 'عدد خانات كود الصنف (PLU):' : 'PLU Item Code Length:'}
                   </label>
                   <select 
                     value={currentScaleSettings.itemCodeLength}
                     onChange={(e) => handleUpdateScaleSetting('itemCodeLength', Number(e.target.value))}
-                    style={{ width: '100%', height: '38px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--card)', padding: '0 12px', fontSize: '12.5px', color: 'var(--foreground)', fontWeight: 500 }}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground"
                   >
                     <option value={4}>{isAr ? '4 خانات (مثال: 0105)' : '4 Digits'}</option>
                     <option value={5}>{isAr ? '5 خانات (القياسي المعتمد: 00105)' : '5 Digits (Standard)'}</option>
@@ -1045,62 +1104,35 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 </div>
               </div>
 
-              {/* 4. Live Scale Barcode Interactive Simulator / Tester */}
-              <div style={{
-                background: 'rgba(148, 163, 184, 0.08)',
-                border: '1px dashed var(--border)',
-                borderRadius: '10px',
-                padding: '14px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Zap size={15} style={{ color: '#d97706' }} />
-                    <strong style={{ fontSize: '12px', color: 'var(--foreground)' }}>
-                      {isAr ? 'مختبر فحص باركود الميزان الحي (Live Scale Barcode Diagnostic):' : 'Interactive Scale Barcode Tester:'}
+              {/* 4. Live Scale Barcode Simulator */}
+              <div className="p-3.5 rounded-lg border border-dashed border-border bg-muted/20 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <strong className="text-xs font-bold text-foreground">
+                      {isAr ? 'مختبر فحص باركود الميزان الحي:' : 'Interactive Scale Barcode Tester:'}
                     </strong>
                   </div>
                   <button
                     type="button"
                     onClick={() => setTestScaleBarcode('2100105012503')}
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--primary)',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      textDecoration: 'underline'
-                    }}
+                    className="text-xs text-primary hover:underline font-semibold cursor-pointer"
                   >
                     {isAr ? 'تجربة باركود ميزان افتراضي (2100105012503)' : 'Load sample barcode'}
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input 
+                <div className="flex gap-2">
+                  <input
                     type="text"
                     value={testScaleBarcode}
                     onChange={(e) => setTestScaleBarcode(e.target.value.trim())}
                     placeholder="2100105012503"
-                    style={{
-                      flex: 1,
-                      height: '36px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border)',
-                      background: 'var(--card)',
-                      color: 'var(--foreground)',
-                      padding: '0 12px',
-                      fontFamily: 'monospace',
-                      fontWeight: 700,
-                      fontSize: '13px'
-                    }}
+                    className="flex-1 h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono font-bold text-foreground"
                   />
                 </div>
 
-                {/* Real-time Diagnostics Output */}
+                {/* Diagnostics without raw emojis */}
                 {(() => {
                   const prefixes = (currentScaleSettings.prefix || '20,21,22,99').split(',').map(p => p.trim()).filter(Boolean);
                   const matchedPrefix = prefixes.find(p => testScaleBarcode.startsWith(p));
@@ -1116,32 +1148,22 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   );
 
                   return (
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                      gap: '8px',
-                      background: matchedPrefix ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-                      border: `1px solid ${matchedPrefix ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
-                      borderRadius: '8px',
-                      padding: '10px 12px',
-                      fontSize: '11.5px',
-                      color: matchedPrefix ? '#065f46' : '#991b1b'
-                    }}>
-                      <div>
-                        <span style={{ color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'البادئة:' : 'Prefix:'}</span>
-                        <strong style={{ fontFamily: 'monospace' }}>{matchedPrefix || (isAr ? 'غير معروفة' : 'Unknown')}</strong>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                      <div className="p-2 rounded bg-card border border-border/60">
+                        <span className="text-muted-foreground block text-[10px]">{isAr ? 'البادئة:' : 'Prefix:'}</span>
+                        <strong className="font-mono text-foreground">{matchedPrefix || (isAr ? 'غير معروفة' : 'Unknown')}</strong>
                       </div>
-                      <div>
-                        <span style={{ color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'كود الـ PLU:' : 'PLU Code:'}</span>
-                        <strong style={{ fontFamily: 'monospace' }}>{plu || '—'}</strong>
+                      <div className="p-2 rounded bg-card border border-border/60">
+                        <span className="text-muted-foreground block text-[10px]">{isAr ? 'كود الـ PLU:' : 'PLU Code:'}</span>
+                        <strong className="font-mono text-foreground">{plu || '—'}</strong>
                       </div>
-                      <div>
-                        <span style={{ color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'الوزن المستخرج:' : 'Parsed Weight:'}</span>
-                        <strong style={{ fontFamily: 'monospace' }}>{weightKg > 0 ? `${weightKg} كغم` : '—'}</strong>
+                      <div className="p-2 rounded bg-card border border-border/60">
+                        <span className="text-muted-foreground block text-[10px]">{isAr ? 'الوزن المستخرج:' : 'Parsed Weight:'}</span>
+                        <strong className="font-mono text-primary">{weightKg > 0 ? `${weightKg} ${isAr ? 'كغم' : 'kg'}` : '—'}</strong>
                       </div>
-                      <div>
-                        <span style={{ color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'مطابقة المخزون:' : 'Inventory Match:'}</span>
-                        <strong>{matchedProd ? `✅ ${matchedProd.nameAr}` : (isAr ? 'جاهز للاستخدام مع أي صنف مسجل' : 'Ready')}</strong>
+                      <div className="p-2 rounded bg-card border border-border/60">
+                        <span className="text-muted-foreground block text-[10px]">{isAr ? 'مطابقة المخزون:' : 'Inventory Match:'}</span>
+                        <strong className="text-foreground truncate block">{matchedProd ? matchedProd.nameAr : (isAr ? 'جاهز للاستخدام مع أي صنف مسجل' : 'Ready')}</strong>
                       </div>
                     </div>
                   );

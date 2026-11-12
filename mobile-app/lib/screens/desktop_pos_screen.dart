@@ -28,6 +28,7 @@ class _DesktopPosScreenState extends State<DesktopPosScreen> {
   final FocusNode _searchFocusNode = FocusNode();
 
   bool _isLoading = true;
+  bool _isScaleEnabled = false;
   String _cashierName = 'أحمد علي (كاشير 1)';
   double _usdRate = 1520.0;
 
@@ -95,6 +96,16 @@ class _DesktopPosScreenState extends State<DesktopPosScreen> {
     setState(() {
       _selectedCategory = cat;
       _filterProducts(_searchController.text);
+    });
+  }
+
+  void setScaleEnabled(bool enabled) {
+    setState(() {
+      _isScaleEnabled = enabled;
+      if (!enabled && _selectedCategory == 'الميزان') {
+        _selectedCategory = 'الكل';
+        _filterProducts(_searchController.text);
+      }
     });
   }
 
@@ -258,7 +269,7 @@ class _DesktopPosScreenState extends State<DesktopPosScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = ['الكل', 'مواد غذائية', 'مشروبات', 'معلبات', 'ألبان'];
+    final categories = ['الكل', if (_isScaleEnabled) 'الميزان', 'مواد غذائية', 'مشروبات', 'معلبات', 'ألبان'];
 
     // Desktop Hotkeys Wrapper (Shortcuts & Actions)
     return Shortcuts(

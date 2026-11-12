@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserProfile } from '../types/rbac';
+import { UserProfile, CompanyFeatures } from '../types/rbac';
 import { getStoredAuthSession, safeSet, KEYS } from '../services/storageService';
 import { queryClient } from './useUsersQuery';
 
@@ -66,6 +66,36 @@ export function useAuth() {
     updateAvatar
   };
 }
+
+/**
+ * Hook to retrieve and check tenant feature flags (Super Admin feature matrix).
+ */
+export function useTenantFeatures(userOverride?: UserProfile | null) {
+  const { currentUser } = useAuth();
+  const session = userOverride !== undefined ? userOverride : (currentUser || getStoredAuthSession());
+  const features: CompanyFeatures | undefined = session?.features;
+
+  const isFeatureEnabled = useCallback((key: keyof CompanyFeatures): boolean => {
+    if (session?.role === 'PlatformSuperAdmin') return true;
+    if (!features) {
+      if (key === 'enableBarcodeScales') {
+        return session?.businessPreset === 'Grocery';
+      }
+      return true;
+    }
+    return features[key] !== false;
+  }, [features, session]);
+
+  return {
+    features,
+    isFeatureEnabled,
+    tenantId: session?.tenantId,
+    tenantSlug: session?.tenantSlug,
+    businessPreset: session?.businessPreset
+  };
+}
+
+export const useCompanySettings = useTenantFeatures;
 
 export default useAuth;
 

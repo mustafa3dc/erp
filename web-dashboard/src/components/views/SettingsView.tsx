@@ -36,6 +36,7 @@ import {
 } from '../../context/settings-context';
 import { Warehouse } from '../../types/warehouse';
 import { getStoredWarehouses, resetToCleanSlate, getStoredProducts, getStoredInvoices, getStoredTransactions } from '../../services/storageService';
+import { useTenantFeatures } from '../../hooks/useAuth';
 import { toast } from 'sonner';
 
 interface SettingsViewProps {
@@ -82,6 +83,9 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
   const [testScaleBarcode, setTestScaleBarcode] = useState('2100105012503');
   const storedProducts = getStoredProducts();
 
+  const { isFeatureEnabled } = useTenantFeatures();
+  const isScaleAllowedBySuperAdmin = isFeatureEnabled('enableBarcodeScales');
+
   const currentScaleSettings: ScaleSettings = settings.scaleSettings || {
     enabled: true,
     prefix: '20,21,22,99',
@@ -92,6 +96,10 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
   };
 
   const handleUpdateScaleSetting = (key: keyof ScaleSettings, val: any) => {
+    if (!isScaleAllowedBySuperAdmin && key === 'enabled' && val === true) {
+      toast.error(isAr ? 'ميزة الميزان غير مفعلة لهذه المنشأة في صلاحيات السوبر أدمن' : 'Scale feature is disabled for this tenant in Super Admin flags');
+      return;
+    }
     const updated = { ...currentScaleSettings, [key]: val };
     updateSetting('scaleSettings', updated);
     toast.success(isAr ? 'تم تحديث إعدادات الميزان' : 'Scale settings updated');
@@ -957,20 +965,32 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             </div>
 
             {/* Enable Scale Feature Toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox"
-                checked={currentScaleSettings.enabled}
-                onChange={(e) => handleUpdateScaleSetting('enabled', e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '12px', fontWeight: 700, color: currentScaleSettings.enabled ? '#059669' : '#64748b' }}>
-                {currentScaleSettings.enabled ? (isAr ? 'الميزة مفعلة ✅' : 'Enabled ✅') : (isAr ? 'معطلة ❌' : 'Disabled ❌')}
-              </span>
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {!isScaleAllowedBySuperAdmin && (
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '6px' }}>
+                  {isAr ? 'غير مشمولة في باقة المنشأة 🔒' : 'Locked by Super Admin 🔒'}
+                </span>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isScaleAllowedBySuperAdmin ? 'pointer' : 'not-allowed', opacity: isScaleAllowedBySuperAdmin ? 1 : 0.6 }}>
+                <input 
+                  type="checkbox"
+                  disabled={!isScaleAllowedBySuperAdmin}
+                  checked={isScaleAllowedBySuperAdmin && currentScaleSettings.enabled}
+                  onChange={(e) => handleUpdateScaleSetting('enabled', e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: isScaleAllowedBySuperAdmin ? 'pointer' : 'not-allowed' }}
+                />
+                <span style={{ fontSize: '12px', fontWeight: 700, color: (isScaleAllowedBySuperAdmin && currentScaleSettings.enabled) ? '#059669' : '#64748b' }}>
+                  {!isScaleAllowedBySuperAdmin
+                    ? (isAr ? 'معطلة من الإدارة' : 'Disabled by Admin')
+                    : currentScaleSettings.enabled 
+                    ? (isAr ? 'الميزة مفعلة ✅' : 'Enabled ✅') 
+                    : (isAr ? 'معطلة ❌' : 'Disabled ❌')}
+                </span>
+              </label>
+            </div>
           </div>
 
-          {currentScaleSettings.enabled && (
+          {isScaleAllowedBySuperAdmin && currentScaleSettings.enabled && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
                 {/* 1. Scale Prefixes */}

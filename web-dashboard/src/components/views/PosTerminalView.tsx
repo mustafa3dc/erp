@@ -58,6 +58,7 @@ import {
 import { formatMovementDate } from '../../utils/dateFormatter';
 import PosCategoryFilter from '../PosCategoryFilter';
 import { useCategories } from '../../hooks/useCategories';
+import { useTenantFeatures } from '../../hooks/useAuth';
 import { localizeWarehouse } from '../../lib/localeHelpers';
 import { isDesktopApp, printReceiptNative } from '../../services/desktopBridgeService';
 
@@ -274,6 +275,17 @@ export default function PosTerminalView({
   const isManagerOrAdmin = currentUser ? (
     currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager'
   ) : false;
+
+  // Super Admin Feature Flag & Tenant Settings check for Electronic Scales
+  const { isFeatureEnabled } = useTenantFeatures(currentUser);
+  const isScaleFeatureActive = useMemo(() => {
+    // 1. Super Admin Feature Flag: enableBarcodeScales must be true for the tenant activity (e.g. Grocery/Spices)
+    const allowedBySuperAdmin = isFeatureEnabled('enableBarcodeScales');
+    if (!allowedBySuperAdmin) return false;
+
+    // 2. Tenant Settings: scaleSettings.enabled must not be disabled
+    return settings?.scaleSettings?.enabled !== false;
+  }, [isFeatureEnabled, settings?.scaleSettings?.enabled]);
 
   // Listen for storage shift events (e.g., opened/closed in another tab or in ShiftsView)
   React.useEffect(() => {
@@ -1170,18 +1182,20 @@ export default function PosTerminalView({
                     const raw = searchQuery.trim();
                     if (!raw) return;
 
-                    // 1. Check if input matches an Electronic Scale Barcode (GS1/EAN-13 Variable Weight)
-                    const scaleMatch = parseScaleBarcode(raw, products, settings?.scaleSettings);
-                    if (scaleMatch) {
-                      addToCart(scaleMatch.product, scaleMatch.quantity);
-                      setSearchQuery('');
-                      const unitStr = isAr ? 'كغم' : 'kg';
-                      showPaymentToast(
-                        isAr 
-                          ? `⚖️ ميزان باركود: تم إضافة (${scaleMatch.product.nameAr}) بوزن ${scaleMatch.quantity} ${unitStr}`
-                          : `⚖️ Scale Item: Added (${scaleMatch.product.nameAr}) [${scaleMatch.quantity} ${unitStr}]`
-                      );
-                      return;
+                    // 1. Check if input matches an Electronic Scale Barcode (only if scale feature is active)
+                    if (isScaleFeatureActive) {
+                      const scaleMatch = parseScaleBarcode(raw, products, settings?.scaleSettings);
+                      if (scaleMatch) {
+                        addToCart(scaleMatch.product, scaleMatch.quantity);
+                        setSearchQuery('');
+                        const unitStr = isAr ? 'كغم' : 'kg';
+                        showPaymentToast(
+                          isAr 
+                            ? `⚖️ ميزان باركود: تم إضافة (${scaleMatch.product.nameAr}) بوزن ${scaleMatch.quantity} ${unitStr}`
+                            : `⚖️ Scale Item: Added (${scaleMatch.product.nameAr}) [${scaleMatch.quantity} ${unitStr}]`
+                        );
+                        return;
+                      }
                     }
 
                     // 2. Direct exact barcode / SKU match
@@ -1224,34 +1238,36 @@ export default function PosTerminalView({
               lang={lang}
             />
 
-            {/* Quick Smart Scale Launcher Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setScaleTargetProduct(null);
-                setIsScaleModalOpen(true);
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                height: '38px',
-                padding: '0 12px',
-                borderRadius: '8px',
-                border: '1px solid rgba(245, 158, 11, 0.35)',
-                background: 'rgba(245, 158, 11, 0.08)',
-                color: '#d97706',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                whiteSpace: 'nowrap'
-              }}
-              title={isAr ? 'الميزان الإلكتروني الذكي (قراءة مباشرة أو وزن سريع)' : 'Smart Electronic Scale'}
-            >
-              <Scale size={16} />
-              <span>{isAr ? 'الميزان' : 'Scale'}</span>
-            </button>
+            {/* Quick Smart Scale Launcher Button (Conditionally rendered by Super Admin Feature Flag) */}
+            {isScaleFeatureActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setScaleTargetProduct(null);
+                  setIsScaleModalOpen(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  height: '38px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  color: '#d97706',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                title={isAr ? 'الميزان الإلكتروني الذكي (قراءة مباشرة أو وزن سريع)' : 'Smart Electronic Scale'}
+              >
+                <Scale size={16} />
+                <span>{isAr ? 'الميزان' : 'Scale'}</span>
+              </button>
+            )}
           </div>
 
           {/* Product Grid (Masked: NO Cost Price) - alignContent: 'start' prevents single rows from stretching vertically */}
@@ -2593,24 +2609,26 @@ export default function PosTerminalView({
       />
 
       {/* Smart Electronic Scale Modal */}
-      <ElectronicScaleModal
-        isOpen={isScaleModalOpen}
-        onClose={() => {
-          setIsScaleModalOpen(false);
-          setScaleTargetProduct(null);
-        }}
-        lang={lang}
-        products={products}
-        initialProduct={scaleTargetProduct}
-        onAddWeightedItem={(product, weightKg) => {
-          addToCart(product, weightKg);
-          showPaymentToast(
-            isAr 
-              ? `⚖️ تم إضافة (${getProductName(product)}) بوزن ${weightKg} كغم`
-              : `⚖️ Added (${getProductName(product)}) [${weightKg} kg]`
-          );
-        }}
-      />
+      {isScaleFeatureActive && (
+        <ElectronicScaleModal
+          isOpen={isScaleModalOpen}
+          onClose={() => {
+            setIsScaleModalOpen(false);
+            setScaleTargetProduct(null);
+          }}
+          lang={lang}
+          products={products}
+          initialProduct={scaleTargetProduct}
+          onAddWeightedItem={(product, weightKg) => {
+            addToCart(product, weightKg);
+            showPaymentToast(
+              isAr 
+                ? `⚖️ تم إضافة (${getProductName(product)}) بوزن ${weightKg} كغم`
+                : `⚖️ Added (${getProductName(product)}) [${weightKg} kg]`
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

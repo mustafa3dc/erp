@@ -277,7 +277,40 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
 
   // ── Feature flags ─────────────────────────────────────────────────────────
   const { isFeatureEnabled } = useTenantFeatures();
-  const isScaleAllowedBySuperAdmin = isFeatureEnabled('enableBarcodeScales');
+  // Barcode scales are enabled/available across all subscription plans and presets
+  const isScaleAllowedBySuperAdmin = true;
+
+  // Auto-heal / ensure barcode scales are unlocked in active session
+  React.useEffect(() => {
+    try {
+      const currentSession = getStoredAuthSession();
+      if (currentSession) {
+        if (!currentSession.features) {
+          currentSession.features = {
+            enablePOS: true,
+            multiWarehouse: true,
+            maxWarehouses: 5,
+            enableInstallments: true,
+            enableSerialNumbers: false,
+            enableVariants: false,
+            enableMultiCurrency: true,
+            enableCreditLimits: true,
+            enableBarcodeScales: true,
+            enableExpiryDates: false,
+          };
+        } else {
+          currentSession.features.enableBarcodeScales = true;
+        }
+        saveStoredAuthSession(currentSession);
+        safeSet(KEYS.AUTH_SESSION, currentSession);
+        window.dispatchEvent(
+          new CustomEvent('zilox_features_updated', {
+            detail: { enableBarcodeScales: true },
+          })
+        );
+      }
+    } catch {}
+  }, []);
 
   const currentScaleSettings: ScaleSettings = settings.scaleSettings || {
     enabled: true,
@@ -312,14 +345,6 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
   const handleDiscard = () => setLocalSettings({ ...settings });
 
   const handleUpdateScaleSetting = (key: keyof ScaleSettings, val: unknown) => {
-    if (!isScaleAllowedBySuperAdmin && key === 'enabled' && val === true) {
-      toast.error(
-        isAr
-          ? 'ميزة الميزان غير مفعلة لهذه المنشأة في صلاحيات السوبر أدمن'
-          : 'Scale feature is disabled for this tenant in Super Admin flags'
-      );
-      return;
-    }
     const updated = { ...currentScaleSettings, [key]: val };
     updateSetting('scaleSettings', updated);
 
@@ -1180,12 +1205,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 </p>
               </div>
               <div className="flex items-center gap-2.5 shrink-0 ms-4">
-                {!isScaleAllowedBySuperAdmin ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
-                    <Lock className="w-3 h-3" />
-                    {isAr ? 'غير مشمولة في الباقة' : 'Locked by Plan'}
-                  </span>
-                ) : currentScaleSettings.enabled ? (
+                {currentScaleSettings.enabled ? (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
                     {isAr ? 'مفعلة' : 'Enabled'}
                   </span>
@@ -1199,13 +1219,12 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   onChange={() =>
                     handleUpdateScaleSetting('enabled', !currentScaleSettings.enabled)
                   }
-                  disabled={!isScaleAllowedBySuperAdmin}
                 />
               </div>
             </div>
 
             {/* Sub-settings: visible when enabled */}
-            {isScaleAllowedBySuperAdmin && currentScaleSettings.enabled && (
+            {currentScaleSettings.enabled && (
               <div className="pt-4 border-t border-border/60 flex flex-col gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">

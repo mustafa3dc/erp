@@ -37,7 +37,7 @@ public static class BusinessPresetFactory
                 EnableVariants = false,
                 EnableMultiCurrency = true,
                 EnableCreditLimits = true,
-                EnableBarcodeScales = false,
+                EnableBarcodeScales = true,
                 EnableExpiryDates = false
             },
             BusinessPreset.Fashion => new CompanyFeatures
@@ -50,7 +50,7 @@ public static class BusinessPresetFactory
                 EnableVariants = true,
                 EnableMultiCurrency = false,
                 EnableCreditLimits = false,
-                EnableBarcodeScales = false,
+                EnableBarcodeScales = true,
                 EnableExpiryDates = false
             },
             BusinessPreset.Hardware => new CompanyFeatures
@@ -63,7 +63,7 @@ public static class BusinessPresetFactory
                 EnableVariants = false,
                 EnableMultiCurrency = true,
                 EnableCreditLimits = true,
-                EnableBarcodeScales = false,
+                EnableBarcodeScales = true,
                 EnableExpiryDates = false
             },
             BusinessPreset.Wholesale => new CompanyFeatures
@@ -76,7 +76,7 @@ public static class BusinessPresetFactory
                 EnableVariants = true,
                 EnableMultiCurrency = true,
                 EnableCreditLimits = true,
-                EnableBarcodeScales = false,
+                EnableBarcodeScales = true,
                 EnableExpiryDates = false
             },
             _ => new CompanyFeatures
@@ -89,7 +89,7 @@ public static class BusinessPresetFactory
                 EnableVariants = false,
                 EnableMultiCurrency = true,
                 EnableCreditLimits = true,
-                EnableBarcodeScales = false,
+                EnableBarcodeScales = true,
                 EnableExpiryDates = false
             }
         };

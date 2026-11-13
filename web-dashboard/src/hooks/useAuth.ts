@@ -102,10 +102,9 @@ export function useTenantFeatures(userOverride?: UserProfile | null) {
 
   const isFeatureEnabled = useCallback((key: keyof CompanyFeatures): boolean => {
     if (activeProfile?.role === 'PlatformSuperAdmin') return true;
+    // Barcode scales are enabled/available for all subscription packages and plans
+    if (key === 'enableBarcodeScales') return true;
     if (!features) {
-      if (key === 'enableBarcodeScales') {
-        return activeProfile?.businessPreset === 'Grocery';
-      }
       return true;
     }
     return features[key] !== false;

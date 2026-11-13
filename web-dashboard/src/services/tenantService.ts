@@ -55,7 +55,7 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
       enableVariants: false,
       enableMultiCurrency: true,
       enableCreditLimits: true,
-      enableBarcodeScales: false,
+      enableBarcodeScales: true,
       enableExpiryDates: false,
     }
   },
@@ -72,7 +72,7 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
       enableVariants: true,
       enableMultiCurrency: false,
       enableCreditLimits: false,
-      enableBarcodeScales: false,
+      enableBarcodeScales: true,
       enableExpiryDates: false,
     }
   },
@@ -89,7 +89,7 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
       enableVariants: false,
       enableMultiCurrency: true,
       enableCreditLimits: true,
-      enableBarcodeScales: false,
+      enableBarcodeScales: true,
       enableExpiryDates: false,
     }
   },
@@ -106,7 +106,7 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
       enableVariants: true,
       enableMultiCurrency: true,
       enableCreditLimits: true,
-      enableBarcodeScales: false,
+      enableBarcodeScales: true,
       enableExpiryDates: false,
     }
   },
@@ -123,7 +123,7 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
       enableVariants: false,
       enableMultiCurrency: true,
       enableCreditLimits: true,
-      enableBarcodeScales: false,
+      enableBarcodeScales: true,
       enableExpiryDates: false,
     }
   }

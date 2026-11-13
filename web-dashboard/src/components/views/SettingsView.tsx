@@ -98,6 +98,12 @@ function PillSwitch({
   onChange: () => void;
   disabled?: boolean;
 }) {
+  const { isRtl } = useSettings();
+  const effectiveIsRtl =
+    isRtl ||
+    (typeof document !== 'undefined' &&
+      (document.dir === 'rtl' || document.documentElement.dir === 'rtl'));
+
   return (
     <button
       type="button"
@@ -110,9 +116,15 @@ function PillSwitch({
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <span
-        className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out pointer-events-none ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`}
+        style={{
+          transform: checked
+            ? effectiveIsRtl
+              ? 'translateX(-20px)'
+              : 'translateX(20px)'
+            : 'translateX(0)',
+          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        className="inline-block h-5 w-5 rounded-full bg-white shadow-md pointer-events-none"
       />
     </button>
   );

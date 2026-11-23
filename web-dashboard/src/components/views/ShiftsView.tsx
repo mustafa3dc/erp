@@ -18,7 +18,10 @@ import {
   User,
   Calculator,
   Coins,
-  RotateCcw
+  RotateCcw,
+  Calendar,
+  Hourglass,
+  Timer
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
@@ -29,7 +32,11 @@ import {
   getStoredPastShifts, 
   saveStoredPastShifts 
 } from '../../services/storageService';
-import { formatMovementDate } from '../../utils/dateFormatter';
+import { 
+  formatMovementDate,
+  formatShiftDateTime,
+  calculateShiftDuration
+} from '../../utils/dateFormatter';
 
 import { UserProfile } from '../../types/rbac';
 import OpenShiftModal from '../modals/OpenShiftModal';
@@ -50,8 +57,11 @@ export interface ShiftRecord {
   zReportNumber: string;
   cashierName: string;
   terminalId: string;
-  startTime: string;
-  endTime: string;
+  startTime: string;   // تاريخ ووقت الفتح
+  endTime: string;     // تاريخ ووقت الإغلاق
+  openedAt?: string;
+  closedAt?: string;
+  duration?: string;   // إجمالي مدة الوردية
   openingFloat: number;
   cashSales: number;
   cardSales: number;
@@ -219,11 +229,15 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
       ? Math.round(newOpeningFloat / 250) * 250 
       : Math.max(0, newOpeningFloat);
 
+    const now = new Date();
+    const formattedStartTime = formatShiftDateTime(now, isAr);
+
     const newShift: ActiveShift = {
       id: `SH-${Date.now().toString().slice(-4)}`,
       cashierName: effectiveCashierName,
       terminalId: newTerminalId.trim() || 'POS-01',
-      startTime: formatMovementDate(new Date()),
+      startTime: formattedStartTime,
+      openedAt: now.toISOString(),
       openingFloat: finalFloat,
       cashSales: 0.00,
       cardSales: 0.00,
@@ -236,12 +250,16 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
     saveStoredActiveShift(newShift);
     setActiveShift(newShift);
     setIsOpenShiftModalOpen(false);
-    showToast(isAr ? 'تم فتح الوردية بنجاح وتفعيل عمليات نقطة البيع!' : 'Shift opened & POS checkout activated!');
+    showToast(isAr ? `تم فتح الوردية بنجاح وتوثيق وقت البدء: ${formattedStartTime}` : `Shift opened successfully at: ${formattedStartTime}`);
   };
 
   // Handle Confirm Close Shift and Generate Z-Report
   const handleConfirmCloseShift = () => {
     if (!activeShift) return;
+
+    const now = new Date();
+    const formattedEndTime = formatShiftDateTime(now, isAr);
+    const duration = calculateShiftDuration(activeShift.openedAt || activeShift.startTime, now, isAr);
 
     const zReport: ShiftRecord = {
       id: activeShift.id,
@@ -249,7 +267,10 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
       cashierName: activeShift.cashierName,
       terminalId: activeShift.terminalId,
       startTime: activeShift.startTime,
-      endTime: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      endTime: formattedEndTime,
+      openedAt: activeShift.openedAt || activeShift.startTime,
+      closedAt: now.toISOString(),
+      duration: duration,
       openingFloat: activeShift.openingFloat,
       cashSales: isIqd ? Math.round(activeShift.cashSales / 250) * 250 : activeShift.cashSales,
       cardSales: activeShift.cardSales,
@@ -274,7 +295,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
     setShowCloseShiftModal(false);
     setShowZReportModal(true);
 
-    showToast(isAr ? 'تم إغلاق الوردية، وقفل عمليات البيع، وتوليد تقرير Z-Report بنجاح!' : 'Shift closed, sales locked & Z-Report generated!');
+    showToast(isAr ? `تم إغلاق الوردية وتوثيق وقت الإغلاق: ${formattedEndTime}` : `Shift closed at: ${formattedEndTime}`);
   };
 
   return (
@@ -371,10 +392,27 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                 <UserCheck size={22} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{activeShift.cashierName}</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>
-                  {activeShift.terminalId} • {isAr ? 'بدأت في:' : 'Started at:'} {activeShift.startTime}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--foreground)' }}>{activeShift.cashierName}</h3>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: 'var(--muted)', border: '1px solid var(--border)', fontFamily: 'monospace', fontWeight: 600 }}>
+                    {activeShift.terminalId}
+                  </span>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 700 }}>
+                    {isAr ? 'وردية نشطة' : 'Active Shift'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Calendar size={13} className="text-primary" />
+                    <span>{isAr ? 'تاريخ ووقت الفتح:' : 'Opened at:'}</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--foreground)' }}>{activeShift.startTime}</strong>
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Timer size={13} className="text-emerald-600" />
+                    <span>{isAr ? 'المدة المنقضية:' : 'Elapsed:'}</span>
+                    <strong style={{ fontWeight: 700 }}>{calculateShiftDuration(activeShift.openedAt || activeShift.startTime, new Date(), isAr)}</strong>
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -530,7 +568,9 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'رقم التقرير' : 'Z-Report #'}</th>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'الكاشير' : 'Cashier'}</th>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'نقطة البيع' : 'Terminal'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'تاريخ ووقت الفتح' : 'Open Timestamp'}</th>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'تاريخ ووقت الإغلاق' : 'Close Timestamp'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'المدة' : 'Duration'}</th>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'مبيعات الكاش' : 'Cash Sales'}</th>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'مبيعات البطاقات' : 'Card Sales'}</th>
                 {isIraqTenant && <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'زين كاش / كي كارد' : 'ZainCash / Qi'}</th>}
@@ -541,7 +581,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
             <tbody>
               {pastShifts.length === 0 ? (
                 <tr>
-                  <td colSpan={isIraqTenant ? 9 : 8} style={{ textAlign: 'center', padding: '48px 20px', color: '#64748b' }}>
+                  <td colSpan={isIraqTenant ? 11 : 10} style={{ textAlign: 'center', padding: '48px 20px', color: '#64748b' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <Clock size={28} style={{ color: '#94a3b8', strokeWidth: 1.5 }} />
                       <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>
@@ -551,29 +591,40 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                   </td>
                 </tr>
               ) : (
-                pastShifts.map(s => (
-                <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{s.zReportNumber}</td>
-                  <td style={{ padding: '12px 14px', color: 'var(--foreground)', fontWeight: 600 }}>{s.cashierName}</td>
-                  <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#64748b' }}>{s.terminalId}</td>
-                  <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px' }}>{s.endTime}</td>
-                  <td style={{ padding: '12px 14px', color: '#059669', fontWeight: 700, fontFamily: 'monospace' }}>+{formatShiftMoney(s.cashSales)}</td>
-                  <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>+{formatShiftMoney(s.cardSales)}</td>
-                  {isIraqTenant && (
-                    <td style={{ padding: '12px 14px', fontSize: '12px', fontFamily: 'monospace' }}>
-                      <span style={{ color: '#be185d', fontWeight: 700 }}>{formatShiftMoney(s.zainCashSales || 0)}</span> / <span style={{ color: '#b45309', fontWeight: 700 }}>{formatShiftMoney(s.qiCardSales || 0)}</span>
-                    </td>
-                  )}
-                  <td style={{ padding: '12px 14px', fontWeight: 800, color: s.difference === 0 ? '#059669' : '#dc2626', fontFamily: 'monospace' }}>
-                    {s.difference === 0 ? formatShiftMoney(0) : (s.difference > 0 ? `+${formatShiftMoney(s.difference)}` : `-${formatShiftMoney(Math.abs(s.difference))}`)}
-                  </td>
-                  <td style={{ padding: '12px 14px' }}>
-                    <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-                      {isAr ? 'مغلقة ومعتمدة' : 'Audited'}
-                    </span>
-                  </td>
-                </tr>
-              )))}
+                pastShifts.map(s => {
+                  const shiftDuration = s.duration || calculateShiftDuration(s.openedAt || s.startTime, s.closedAt || s.endTime, isAr);
+                  return (
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{s.zReportNumber}</td>
+                      <td style={{ padding: '12px 14px', color: 'var(--foreground)', fontWeight: 600 }}>{s.cashierName}</td>
+                      <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#64748b' }}>{s.terminalId}</td>
+                      <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px', fontFamily: 'monospace' }}>{s.startTime || '—'}</td>
+                      <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px', fontFamily: 'monospace' }}>{s.endTime}</td>
+                      <td style={{ padding: '12px 14px', color: '#64748b', fontSize: '12px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', background: 'var(--muted)', fontSize: '11px', fontWeight: 600 }}>
+                          <Timer size={12} className="text-primary shrink-0" />
+                          <span>{shiftDuration}</span>
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#059669', fontWeight: 700, fontFamily: 'monospace' }}>+{formatShiftMoney(s.cashSales)}</td>
+                      <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>+{formatShiftMoney(s.cardSales)}</td>
+                      {isIraqTenant && (
+                        <td style={{ padding: '12px 14px', fontSize: '12px', fontFamily: 'monospace' }}>
+                          <span style={{ color: '#be185d', fontWeight: 700 }}>{formatShiftMoney(s.zainCashSales || 0)}</span> / <span style={{ color: '#b45309', fontWeight: 700 }}>{formatShiftMoney(s.qiCardSales || 0)}</span>
+                        </td>
+                      )}
+                      <td style={{ padding: '12px 14px', fontWeight: 800, color: s.difference === 0 ? '#059669' : '#dc2626', fontFamily: 'monospace' }}>
+                        {s.difference === 0 ? formatShiftMoney(0) : (s.difference > 0 ? `+${formatShiftMoney(s.difference)}` : `-${formatShiftMoney(Math.abs(s.difference))}`)}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                          {isAr ? 'مغلقة ومعتمدة' : 'Audited'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -585,12 +636,15 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
         onClose={() => setIsOpenShiftModalOpen(false)}
         currentUser={currentUser}
         lang={lang}
-        onConfirm={({ cashierName, terminalId, openingFloat }) => {
+        onConfirm={({ cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
+          const now = new Date();
+          const startTime = formattedStartTime || formatShiftDateTime(now, isAr);
           const newShift: ActiveShift = {
             id: `SH-${Date.now().toString().slice(-4)}`,
             cashierName,
             terminalId,
-            startTime: formatMovementDate(new Date()),
+            startTime,
+            openedAt: openedAt || now.toISOString(),
             openingFloat,
             cashSales: 0,
             cardSales: 0,
@@ -641,7 +695,28 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
             </div>
 
             {/* Modal Body: 2 Columns taking advantage of width, zero scroll */}
-            <div className="p-5 max-h-[calc(90vh-125px)] overflow-y-auto">
+            <div className="p-5 max-h-[calc(90vh-125px)] overflow-y-auto space-y-4">
+              {/* Shift Timestamp & Duration Audit Card */}
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <Calendar size={15} className="text-primary shrink-0" />
+                  <span className="text-muted-foreground">{isAr ? 'تاريخ ووقت الفتح:' : 'Opened:'}</span>
+                  <strong className="font-mono text-foreground">{activeShift.startTime}</strong>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock size={15} className="text-amber-500 shrink-0" />
+                  <span className="text-muted-foreground">{isAr ? 'تاريخ ووقت الإغلاق الحالي:' : 'Current Closing:'}</span>
+                  <strong className="font-mono text-foreground">{formatShiftDateTime(new Date(), isAr)}</strong>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Hourglass size={15} className="text-emerald-500 shrink-0" />
+                  <span className="text-muted-foreground">{isAr ? 'المدة الإجمالية للوردية:' : 'Total Duration:'}</span>
+                  <strong className="font-semibold text-emerald-600 dark:text-emerald-400">
+                    {calculateShiftDuration(activeShift.openedAt || activeShift.startTime, new Date(), isAr)}
+                  </strong>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                 {/* Column 1: Reconciliation Breakdown Card */}
                 <div className="rounded-xl border border-border/80 bg-muted/30 p-3.5 space-y-2.5">
@@ -944,8 +1019,18 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                 <span className="font-mono text-foreground font-semibold">{currentZReport.terminalId}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">{isAr ? 'وقت الإغلاق:' : 'Close Time:'}</span>
+                <span className="text-muted-foreground">{isAr ? 'تاريخ ووقت الفتح:' : 'Open Time:'}</span>
+                <span className="text-foreground font-mono">{currentZReport.startTime || '—'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">{isAr ? 'تاريخ ووقت الإغلاق:' : 'Close Time:'}</span>
                 <span className="text-foreground font-mono">{currentZReport.endTime}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">{isAr ? 'مدة الوردية:' : 'Shift Duration:'}</span>
+                <span className="text-primary font-semibold font-mono">
+                  {currentZReport.duration || calculateShiftDuration(currentZReport.openedAt || currentZReport.startTime, currentZReport.closedAt || currentZReport.endTime, isAr)}
+                </span>
               </div>
               <div className="border-t border-dashed border-border my-2"></div>
               <div className="flex justify-between items-center">

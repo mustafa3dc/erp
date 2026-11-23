@@ -98,33 +98,22 @@ function PillSwitch({
   onChange: () => void;
   disabled?: boolean;
 }) {
-  const { isRtl } = useSettings();
-  const effectiveIsRtl =
-    isRtl ||
-    (typeof document !== 'undefined' &&
-      (document.dir === 'rtl' || document.documentElement.dir === 'rtl'));
-
   return (
     <button
       type="button"
       role="switch"
+      dir="ltr"
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
         checked ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <span
-        style={{
-          transform: checked
-            ? effectiveIsRtl
-              ? 'translateX(-20px)'
-              : 'translateX(20px)'
-            : 'translateX(0)',
-          transition: 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-        className="inline-block h-5 w-5 rounded-full bg-white shadow-md pointer-events-none"
+        className={`inline-block h-5 w-5 rounded-full bg-white shadow-md pointer-events-none transition-transform duration-200 ease-in-out ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
       />
     </button>
   );

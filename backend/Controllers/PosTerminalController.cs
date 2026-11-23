@@ -152,4 +152,94 @@ public class PosTerminalController : ControllerBase
         var logs = await _discountEngine.GetDiscountAuditLogsAsync(invoiceNumber, fromDate, toDate);
         return Ok(logs);
     }
+
+    private static readonly List<ShiftAuditRecordDto> _shiftAuditTrail = new();
+    private static readonly object _shiftLock = new();
+
+    /// <summary>
+    /// POST /api/pos/shifts/open
+    /// Opens and stamps a new POS cashier shift with high-precision timestamp.
+    /// </summary>
+    [HttpPost("shifts/open")]
+    public ActionResult<ShiftAuditRecordDto> OpenShift([FromBody] OpenShiftApiRequest request)
+    {
+        var openedAt = request.OpenedAt ?? DateTime.UtcNow;
+        var shift = new ShiftAuditRecordDto
+        {
+            Id = $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}",
+            CashierName = request.CashierName,
+            TerminalId = request.TerminalId,
+            OpenedAt = openedAt,
+            StartTime = openedAt.ToString("yyyy/MM/dd hh:mm:ss tt"),
+            OpeningFloat = request.OpeningFloat,
+            Status = "ACTIVE"
+        };
+
+        _logger.LogInformation("POS Shift opened for cashier {Cashier} on terminal {Terminal} at {Time}",
+            shift.CashierName, shift.TerminalId, shift.StartTime);
+
+        return Ok(shift);
+    }
+
+    /// <summary>
+    /// POST /api/pos/shifts/close
+    /// Closes a POS cashier shift, records exact closing timestamp, calculates duration and variances, and archives Z-Report.
+    /// </summary>
+    [HttpPost("shifts/close")]
+    public ActionResult<ShiftAuditRecordDto> CloseShift([FromBody] CloseShiftApiRequest request)
+    {
+        var openedAt = request.OpenedAt ?? DateTime.UtcNow.AddHours(-8);
+        var closedAt = request.ClosedAt ?? DateTime.UtcNow;
+        var durationSpan = closedAt > openedAt ? closedAt - openedAt : TimeSpan.Zero;
+        var durationText = $"{(int)durationSpan.TotalHours} ساعة و {durationSpan.Minutes} دقيقة";
+
+        var expectedCash = request.OpeningFloat + request.CashSales;
+        var difference = request.ActualCash - expectedCash;
+        var zReportNumber = request.ZReportNumber ?? $"Z-{DateTime.UtcNow.Year}-{new Random().Next(1000, 9999)}";
+
+        var closedRecord = new ShiftAuditRecordDto
+        {
+            Id = string.IsNullOrWhiteSpace(request.ShiftId) ? $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}" : request.ShiftId,
+            ZReportNumber = zReportNumber,
+            CashierName = request.CashierName,
+            TerminalId = request.TerminalId,
+            OpenedAt = openedAt,
+            ClosedAt = closedAt,
+            StartTime = openedAt.ToString("yyyy/MM/dd hh:mm:ss tt"),
+            EndTime = closedAt.ToString("yyyy/MM/dd hh:mm:ss tt"),
+            Duration = durationText,
+            OpeningFloat = request.OpeningFloat,
+            CashSales = request.CashSales,
+            CardSales = request.CardSales,
+            ZainCashSales = request.ZainCashSales ?? 0,
+            QiCardSales = request.QiCardSales ?? 0,
+            ExpectedCash = expectedCash,
+            ActualCash = request.ActualCash,
+            Difference = difference,
+            Status = "CLOSED"
+        };
+
+        lock (_shiftLock)
+        {
+            _shiftAuditTrail.Insert(0, closedRecord);
+        }
+
+        _logger.LogInformation("POS Shift closed with Z-Report {ZReport} at {CloseTime}. Duration: {Duration}",
+            closedRecord.ZReportNumber, closedRecord.EndTime, closedRecord.Duration);
+
+        return Ok(closedRecord);
+    }
+
+    /// <summary>
+    /// GET /api/pos/shifts/history
+    /// Retrieves audited shift history with precise open/close timestamps and durations.
+    /// </summary>
+    [HttpGet("shifts/history")]
+    public ActionResult<IEnumerable<ShiftAuditRecordDto>> GetShiftHistory()
+    {
+        lock (_shiftLock)
+        {
+            return Ok(_shiftAuditTrail.ToList());
+        }
+    }
 }

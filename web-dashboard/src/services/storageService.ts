@@ -1686,6 +1686,9 @@ export interface ActiveShift {
   cashierName: string;
   terminalId: string;
   startTime: string;
+  openedAt?: string;
+  closedAt?: string;
+  duration?: string;
   openingFloat: number;
   openingBalance?: number;
   cashSales: number;

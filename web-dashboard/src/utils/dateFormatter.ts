@@ -114,6 +114,57 @@ export function formatMovementDate(rawDate?: string | Date | null, _lang: 'ar' |
 }
 
 /**
+ * Formats a shift opening/closing date and time with high precision: "YYYY/MM/DD HH:mm:ss ص/م" or "YYYY/MM/DD HH:mm:ss AM/PM".
+ * Strictly returns both Date and Time with complete precision.
+ */
+export function formatShiftDateTime(rawDate?: string | Date | null, isAr: boolean = true): string {
+  if (!rawDate) return '—';
+  const date = parseDateSafely(rawDate) || (typeof rawDate === 'string' ? new Date(rawDate) : null);
+  if (!date || isNaN(date.getTime())) return typeof rawDate === 'string' ? rawDate : '—';
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  const isPm = hours >= 12;
+  const period = isAr ? (isPm ? 'م' : 'ص') : (isPm ? 'PM' : 'AM');
+  hours = hours % 12 || 12;
+  const hoursStr = String(hours).padStart(2, '0');
+
+  return `${year}/${month}/${day} ${hoursStr}:${minutes}:${seconds} ${period}`;
+}
+
+/**
+ * Calculates human-readable duration between shift start and end times.
+ */
+export function calculateShiftDuration(startRaw?: string | Date | null, endRaw?: string | Date | null, isAr: boolean = true): string {
+  if (!startRaw) return '—';
+  const start = parseDateSafely(startRaw) || (typeof startRaw === 'string' ? new Date(startRaw) : null);
+  const end = endRaw ? (parseDateSafely(endRaw) || (typeof endRaw === 'string' ? new Date(endRaw) : null)) : new Date();
+  if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) return '—';
+
+  const diffMs = Math.max(0, end.getTime() - start.getTime());
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0 && minutes === 0) {
+    return isAr ? 'أقل من دقيقة' : '< 1 min';
+  }
+  if (hours === 0) {
+    return isAr ? `${minutes} دقيقة` : `${minutes} min`;
+  }
+  if (minutes === 0) {
+    return isAr ? `${hours} ساعة` : `${hours} hr`;
+  }
+  return isAr ? `${hours} ساعة و ${minutes} دقيقة` : `${hours}h ${minutes}m`;
+}
+
+/**
  * Safely extracts the transaction or movement date property from a payload object.
  * Priority order:
  * 1. movementDate (from Backend StockMovement Entity)

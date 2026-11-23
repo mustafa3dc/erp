@@ -55,7 +55,7 @@ import {
   clearStoredSelectedWarehouseId,
   validateAndResolveActiveWarehouse
 } from '../../services/storageService';
-import { formatMovementDate } from '../../utils/dateFormatter';
+import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
 import PosCategoryFilter from '../PosCategoryFilter';
 import { useCategories } from '../../hooks/useCategories';
 import { useTenantFeatures } from '../../hooks/useAuth';
@@ -304,11 +304,13 @@ export default function PosTerminalView({
   const handleOpenShift = (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasShiftPermission) return;
+    const now = new Date();
     const newShift: ActiveShift = {
       id: `SH-${Date.now().toString().slice(-4)}`,
       cashierName: effectiveCashierName,
       terminalId: shiftTerminalId.trim() || (isAr ? 'كاشير 1' : 'POS-01'),
-      startTime: formatMovementDate(new Date()),
+      startTime: formatShiftDateTime(now, isAr),
+      openedAt: now.toISOString(),
       openingFloat: Number(shiftOpeningFloat) || 0,
       cashSales: 0,
       cardSales: 0,
@@ -1019,6 +1021,7 @@ export default function PosTerminalView({
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
               <span>{isAr ? `وردية: ${activeShift.cashierName}` : `Shift: ${activeShift.cashierName}`}</span>
               <span style={{ color: '#047857', fontSize: '10px' }}>({activeShift.terminalId})</span>
+              <span style={{ color: '#047857', fontSize: '10px', fontFamily: 'monospace' }}>• {activeShift.startTime}</span>
               {onNavigateToShifts && (
                 <button
                   type="button"
@@ -2589,12 +2592,14 @@ export default function PosTerminalView({
         onClose={() => setIsOpenShiftModalOpen(false)}
         currentUser={currentUser}
         lang={lang}
-        onConfirm={({ cashierName, terminalId, openingFloat }) => {
+        onConfirm={({ cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
+          const now = new Date();
           const newShift: ActiveShift = {
             id: `SH-${Date.now().toString().slice(-4)}`,
             cashierName,
             terminalId,
-            startTime: formatMovementDate(new Date()),
+            startTime: formattedStartTime || formatShiftDateTime(now, isAr),
+            openedAt: openedAt || now.toISOString(),
             openingFloat,
             cashSales: 0,
             cardSales: 0,

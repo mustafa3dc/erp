@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Unlock, Lock, X, AlertTriangle, User } from 'lucide-react';
+import { Unlock, Lock, X, AlertTriangle, User, Clock, Calendar } from 'lucide-react';
 import { UserProfile } from '../../types/rbac';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { useSettings } from '../../context/settings-context';
+import { formatShiftDateTime } from '../../utils/dateFormatter';
 
 export interface OpenShiftModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (shiftData: { cashierName: string; terminalId: string; openingFloat: number }) => void;
+  onConfirm: (shiftData: { cashierName: string; terminalId: string; openingFloat: number; openedAt?: string; formattedStartTime?: string }) => void;
   currentUser?: UserProfile | null;
   lang?: 'en' | 'ar';
 }
@@ -82,6 +83,7 @@ export default function OpenShiftModal({
 
   const [terminalId, setTerminalId] = useState(isAr ? 'كاشير 1' : 'POS-01');
   const [openingFloat, setOpeningFloat] = useState<number>(0);
+  const [liveTimestamp, setLiveTimestamp] = useState<string>(() => formatShiftDateTime(new Date(), isAr));
 
   useEffect(() => {
     setTerminalId(prev => {
@@ -91,6 +93,15 @@ export default function OpenShiftModal({
     });
   }, [isAr]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setLiveTimestamp(formatShiftDateTime(new Date(), isAr));
+    const interval = setInterval(() => {
+      setLiveTimestamp(formatShiftDateTime(new Date(), isAr));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, isAr]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -99,10 +110,13 @@ export default function OpenShiftModal({
     const finalFloat = isIqd && openingFloat >= 250 
       ? Math.round(openingFloat / 250) * 250 
       : Math.max(0, openingFloat);
+    const now = new Date();
     onConfirm({
       cashierName: effectiveCashierName,
       terminalId: terminalId.trim() || (isAr ? 'كاشير 1' : 'POS-01'),
-      openingFloat: finalFloat
+      openingFloat: finalFloat,
+      openedAt: now.toISOString(),
+      formattedStartTime: formatShiftDateTime(now, isAr)
     });
   };
 
@@ -248,6 +262,48 @@ export default function OpenShiftModal({
               </span>
             </div>
           )}
+        </div>
+
+        {/* Live Date & Time Stamp Card */}
+        <div 
+          style={{
+            padding: '0.65rem 0.85rem',
+            borderRadius: '0.5rem',
+            backgroundColor: 'rgba(2, 132, 199, 0.08)',
+            border: '1px solid rgba(2, 132, 199, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '0.75rem',
+            gap: '0.5rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Clock size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+            <div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--foreground)', display: 'block' }}>
+                {isAr ? 'تاريخ ووقت بدء الوردية المعتمد:' : 'Official Shift Start Timestamp:'}
+              </span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>
+                {isAr ? 'يتم توثيق هذا التوقيت بدقة وبشكل غير قابل للتعديل' : 'Officially stamped and permanently recorded'}
+              </span>
+            </div>
+          </div>
+          <span 
+            style={{
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              fontFamily: 'monospace',
+              color: 'var(--primary)',
+              padding: '0.2rem 0.6rem',
+              borderRadius: '6px',
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {liveTimestamp}
+          </span>
         </div>
 
         {/* Shift Form */}

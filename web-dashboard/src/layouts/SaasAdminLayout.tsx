@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Building2,
+  Users,
   Layers,
   CircleDollarSign,
   Activity,
@@ -18,6 +19,7 @@ import { UserProfile } from '../types/rbac';
 
 export type SaasAdminTab = 
   | 'tenants' 
+  | 'users'
   | 'plans' 
   | 'billing' 
   | 'health';
@@ -54,6 +56,13 @@ export default function SaasAdminLayout({
       labelEn: 'Tenant Organizations',
       icon: Building2,
       badge: 'Core'
+    },
+    {
+      id: 'users' as SaasAdminTab,
+      labelAr: 'كافة المستخدمين والحسابات',
+      labelEn: 'Users & Staff Accounts',
+      icon: Users,
+      badge: 'Live'
     },
     {
       id: 'plans' as SaasAdminTab,

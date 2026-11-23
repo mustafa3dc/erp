@@ -1522,7 +1522,55 @@ export function saveStoredLang(lang: 'ar' | 'en'): void {
 
 // --- USERS & STAFF ACCOUNTS ---
 export function getAllStoredUsersMaster(): UserAccount[] {
-  return safeGet<UserAccount[]>(KEYS.USERS, []);
+  const users = safeGet<UserAccount[]>(KEYS.USERS, []);
+  let changed = false;
+  const list = [...users];
+
+  // 1. Ensure Platform Super Admin is always registered
+  if (!list.some(u => u.role === 'PlatformSuperAdmin' || u.username.toLowerCase() === 'superadmin')) {
+    list.unshift({
+      id: 'USR-PLATFORM-01',
+      fullName: 'المدير العام للمنصة (SaaS Platform Owner)',
+      username: 'superadmin',
+      password: '123',
+      email: 'owner@zilox.cloud',
+      phone: '+964 770 000 0000',
+      role: 'PlatformSuperAdmin',
+      branchId: 'PLATFORM',
+      branchName: 'SaaS Platform Control Plane',
+      assignedBranches: [],
+      isActive: true,
+      createdAt: '2026-01-01',
+      tenantSlug: ''
+    });
+    changed = true;
+  }
+
+  // 2. Ensure default tenant admin for 'm' (Mustafa)
+  if (!list.some(u => u.tenantSlug?.toLowerCase() === 'm' || u.username.toLowerCase().endsWith('@m') || u.username.toLowerCase() === 'admin@m')) {
+    list.push({
+      id: 'USR-M-ADMIN-01',
+      fullName: 'مصطفى قاسم (مدير المنشأة)',
+      username: 'admin@m',
+      password: '123',
+      email: 'admin@m.zilox.com',
+      phone: '+964 780 123 4567',
+      role: 'SuperAdmin',
+      branchId: 'WH-01',
+      branchName: 'المستودع الرئيسي',
+      assignedBranches: ['WH-01'],
+      isActive: true,
+      createdAt: '2026-01-01',
+      tenantSlug: 'm'
+    });
+    changed = true;
+  }
+
+  if (changed) {
+    safeSet(KEYS.USERS, list);
+  }
+
+  return list;
 }
 
 export function saveStoredUsers(users: UserAccount[]): void {

@@ -100,6 +100,7 @@ import CustomersLoyaltyView from './components/views/CustomersLoyaltyView';
 import FinanceTreasuryView from './components/views/FinanceTreasuryView';
 import SaasAdminLayout, { SaasAdminTab } from './layouts/SaasAdminLayout';
 import TenantsManagementView from './components/views/superadmin/TenantsManagementView';
+import PlatformUsersView from './components/views/superadmin/PlatformUsersView';
 import { PlansView, BillingView, ServerHealthView } from './components/views/superadmin/SaasControlPlaneSubViews';
 import { Tenant } from './services/tenantService';
 import { evaluateRouteAccess } from './middleware';
@@ -131,6 +132,7 @@ import {
   validateAndResolveActiveWarehouse,
   getStoredUsers,
   getAllStoredUsersMaster,
+  saveStoredUsers,
   recordShiftSale
 } from './services/storageService';
 import './App.css';
@@ -331,9 +333,29 @@ function DashboardApp() {
   const handleImpersonateTenant = (tenant: Tenant) => {
     const allUsers: UserAccount[] = getAllStoredUsersMaster();
     const cleanSlug = tenant.slug.toLowerCase();
-    const tenantUser = allUsers.find((u: UserAccount) => u.tenantSlug?.toLowerCase() === cleanSlug && (u.role === 'SuperAdmin' || u.role === 'BranchManager'))
+    let tenantUser = allUsers.find((u: UserAccount) => u.tenantSlug?.toLowerCase() === cleanSlug && (u.role === 'SuperAdmin' || u.role === 'BranchManager'))
       || allUsers.find((u: UserAccount) => u.tenantSlug?.toLowerCase() === cleanSlug)
       || allUsers.find((u: UserAccount) => u.username.toLowerCase().endsWith(`@${cleanSlug}`));
+
+    if (!tenantUser) {
+      const uname = tenant.adminUsername?.includes('@') ? tenant.adminUsername.split('@')[0] : (tenant.adminUsername || 'admin');
+      tenantUser = {
+        id: `USR-${tenant.id.slice(0, 8)}-ADMIN`,
+        fullName: tenant.adminFullName || 'المدير العام للمنشأة',
+        username: uname,
+        email: `${uname}@${tenant.slug}.zilox.com`,
+        password: '123',
+        role: 'SuperAdmin',
+        branchId: 'WH-01',
+        branchName: 'المستودع الرئيسي',
+        assignedBranches: ['WH-01'],
+        isActive: true,
+        createdAt: tenant.createdAt ? tenant.createdAt.split('T')[0] : '2026-01-01',
+        tenantSlug: tenant.slug
+      };
+      allUsers.push(tenantUser);
+      saveStoredUsers(allUsers);
+    }
 
     if (tenantUser) {
       const profile = buildUserProfileFromAccount(tenantUser);
@@ -1192,6 +1214,12 @@ function DashboardApp() {
           <TenantsManagementView 
             lang={lang} 
             onImpersonate={handleImpersonateTenant} 
+          />
+        )}
+        {saasAdminTab === 'users' && (
+          <PlatformUsersView
+            lang={lang}
+            onImpersonateTenant={handleImpersonateTenant}
           />
         )}
         {saasAdminTab === 'plans' && <PlansView lang={lang} />}

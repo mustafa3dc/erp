@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-memoji-06" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#14b8a6"/>
+    </linearGradient>
+    <linearGradient id="skin-memoji-06" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fed7aa"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Glow Circle -->
+  <circle cx="60" cy="60" r="56" fill="url(#bg-memoji-06)"/>
+
+  <!-- Body / Suit -->
+  <path d="M22 108 C25 82 40 76 60 76 C80 76 95 82 98 108 Z" fill="#134e4a"/>
+  
+        <!-- Collar & Tie -->
+        <polygon points="60,86 48,74 72,74" fill="#ffffff"/>
+        <polygon points="57,78 63,78 65,96 60,102 55,96" fill="#5eead4"/>
+        
+
+  <!-- Neck -->
+  <rect x="53" y="66" width="14" height="14" fill="#fed7aa" rx="2"/>
+
+  <!-- Head -->
+  <ellipse cx="60" cy="54" rx="22" ry="24" fill="#fed7aa"/>
+
+  <!-- Ears -->
+  <circle cx="37" cy="54" r="5" fill="#fed7aa"/>
+  <circle cx="83" cy="54" r="5" fill="#fed7aa"/>
+
+  <!-- Hair -->
+  <path d="M37 46 C37 28 83 28 83 46 C77 34 43 34 37 46 Z" fill="#292524"/>
+  <ellipse cx="60" cy="34" rx="16" ry="6" fill="#292524"/>
+
+  <!-- Eyes -->
+  <circle cx="50" cy="54" r="3" fill="#1e293b"/>
+  <circle cx="70" cy="54" r="3" fill="#1e293b"/>
+  <circle cx="51" cy="53" r="1" fill="#ffffff"/>
+  <circle cx="71" cy="53" r="1" fill="#ffffff"/>
+
+  <!-- Eyebrows -->
+  <path d="M46 48 Q50 45 54 48" stroke="#292524" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M66 48 Q70 45 74 48" stroke="#292524" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Smile -->
+  <path d="M52 65 Q60 71 68 65" stroke="#9a3412" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  
+  
+</svg>

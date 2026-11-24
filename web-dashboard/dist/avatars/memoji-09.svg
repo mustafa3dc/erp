@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-memoji-09" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#92400e"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="skin-memoji-09" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fbcfe8"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Glow Circle -->
+  <circle cx="60" cy="60" r="56" fill="url(#bg-memoji-09)"/>
+
+  <!-- Body / Suit -->
+  <path d="M22 108 C25 82 40 76 60 76 C80 76 95 82 98 108 Z" fill="#451a03"/>
+  
+        <!-- Collar & Tie -->
+        <polygon points="60,86 48,74 72,74" fill="#ffffff"/>
+        <polygon points="57,78 63,78 65,96 60,102 55,96" fill="#fde68a"/>
+        
+
+  <!-- Neck -->
+  <rect x="53" y="66" width="14" height="14" fill="#fbcfe8" rx="2"/>
+
+  <!-- Head -->
+  <ellipse cx="60" cy="54" rx="22" ry="24" fill="#fbcfe8"/>
+
+  <!-- Ears -->
+  <circle cx="37" cy="54" r="5" fill="#fbcfe8"/>
+  <circle cx="83" cy="54" r="5" fill="#fbcfe8"/>
+
+  <!-- Hair -->
+  <path d="M37 46 C37 28 83 28 83 46 C77 34 43 34 37 46 Z" fill="#27272a"/>
+  <ellipse cx="60" cy="34" rx="16" ry="6" fill="#27272a"/>
+
+  <!-- Eyes -->
+  <circle cx="50" cy="54" r="3" fill="#1e293b"/>
+  <circle cx="70" cy="54" r="3" fill="#1e293b"/>
+  <circle cx="51" cy="53" r="1" fill="#ffffff"/>
+  <circle cx="71" cy="53" r="1" fill="#ffffff"/>
+
+  <!-- Eyebrows -->
+  <path d="M46 48 Q50 45 54 48" stroke="#27272a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M66 48 Q70 45 74 48" stroke="#27272a" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Smile -->
+  <path d="M52 65 Q60 71 68 65" stroke="#9a3412" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  
+        <!-- Glasses -->
+        <circle cx="48" cy="54" r="8" fill="none" stroke="#1e293b" stroke-width="2.5"/>
+        <circle cx="72" cy="54" r="8" fill="none" stroke="#1e293b" stroke-width="2.5"/>
+        <line x1="56" y1="54" x2="64" y2="54" stroke="#1e293b" stroke-width="2.5"/>
+        <line x1="40" y1="52" x2="34" y2="50" stroke="#1e293b" stroke-width="2"/>
+        <line x1="80" y1="52" x2="86" y2="50" stroke="#1e293b" stroke-width="2"/>
+        
+  
+</svg>

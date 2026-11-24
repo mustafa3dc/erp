@@ -555,19 +555,35 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
 
       {/* Minimalist Two-Tab Switcher + Search */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="module-tabs-wrap" style={{ marginBottom: 0 }}>
+        <div style={{ display: 'flex', gap: '6px', padding: '4px', background: 'var(--muted)', borderRadius: '12px' }}>
           <button
             type="button"
-            className={`module-tab-btn ${activeTab === 'TIERS' ? 'active' : ''}`}
             onClick={() => setActiveTab('TIERS')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px',
+              padding: '7px 16px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+              fontSize: '13px', fontWeight: activeTab === 'TIERS' ? 600 : 500,
+              background: activeTab === 'TIERS' ? 'var(--card)' : 'transparent',
+              color: activeTab === 'TIERS' ? 'var(--foreground)' : 'var(--muted-foreground)',
+              boxShadow: activeTab === 'TIERS' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.18s'
+            }}
           >
             <Layers size={15} />
             <span>{getTranslation(lang, 'quantityPricing.tabTiers')}</span>
           </button>
           <button
             type="button"
-            className={`module-tab-btn ${activeTab === 'BUNDLES' ? 'active' : ''}`}
             onClick={() => setActiveTab('BUNDLES')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px',
+              padding: '7px 16px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+              fontSize: '13px', fontWeight: activeTab === 'BUNDLES' ? 600 : 500,
+              background: activeTab === 'BUNDLES' ? 'var(--card)' : 'transparent',
+              color: activeTab === 'BUNDLES' ? 'var(--foreground)' : 'var(--muted-foreground)',
+              boxShadow: activeTab === 'BUNDLES' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.18s'
+            }}
           >
             <Boxes size={15} />
             <span>{getTranslation(lang, 'quantityPricing.tabBundles')}</span>
@@ -795,28 +811,39 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {/* Tab 2: Product Bundles */}
       {activeTab === 'BUNDLES' && (
         <div className="data-table-container clean-card" style={{ borderRadius: '14px', overflow: 'hidden' }}>
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Package size={14} className="text-violet-500" />
-              <span>{getTranslation(lang, 'priceLists.deductNotice')}</span>
+          {/* Info banner */}
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Package size={14} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+            <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
+              {getTranslation(lang, 'priceLists.deductNotice')}
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-xs" style={{ tableLayout: 'fixed' }}>
+            <table className="enterprise-table w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0 }}>
               <colgroup>
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '28%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '35%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '26%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '34%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th>{getTranslation(lang, 'priceLists.bundleSku')}</th>
-                  <th>{getTranslation(lang, 'priceLists.bundleName')}</th>
-                  <th className="text-center">{getTranslation(lang, 'priceLists.bundlePrice')}</th>
-                  <th>{getTranslation(lang, 'priceLists.components')}</th>
-                  <th className="text-center">{getTranslation(lang, 'quantityPricing.colActions')}</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                    {getTranslation(lang, 'priceLists.bundleSku')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                    {getTranslation(lang, 'priceLists.bundleName')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'priceLists.bundlePrice')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                    {getTranslation(lang, 'priceLists.components')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'quantityPricing.colActions')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -847,33 +874,80 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                     const bundleSku = group.parentProduct?.sku || '-';
                     const bundlePrice = group.parentProduct?.sellingPrice ?? 0;
                     return (
-                      <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors">
-                        <td className="font-mono text-muted-foreground truncate" dir="ltr" style={{ overflow: 'hidden' }}>
-                          {bundleSku}
+                      <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
+                        {/* SKU */}
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <span
+                            dir="ltr"
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: '11px',
+                              color: 'var(--muted-foreground)',
+                              background: 'var(--muted)',
+                              borderRadius: '5px',
+                              padding: '2px 7px',
+                              display: 'inline-block',
+                              letterSpacing: '0.03em',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {bundleSku}
+                          </span>
                         </td>
-                        <td className="font-semibold text-foreground truncate" style={{ overflow: 'hidden' }}>{bundleTitle}</td>
-                        <td className="text-center font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {formatMoney(bundlePrice)}
+                        {/* Bundle Name */}
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)' }}>
+                            {bundleTitle}
+                          </span>
                         </td>
-                        <td>
-                          <div className="flex flex-wrap gap-1.5">
+                        {/* Price */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <span style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            fontSize: '14px',
+                            fontVariantNumeric: 'tabular-nums',
+                            color: 'var(--color-emerald-600, #059669)'
+                          }}>
+                            {formatMoney(bundlePrice)}
+                          </span>
+                        </td>
+                        {/* Components */}
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                             {group.components.map(c => (
                               <span
                                 key={c.id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted border border-border text-foreground"
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                  padding: '3px 8px', borderRadius: '7px', fontSize: '11px',
+                                  fontWeight: 500,
+                                  background: 'var(--muted)',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--foreground)'
+                                }}
                               >
                                 <span>{c.childProductName}</span>
-                                <span className="font-mono font-bold text-primary">×{c.quantity}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>×{c.quantity}</span>
                               </span>
                             ))}
                           </div>
                         </td>
-                        <td className="text-center">
+                        {/* Actions */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
                           <button
                             type="button"
                             onClick={() => handleDeleteBundle(group.parentProductId)}
                             title={getTranslation(lang, 'bundles.deleteBundle')}
-                            className="p-1.5 rounded-lg border border-border bg-card hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
+                            style={{
+                              padding: '6px', borderRadius: '8px',
+                              border: '1px solid var(--border)', background: 'var(--card)',
+                              color: 'var(--destructive)', cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
                           >
                             <Trash2 size={13} />
                           </button>

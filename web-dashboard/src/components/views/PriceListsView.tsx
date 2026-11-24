@@ -590,7 +590,14 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {activeTab === 'TIERS' && (
         <div className="data-table-container clean-card" style={{ borderRadius: '14px', overflow: 'hidden' }}>
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-xs">
+            <table className="enterprise-table w-full text-xs" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>{getTranslation(lang, 'quantityPricing.colProduct')}</th>
@@ -629,11 +636,11 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       : 0;
                     return (
                       <tr key={tier.id} className="hover:bg-muted/30 transition-colors">
-                        <td>
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-foreground">{productName}</span>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-semibold text-foreground truncate">{productName}</span>
                             {productSku && (
-                              <span className="text-[11px] font-mono text-muted-foreground" dir="ltr">
+                              <span className="text-[11px] font-mono text-muted-foreground truncate" dir="ltr">
                                 {productSku}
                               </span>
                             )}
@@ -702,7 +709,14 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-xs">
+            <table className="enterprise-table w-full text-xs" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '35%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>{getTranslation(lang, 'priceLists.bundleSku')}</th>
@@ -741,10 +755,10 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                     const bundlePrice = group.parentProduct?.sellingPrice ?? 0;
                     return (
                       <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors">
-                        <td className="font-mono text-muted-foreground" dir="ltr">
+                        <td className="font-mono text-muted-foreground truncate" dir="ltr" style={{ overflow: 'hidden' }}>
                           {bundleSku}
                         </td>
-                        <td className="font-semibold text-foreground">{bundleTitle}</td>
+                        <td className="font-semibold text-foreground truncate" style={{ overflow: 'hidden' }}>{bundleTitle}</td>
                         <td className="text-center font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                           {formatMoney(bundlePrice)}
                         </td>

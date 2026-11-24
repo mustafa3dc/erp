@@ -36,6 +36,7 @@ import { Warehouse } from '../../types/warehouse';
 import { PurchaseOrder } from '../../types/purchases';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface PurchaseReturnsViewProps {
   lang: 'en' | 'ar';
@@ -493,7 +494,7 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
 
       {/* Modal: New Purchase Return */}
       {isCreateModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsCreateModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsCreateModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '820px', width: '95%', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', padding: '24px' }} 
@@ -700,12 +701,12 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: View Details */}
       {selectedReturn && (
-        <div className="modal-backdrop" onClick={() => setSelectedReturn(null)}>
+        <ModalBackdropPortal onClose={() => setSelectedReturn(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '640px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -782,12 +783,12 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Confirmation Dialog: Approve & Post Return */}
       {returnToApprove && (
-        <div className="modal-backdrop" onClick={() => setReturnToApprove(null)}>
+        <ModalBackdropPortal onClose={() => setReturnToApprove(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '440px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -839,7 +840,7 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

@@ -291,6 +291,11 @@
     "priceRatio": "نسبة السعر",
     "optionalFixedPriceNote": "(سعر وحدة ثابت اختياري)"
   },
+  "bundles": {
+    "select_main_product": "اختر المنتج الرئيسي...",
+    "select_component_product": "اختر الصنف المكون...",
+    "validationError": "يرجى اختيار المنتج الرئيسي وصنف مكون واحد على الأقل"
+  },
   "purchaseReturns": {
     "title": "مرتجعات المشتريات للموردين",
     "subtitle": "إرجاع البضائع التالفة أو الزائدة للموردين وتسوية الأرصدة وسجلات الذمم",

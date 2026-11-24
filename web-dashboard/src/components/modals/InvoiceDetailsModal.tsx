@@ -5,6 +5,7 @@ import { SalesInvoice } from '../../types/warehouse';
 import { localizeWarehouse, localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
 import { getStoredAuthSession } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface InvoiceDetailsModalProps {
   invoice: SalesInvoice | null;
@@ -210,7 +211,7 @@ export default function InvoiceDetailsModal({
     invoice.status === 'pending' ? 'status-pending' : 'status-danger';
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="invoice-modal-content glass-panel" 
         onClick={(e) => e.stopPropagation()}
@@ -495,6 +496,6 @@ export default function InvoiceDetailsModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

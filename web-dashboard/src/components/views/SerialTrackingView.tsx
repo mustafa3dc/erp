@@ -36,6 +36,7 @@ import {
 import { Product, Warehouse } from '../../types/warehouse';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface SerialTrackingViewProps {
   lang: 'en' | 'ar';
@@ -643,7 +644,7 @@ export default function SerialTrackingView({ lang, initialSerialLookup }: Serial
 
       {/* Modal: Bulk Register Serials */}
       {isRegisterModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsRegisterModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsRegisterModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '580px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -779,7 +780,7 @@ export default function SerialTrackingView({ lang, initialSerialLookup }: Serial
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

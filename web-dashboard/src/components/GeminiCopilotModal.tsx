@@ -6,6 +6,7 @@ import { askExecutiveCopilot } from '../services/aiService';
 import { getStoredAuthSession } from '../services/storageService';
 import { getStoredTenants } from '../services/tenantService';
 import { useSettings } from '../context/settings-context';
+import { ModalBackdropPortal } from './ui/dialog';
 
 interface GeminiCopilotModalProps {
   isOpen: boolean;
@@ -293,7 +294,7 @@ export default function GeminiCopilotModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="copilot-modal-content glass-panel" 
         onClick={(e) => e.stopPropagation()}
@@ -450,6 +451,6 @@ export default function GeminiCopilotModal({
           </form>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

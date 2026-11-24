@@ -11,6 +11,7 @@ import {
   StockAdjustmentRecord,
   getStoredAuthSession
 } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface StockAdjustmentModalProps {
   product: Product | null;
@@ -118,7 +119,7 @@ export default function StockAdjustmentModal({
   const selectedWh = warehouses.find(w => w.id === selectedWarehouseId);
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} style={{ zIndex: 1200 }} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} zIndex={100020} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="modal-content glass-panel" 
         style={{ 
@@ -606,7 +607,7 @@ export default function StockAdjustmentModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }
 

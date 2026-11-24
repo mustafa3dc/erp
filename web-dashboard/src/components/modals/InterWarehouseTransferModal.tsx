@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, ArrowLeftRight, Warehouse, Package, Truck, CheckCircle2 } from 'lucide-react';
 import { Product } from '../../types/warehouse';
 import { getStoredWarehouses } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface InterWarehouseTransferModalProps {
   isOpen: boolean;
@@ -60,7 +61,7 @@ export default function InterWarehouseTransferModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose}>
+    <ModalBackdropPortal onClose={onClose}>
       <div className="modal-content glass-panel" style={{ maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-header-left">
@@ -192,6 +193,6 @@ export default function InterWarehouseTransferModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

@@ -18,6 +18,7 @@ import { localizeCategory, localizeWarehouse, localizeUnit } from '../../lib/loc
 import { useSettings } from '../../context/settings-context';
 import { usePermissions } from '../../hooks/usePermissions';
 import { saveStoredProducts } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface InventoryViewProps {
   products: Product[];
@@ -1494,7 +1495,7 @@ export default function InventoryView({
 
       {/* Bulk Category Change Modal */}
       {isBulkCatModalOpen && (
-        <div className="modal-backdrop fade-in" onClick={() => setIsBulkCatModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsBulkCatModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div className="modal-content glass-panel" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-header-left">
@@ -1537,7 +1538,7 @@ export default function InventoryView({
               </div>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Manage Categories Modal */}

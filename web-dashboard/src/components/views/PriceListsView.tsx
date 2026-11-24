@@ -36,6 +36,7 @@ import {
 import { Product } from '../../types/warehouse';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface PriceListsViewProps {
   lang: 'en' | 'ar';
@@ -49,7 +50,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
   const [activeTab, setActiveTab] = useState<'LISTS' | 'BUNDLES' | 'CUSTOMERS'>('LISTS');
   const [priceLists, setPriceLists] = useState<PriceList[]>(() => getStoredPriceLists());
   const [bundles, setBundles] = useState<ProductBundleItem[]>(() => getStoredProductBundles());
-  const [products] = useState<Product[]>(() => getStoredProducts());
+  const [products, setProducts] = useState<Product[]>(() => getStoredProducts());
   const [customers, setCustomers] = useState(() => getStoredCustomers());
 
   const [selectedListId, setSelectedListId] = useState<string>(() => priceLists[0]?.id || '');
@@ -115,27 +116,64 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       } catch {
         // fallback
       }
+
+      try {
+        const prodRes = await apiClient.get('/api/products');
+        const rawList = Array.isArray(prodRes)
+          ? prodRes
+          : (prodRes && Array.isArray(prodRes.data) ? prodRes.data : null);
+        if (rawList && rawList.length > 0) {
+          const mapped: Product[] = rawList
+            .filter((p: any) => p && (p.id || p.Id))
+            .map((p: any) => ({
+              id: String(p.id ?? p.Id),
+              sku: p.sku ?? p.Sku ?? '',
+              barcode: p.barcode ?? p.Barcode ?? '',
+              nameAr: p.nameAr ?? p.name ?? p.Name ?? p.sku ?? p.Sku ?? '',
+              nameEn: p.nameEn ?? p.name ?? p.Name ?? p.sku ?? p.Sku ?? '',
+              category: p.categoryName ?? p.CategoryName ?? p.category ?? '',
+              costPrice: Number(p.costPrice ?? p.CostPrice ?? 0),
+              sellingPrice: Number(p.sellingPrice ?? p.SellingPrice ?? p.retailPrice ?? p.RetailPrice ?? 0),
+              unit: p.unitOfMeasure ?? p.UnitOfMeasure ?? p.unit ?? 'pcs',
+              currentStock: Number(p.totalQuantity ?? p.TotalQuantity ?? p.currentStock ?? 0),
+              minStockAlert: Number(p.minStockLevel ?? p.MinStockLevel ?? 0),
+              warehouseId: p.warehouseId || '',
+              warehouseName: p.warehouseName || '',
+              status: (p.isActive ?? p.IsActive) === false ? 'out_of_stock' : 'available',
+              shelf: '',
+              updatedAt: ''
+            }));
+          if (mapped.length > 0) setProducts(mapped);
+        }
+      } catch {
+        // fallback to local storage products
+      }
     };
     fetchData();
   }, []);
 
   const currentPriceList = priceLists.find(pl => pl.id === selectedListId) || priceLists[0];
 
-  // Initialize bundle components when bundle modal opens
+  const openBundleModal = () => {
+    setBundleParentId('');
+    setBundleComponents([{
+      childProductId: '',
+      quantity: 1,
+      unitPriceRatio: 1.0
+    }]);
+    setIsBundleModalOpen(true);
+  };
+
+  // Ensure bundle modal always initializes with 1 component row ready for input
   useEffect(() => {
-    if (isBundleModalOpen) {
-      if (products.length > 0 && !bundleParentId) {
-        setBundleParentId(products[0].id);
-      }
-      if (bundleComponents.length === 0 && products.length > 1) {
-        setBundleComponents([{
-          childProductId: products[1].id,
-          quantity: 1,
-          unitPriceRatio: 1.0
-        }]);
-      }
+    if (isBundleModalOpen && bundleComponents.length === 0) {
+      setBundleComponents([{
+        childProductId: '',
+        quantity: 1,
+        unitPriceRatio: 1.0
+      }]);
     }
-  }, [isBundleModalOpen, products, bundleParentId, bundleComponents.length]);
+  }, [isBundleModalOpen, bundleComponents.length]);
 
   // KPIs
   const totalLists = priceLists.length;
@@ -246,10 +284,14 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
   // Create Bundle
   const handleCreateBundle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bundleParentId || bundleComponents.length === 0) return;
+    const validComponents = bundleComponents.filter(bc => bc.childProductId && bc.quantity > 0);
+    if (!bundleParentId || validComponents.length === 0 || validComponents.length !== bundleComponents.length) {
+      showToast(getTranslation(lang, 'bundles.validationError'));
+      return;
+    }
 
     const parent = products.find(x => x.id === bundleParentId);
-    const newItems: ProductBundleItem[] = bundleComponents.map((bc, idx) => {
+    const newItems: ProductBundleItem[] = validComponents.map((bc, idx) => {
       const child = products.find(x => x.id === bc.childProductId);
       return {
         id: `PBI-${Date.now()}-${idx}`,
@@ -266,7 +308,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     try {
       await apiClient.post('/api/price-lists/bundles', {
         parentProductId: bundleParentId,
-        components: bundleComponents.map(bc => ({
+        components: validComponents.map(bc => ({
           childProductId: bc.childProductId,
           quantity: bc.quantity,
           unitPriceRatio: bc.unitPriceRatio
@@ -280,6 +322,8 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     setBundles(nextBundles);
     saveStoredProductBundles(nextBundles);
 
+    setBundleParentId('');
+    setBundleComponents([{ childProductId: '', quantity: 1, unitPriceRatio: 1.0 }]);
     setIsBundleModalOpen(false);
     showToast(getTranslation(lang, 'priceLists.bundleSaved'));
   };
@@ -334,7 +378,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
           <button 
             type="button" 
             className="btn-clean-secondary"
-            onClick={() => setIsBundleModalOpen(true)}
+            onClick={openBundleModal}
           >
             <PackageCheck size={15} />
             <span>{getTranslation(lang, 'priceLists.newBundle')}</span>
@@ -655,7 +699,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
 
       {/* Modal: New Price List */}
       {isListModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsListModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsListModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -763,12 +807,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: New Product Bundle */}
       {isBundleModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsBundleModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsBundleModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '600px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -787,35 +831,42 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </button>
             </div>
 
-            <form onSubmit={handleCreateBundle} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <form onSubmit={handleCreateBundle} className="flex flex-col gap-4">
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
                   {getTranslation(lang, 'priceLists.parentProduct')} *
                 </label>
                 <select 
-                  className="select-clean"
+                  className="select-clean w-full h-10 px-3 rounded-lg"
                   value={bundleParentId}
                   onChange={e => setBundleParentId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  required
                 >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{getProdName(p)} ({p.sku})</option>
+                  <option value="" disabled>
+                    {getTranslation(lang, 'bundles.select_main_product')}
+                  </option>
+                  {products.filter(p => Boolean(p.id)).map(p => (
+                    <option key={p.id} value={p.id}>
+                      {getProdName(p)}{p.sku ? ` (${p.sku})` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* Components */}
-              <div className="border border-border rounded-xl p-3 bg-muted/40">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700 }}>{getTranslation(lang, 'priceLists.components')}</span>
+              <div className="border border-border rounded-xl p-3.5 bg-muted/40">
+                <div className="flex justify-between items-center mb-2.5 gap-2">
+                  <span className="text-xs font-bold text-foreground">
+                    {getTranslation(lang, 'priceLists.components')} ({bundleComponents.length})
+                  </span>
                   <button 
                     type="button"
-                    className="btn-clean-secondary"
-                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                    className="btn-clean-secondary py-1 px-2.5 text-[11px]"
                     onClick={() => {
-                      if (products.length > 0) {
-                        setBundleComponents([...bundleComponents, { childProductId: products[0].id, quantity: 1, unitPriceRatio: 1.0 }]);
-                      }
+                      setBundleComponents([
+                        ...bundleComponents,
+                        { childProductId: '', quantity: 1, unitPriceRatio: 1.0 }
+                      ]);
                     }}
                   >
                     <Plus size={12} />
@@ -823,41 +874,51 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="flex flex-col gap-2">
                   {bundleComponents.map((bc, idx) => (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr auto', gap: '8px', alignItems: 'center' }}>
+                    <div key={idx} className="grid grid-cols-[1fr_84px_32px] gap-2 items-center">
                       <select 
-                        className="select-clean"
+                        className="select-clean w-full h-10 px-3 text-xs rounded-lg"
                         value={bc.childProductId}
+                        required
                         onChange={e => {
                           const next = [...bundleComponents];
                           next[idx].childProductId = e.target.value;
                           setBundleComponents(next);
                         }}
-                        style={{ padding: '6px 8px', fontSize: '12px', borderRadius: '6px' }}
                       >
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{getProdName(p)} ({p.sku})</option>
-                        ))}
+                        <option value="" disabled>
+                          {getTranslation(lang, 'bundles.select_component_product')}
+                        </option>
+                        {products
+                          .filter(p => Boolean(p.id) && p.id !== bundleParentId)
+                          .map(p => (
+                            <option key={p.id} value={p.id}>
+                              {getProdName(p)}{p.sku ? ` (${p.sku})` : ''}
+                            </option>
+                          ))}
                       </select>
 
                       <input 
                         type="number"
                         min="1"
+                        required
                         value={bc.quantity}
                         onChange={e => {
                           const next = [...bundleComponents];
                           next[idx].quantity = Math.max(1, Number(e.target.value));
                           setBundleComponents(next);
                         }}
-                        className="input-clean"
-                        style={{ padding: '6px 8px', fontSize: '12px', borderRadius: '6px', textAlign: 'center' }}
+                        className="input-clean w-full h-10 px-2 text-xs font-mono font-bold tabular-nums text-center rounded-lg"
                       />
 
                       <button 
                         type="button"
+                        disabled={bundleComponents.length <= 1}
                         onClick={() => setBundleComponents(bundleComponents.filter((_, i) => i !== idx))}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}
+                        className={`w-8 h-9 flex items-center justify-center rounded-lg bg-transparent border-0 text-destructive transition-opacity ${
+                          bundleComponents.length <= 1 ? 'opacity-35 cursor-not-allowed' : 'cursor-pointer hover:bg-destructive/10'
+                        }`}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -866,7 +927,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <div className="flex justify-end gap-2.5 mt-2">
                 <button 
                   type="button" 
                   className="btn-clean-secondary"
@@ -883,12 +944,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: Add Tier Rule */}
       {isTierModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsTierModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsTierModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '480px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -988,12 +1049,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: Assign Customer */}
       {isAssignModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsAssignModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsAssignModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '440px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -1062,7 +1123,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { QrCode, X, Search, CheckCircle, AlertCircle, Plus, Minus, MapPin, Tag, DollarSign, Package, Scale, Lock } from 'lucide-react';
 import { Product } from '../types/warehouse';
 import { useSettings } from '../context/settings-context';
+import { ModalBackdropPortal } from './ui/dialog';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export default function BarcodeScannerModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="modal-content glass-panel scanner-modal-container" 
         onClick={(e) => e.stopPropagation()}
@@ -241,6 +242,6 @@ export default function BarcodeScannerModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

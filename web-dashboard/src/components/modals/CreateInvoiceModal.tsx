@@ -21,6 +21,7 @@ import {
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { useSettings } from '../../context/settings-context';
 import { getStoredWarehouses, getStoredAuthSession, getStoredDispatchOrders, saveStoredDispatchOrders } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface CreateInvoiceModalProps {
   isOpen: boolean;
@@ -338,7 +339,7 @@ export default function CreateInvoiceModal({
 
   return (
     <>
-      <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+      <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
         <div 
           className="invoice-clean-modal" 
           onClick={(e) => e.stopPropagation()}
@@ -914,7 +915,7 @@ export default function CreateInvoiceModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdropPortal>
   </>
   );
 }

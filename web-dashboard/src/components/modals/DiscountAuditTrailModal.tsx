@@ -13,6 +13,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { DiscountAuditLog } from '../../types/warehouse';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface DiscountAuditTrailModalProps {
   isOpen: boolean;
@@ -49,18 +50,16 @@ export default function DiscountAuditTrailModal({
   });
 
   return (
-    <div className="modal-backdrop-custom fade-in" style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(5, 10, 24, 0.82)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 10000,
-      padding: '20px'
-    }}>
-      <div className="glass-panel" style={{
+    <ModalBackdropPortal
+      onClose={onClose}
+      zIndex={100010}
+      style={{
+        background: 'rgba(5, 10, 24, 0.82)',
+        backdropFilter: 'blur(8px)',
+        padding: '20px'
+      }}
+    >
+      <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
         width: '100%',
         maxWidth: '850px',
         maxHeight: '90vh',
@@ -272,6 +271,6 @@ export default function DiscountAuditTrailModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

@@ -37,6 +37,7 @@ import {
 import { Product, Warehouse, SalesInvoice } from '../../types/warehouse';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface QuotationsViewProps {
   lang: 'en' | 'ar';
@@ -657,7 +658,7 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
 
       {/* Modal: Create Quotation */}
       {isCreateModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsCreateModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsCreateModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '820px', width: '95%', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', padding: '24px' }} 
@@ -862,12 +863,12 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: View Quotation Details */}
       {selectedQuote && (
-        <div className="modal-backdrop" onClick={() => setSelectedQuote(null)}>
+        <ModalBackdropPortal onClose={() => setSelectedQuote(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div
             className="modal-content glass-panel max-w-2xl w-[92%] rounded-2xl p-6"
             onClick={e => e.stopPropagation()}
@@ -954,12 +955,12 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Confirmation Dialog: Convert to Sales Invoice */}
       {quoteToConvert && (
-        <div className="modal-backdrop" onClick={() => setQuoteToConvert(null)}>
+        <ModalBackdropPortal onClose={() => setQuoteToConvert(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div
             className="modal-content glass-panel max-w-md w-[92%] rounded-2xl p-6"
             onClick={e => e.stopPropagation()}
@@ -1009,7 +1010,7 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

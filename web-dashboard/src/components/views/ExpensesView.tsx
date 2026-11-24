@@ -33,6 +33,7 @@ import {
 } from '../../types/businessModules';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface ExpensesViewProps {
   lang: 'en' | 'ar';
@@ -622,7 +623,7 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
 
       {/* Modal: New Expense Voucher */}
       {isVoucherModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsVoucherModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsVoucherModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '580px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -782,12 +783,12 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Modal: New Expense Category */}
       {isCategoryModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsCategoryModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsCategoryModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -896,12 +897,12 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Confirmation Dialog: Approve & Deduct Voucher */}
       {voucherToApprove && (
-        <div className="modal-backdrop" onClick={() => setVoucherToApprove(null)}>
+        <ModalBackdropPortal onClose={() => setVoucherToApprove(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '440px', width: '92%', borderRadius: '16px', padding: '24px' }} 
@@ -953,7 +954,7 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

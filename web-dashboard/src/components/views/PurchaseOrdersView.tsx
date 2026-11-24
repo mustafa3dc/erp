@@ -14,6 +14,7 @@ import {
 import CreatePurchaseOrderForm from '../purchases/CreatePurchaseOrderForm';
 import { formatIQD } from '../purchases/PurchaseInvoiceItemsGrid';
 import { useSettings } from '../../context/settings-context';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 const isLegacyDemoPO = (po: any): boolean => {
   if (!po) return true;
@@ -472,8 +473,8 @@ export default function PurchaseOrdersView({
 
       {/* PO Items Details Modal */}
       {selectedPOForPreview && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-foreground">
+        <ModalBackdropPortal onClose={() => setSelectedPOForPreview(null)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-foreground" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-border pb-3">
               <div>
                 <h3 className="font-extrabold text-base flex items-center gap-2">
@@ -586,7 +587,7 @@ export default function PurchaseOrdersView({
               )}
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
     </div>

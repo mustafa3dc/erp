@@ -291,6 +291,11 @@
     "priceRatio": "Ratio",
     "optionalFixedPriceNote": "(Optional fixed unit price)"
   },
+  "bundles": {
+    "select_main_product": "Select main product...",
+    "select_component_product": "Select component product...",
+    "validationError": "Please select a main product and at least one valid component"
+  },
   "purchaseReturns": {
     "title": "Supplier Purchase Returns",
     "subtitle": "Return damaged or surplus items to suppliers with automated ledger reconciliation",

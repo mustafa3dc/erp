@@ -9,6 +9,7 @@ import { Product } from '../types/warehouse';
 import BarcodeSvg from './BarcodeSvg';
 import { localizeCategory, localizeWarehouse, localizeUnit } from '../lib/localeHelpers';
 import { useSettings } from '../context/settings-context';
+import { ModalBackdropPortal } from './ui/dialog';
 
 interface ProductDetailsModalProps {
   product: Product | null;
@@ -229,7 +230,7 @@ export default function ProductDetailsModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="modal-content glass-panel product-details-modal" 
         onClick={(e) => e.stopPropagation()}
@@ -483,6 +484,6 @@ export default function ProductDetailsModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

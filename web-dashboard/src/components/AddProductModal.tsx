@@ -10,6 +10,7 @@ import { localizeCategory, localizeWarehouse, localizeUnit } from '../lib/locale
 import { useSettings } from '../context/settings-context';
 import { validateProductPricing } from '../schemas/ProductValidationSchema';
 import { getStoredCategories, saveStoredCategories } from '../services/storageService';
+import { ModalBackdropPortal } from './ui/dialog';
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -265,7 +266,7 @@ export default function AddProductModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="modal-content glass-panel goods-master-modal" 
         onClick={(e) => e.stopPropagation()}
@@ -940,6 +941,6 @@ export default function AddProductModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

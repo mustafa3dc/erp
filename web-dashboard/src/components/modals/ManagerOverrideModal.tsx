@@ -10,6 +10,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { ManagerOverrideApproval } from '../../types/warehouse';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface ManagerOverrideModalProps {
   isOpen: boolean;
@@ -148,8 +149,7 @@ export default function ManagerOverrideModal({
   };
 
   return (
-    <div 
-      className="modal-backdrop-custom fade-in" 
+    <ModalBackdropPortal
       onClick={(e) => {
         // Stop bubbling so clicking the backdrop never closes parent modals
         e.stopPropagation();
@@ -157,15 +157,10 @@ export default function ManagerOverrideModal({
           onClose();
         }
       }}
+      zIndex={100020}
       style={{
-        position: 'fixed',
-        inset: 0,
         background: 'rgba(5, 10, 24, 0.88)',
         backdropFilter: 'blur(10px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100000,
         padding: '16px'
       }}
     >
@@ -492,6 +487,6 @@ export default function ManagerOverrideModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

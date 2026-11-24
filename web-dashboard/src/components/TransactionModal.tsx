@@ -3,6 +3,7 @@ import { X, CheckCircle, Clock, MapPin, Package, ArrowRight, Printer, Barcode } 
 import BarcodeSvg from './BarcodeSvg';
 import { localizeTxType, localizeTxStatus, localizeUnit, localizeWarehouse } from '../lib/localeHelpers';
 import { formatMovementDate } from '../utils/dateFormatter';
+import { ModalBackdropPortal } from './ui/dialog';
 
 export interface TransactionDetail {
   id: string;
@@ -35,7 +36,7 @@ export default function TransactionModal({ transaction, onClose, lang }: Transac
   const isAr = lang === 'ar';
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose}>
+    <ModalBackdropPortal onClose={onClose}>
       <div className="modal-content glass-panel tx-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-header-left">
@@ -116,6 +117,6 @@ export default function TransactionModal({ transaction, onClose, lang }: Transac
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

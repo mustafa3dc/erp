@@ -12,6 +12,7 @@ import {
 import { StockMovement, Warehouse as WarehouseType, Product } from '../types/warehouse';
 import { localizeTxType, localizeWarehouse } from '../lib/localeHelpers';
 import { formatMovementDate } from '../utils/dateFormatter';
+import { ModalBackdropPortal } from './ui/dialog';
 
 interface MovementsTabProps {
   movements: StockMovement[];
@@ -168,7 +169,7 @@ export default function MovementsTab({
 
       {/* Modal: New Movement */}
       {isModalOpen && (
-        <div className="modal-backdrop fade-in" onClick={() => setIsModalOpen(false)}>
+        <ModalBackdropPortal onClose={() => setIsModalOpen(false)}>
           <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{isAr ? 'إصدار إذن حركة مخزنية جديدة' : 'Create Stock Movement Voucher'}</h3>
@@ -262,7 +263,7 @@ export default function MovementsTab({
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

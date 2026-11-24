@@ -3,6 +3,7 @@ import { X, ArrowUpFromLine, Truck, CheckCircle2 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
 import { localizeUnit, localizeWarehouse } from '../../lib/localeHelpers';
 import { getStoredWarehouses } from '../../services/storageService';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface OutboundDispatchModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export default function OutboundDispatchModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose}>
+    <ModalBackdropPortal onClose={onClose}>
       <div className="modal-content glass-panel" style={{ maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-header-left">
@@ -175,6 +176,6 @@ export default function OutboundDispatchModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

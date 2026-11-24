@@ -58,6 +58,7 @@ import {
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
 import PosCategoryFilter from '../PosCategoryFilter';
 import { useCategories } from '../../hooks/useCategories';
+import { ModalBackdropPortal } from '../ui/dialog';
 import { useTenantFeatures } from '../../hooks/useAuth';
 import { localizeWarehouse } from '../../lib/localeHelpers';
 import { isDesktopApp, printReceiptNative } from '../../services/desktopBridgeService';
@@ -2136,8 +2137,8 @@ export default function PosTerminalView({
 
       {/* Instant Receipt Modal */}
       {showReceiptModal && lastCompletedOrder && (
-        <div className="modal-backdrop fade-in" onClick={() => setShowReceiptModal(false)}>
-          <div className="glass-panel" style={{ width: '400px', padding: '24px', borderRadius: 'var(--radius)', background: 'var(--card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', color: 'var(--foreground)' }}>
+        <ModalBackdropPortal onClose={() => setShowReceiptModal(false)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="glass-panel" onClick={(e) => e.stopPropagation()} style={{ width: '400px', padding: '24px', borderRadius: 'var(--radius)', background: 'var(--card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', color: 'var(--foreground)' }}>
             <div style={{ textAlign: 'center', borderBottom: '1px dashed var(--border)', paddingBottom: '14px', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--foreground)' }}>Bontu Retail Cloud</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--muted-foreground)' }}>{isAr ? 'إيصال دفع إلكتروني معتمد' : 'Authorized Sales Receipt'}</p>
@@ -2356,12 +2357,12 @@ export default function PosTerminalView({
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* POS Installment Modal Dialog */}
       {isInstallmentModalOpen && (
-        <div className="modal-backdrop fade-in" onClick={() => setIsInstallmentModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
+        <ModalBackdropPortal onClose={() => setIsInstallmentModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div 
             className="modal-content glass-panel" 
             style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }}
@@ -2583,7 +2584,7 @@ export default function PosTerminalView({
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Quick Open Shift Modal via Unified DialogPortal */}

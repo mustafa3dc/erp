@@ -5,6 +5,7 @@ import { TransactionDetail } from '../TransactionModal';
 import { localizeWarehouse, localizeUnit, localizeTxType } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
 import { formatMovementDate } from '../../utils/dateFormatter';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface StockHistoryModalProps {
   product: Product | null;
@@ -33,7 +34,7 @@ export default function StockHistoryModal({
   );
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose}>
+    <ModalBackdropPortal onClose={onClose}>
       <div className="modal-content glass-panel" style={{ maxWidth: '780px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-header-left">
@@ -141,6 +142,6 @@ export default function StockHistoryModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

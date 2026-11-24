@@ -33,6 +33,48 @@ export function DialogPortal({ children, container }: DialogPortalProps) {
   return createPortal(children, container || document.body);
 }
 
+export interface ModalBackdropPortalProps extends React.HTMLAttributes<HTMLDivElement> {
+  onClose?: () => void;
+  zIndex?: number;
+}
+
+export function ModalBackdropPortal({
+  className = '',
+  style,
+  onClose,
+  onClick,
+  zIndex,
+  dir,
+  children,
+  ...props
+}: ModalBackdropPortalProps) {
+  return (
+    <DialogPortal>
+      <div
+        className={`modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto ${className}`}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: zIndex ?? 99990,
+          ...style,
+        }}
+        dir={dir}
+        onClick={(e) => {
+          onClick?.(e);
+          if (onClose && e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        {...props}
+      >
+        {children}
+      </div>
+    </DialogPortal>
+  );
+}
+
 export function DialogOverlay({
   className = '',
   style,

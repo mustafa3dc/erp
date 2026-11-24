@@ -38,6 +38,7 @@ import {
 } from '../../services/storageService';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface InstallmentsViewProps {
   lang: 'ar' | 'en';
@@ -173,7 +174,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
   const renderPayModal = () => {
     if (!payingScheduleItem) return null;
     return (
-      <div className="modal-backdrop fade-in" onClick={() => setPayingScheduleItem(null)}>
+      <ModalBackdropPortal onClose={() => setPayingScheduleItem(null)} dir={isAr ? 'rtl' : 'ltr'}>
         <div 
           className="border border-border rounded-xl shadow-2xl max-w-md w-full mx-auto my-auto p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
           style={{ backgroundColor: 'var(--card)', color: 'var(--card-foreground)' }}
@@ -315,7 +316,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
             </Button>
           </div>
         </div>
-      </div>
+      </ModalBackdropPortal>
     );
   };
 
@@ -323,7 +324,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
   const renderReceiptModal = () => {
     if (!issuedReceiptVoucher) return null;
     return (
-      <div className="modal-backdrop fade-in" onClick={() => setIssuedReceiptVoucher(null)}>
+      <ModalBackdropPortal onClose={() => setIssuedReceiptVoucher(null)} dir={isAr ? 'rtl' : 'ltr'}>
         <div 
           className="border border-border rounded-xl shadow-2xl max-w-md w-full mx-auto my-auto p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
           style={{ backgroundColor: 'var(--card)', color: 'var(--card-foreground)' }}
@@ -404,7 +405,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
             </Button>
           </div>
         </div>
-      </div>
+      </ModalBackdropPortal>
     );
   };
 

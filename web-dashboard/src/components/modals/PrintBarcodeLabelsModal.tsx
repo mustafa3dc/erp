@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Printer, Barcode, CheckCircle2, Copy } from 'lucide-react';
 import { PurchaseInvoiceItem } from '../../types/purchases';
 import BarcodeSvg from '../BarcodeSvg';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface PrintBarcodeLabelsModalProps {
   items: PurchaseInvoiceItem[];
@@ -166,7 +167,7 @@ export default function PrintBarcodeLabelsModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" style={{ zIndex: 100070 }} onClick={onClose} dir={isAr ? 'rtl' : 'ltr'}>
+    <ModalBackdropPortal zIndex={100070} onClose={onClose} dir={isAr ? 'rtl' : 'ltr'}>
       <div 
         className="invoice-clean-modal" 
         style={{ maxWidth: '800px', width: '95%', maxHeight: '90vh', background: 'var(--card)', color: 'var(--foreground)' }}
@@ -317,6 +318,6 @@ export default function PrintBarcodeLabelsModal({
         </div>
 
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

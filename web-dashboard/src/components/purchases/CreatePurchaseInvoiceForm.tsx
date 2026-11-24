@@ -15,6 +15,7 @@ import {
 import PurchaseInvoiceItemsGrid, { formatIQD } from './PurchaseInvoiceItemsGrid';
 import { localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 export interface InitialPurchaseInvoicePrefill {
   supplierId?: string;
@@ -852,8 +853,8 @@ export default function CreatePurchaseInvoiceForm({
 
       {/* Quick Modal: Inline Product Creation */}
       {isInlineProductOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 text-foreground">
+        <ModalBackdropPortal onClose={() => setIsInlineProductOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 text-foreground" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-border pb-3">
               <h4 className="font-bold text-sm flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600" />
@@ -924,13 +925,13 @@ export default function CreatePurchaseInvoiceForm({
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
       {/* Quick Modal: New Supplier */}
       {isQuickSupplierOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 text-foreground">
+        <ModalBackdropPortal onClose={() => setIsQuickSupplierOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 text-foreground" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-border pb-3">
               <h4 className="font-bold text-sm flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-primary" />
@@ -984,7 +985,7 @@ export default function CreatePurchaseInvoiceForm({
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdropPortal>
       )}
 
     </div>

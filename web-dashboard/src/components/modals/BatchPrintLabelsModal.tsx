@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Printer, Barcode, CheckCircle2 } from 'lucide-react';
 import { Product } from '../../types/warehouse';
 import BarcodeSvg from '../BarcodeSvg';
+import { ModalBackdropPortal } from '../ui/dialog';
 
 interface BatchPrintLabelsModalProps {
   selectedProducts: Product[];
@@ -93,7 +94,7 @@ export default function BatchPrintLabelsModal({
   };
 
   return (
-    <div className="modal-backdrop fade-in" onClick={onClose}>
+    <ModalBackdropPortal onClose={onClose}>
       <div className="modal-content glass-panel" style={{ maxWidth: '750px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-header-left">
@@ -146,6 +147,6 @@ export default function BatchPrintLabelsModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdropPortal>
   );
 }

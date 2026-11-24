@@ -134,6 +134,8 @@ public class FinanceController : ControllerBase
             new { id = "ADVANCES", nameAr = "سلف ومسحوبات", nameEn = "Advances & Withdrawals" },
             new { id = "OTHER", nameAr = "أخرى", nameEn = "Other" }
         };
+        return Ok(categories);
+    }
 
     /// <summary>
     /// GET /api/finance/kpis

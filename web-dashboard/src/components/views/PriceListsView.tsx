@@ -34,6 +34,8 @@ import {
   ProductBundleItem 
 } from '../../types/businessModules';
 import { Product } from '../../types/warehouse';
+import { StatusBadge } from '../ui/StatusBadge';
+import { EmptyState } from '../ui/EmptyState';
 
 interface PriceListsViewProps {
   lang: 'en' | 'ar';
@@ -390,7 +392,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
           <div className="module-kpi-info">
             <span className="module-kpi-label">{getTranslation(lang, 'priceLists.assignCustomer')}</span>
             <div className="module-kpi-value font-mono" style={{ color: '#16a34a' }}>
-              {totalAssignedCustomers} <span className="kpi-sub-unit">{getTranslation(lang, 'customers.title')}</span>
+              {totalAssignedCustomers} <span className="kpi-sub-unit">{getTranslation(lang, 'priceLists.customersAssigned')}</span>
             </div>
           </div>
           <div className="module-kpi-icon emerald">
@@ -429,40 +431,35 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
 
       {/* Tab 1: Price Lists & Tiers */}
       {activeTab === 'LISTS' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '16px' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           {/* Left Master List */}
-          <div className="panel-clean" style={{ padding: '16px' }}>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
+          <div className="panel-clean p-4">
+            <h4 className="m-0 mb-3 text-sm font-bold text-foreground">
               {getTranslation(lang, 'priceLists.tabLists')}
             </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="flex flex-col gap-2">
               {priceLists.map(pl => {
                 const isSelected = pl.id === currentPriceList?.id;
                 return (
                   <div
                     key={pl.id}
                     onClick={() => setSelectedListId(pl.id)}
-                    style={{
-                      padding: '12px',
-                      borderRadius: '10px',
-                      border: `1px solid ${isSelected ? 'var(--primary)' : '#e2e8f0'}`,
-                      background: isSelected ? 'rgba(99, 102, 241, 0.05)' : '#fff',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-primary bg-primary/10 shadow-xs'
+                        : 'border-border bg-card hover:bg-muted/60'
+                    }`}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 700, fontSize: '13px', color: isSelected ? 'var(--primary)' : '#0f172a' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`font-bold text-[13px] ${isSelected ? 'text-primary' : 'text-foreground'}`}>
                         {isAr && pl.nameAr ? pl.nameAr : pl.name}
                       </span>
                       {pl.isDefault && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a', padding: '2px 6px', borderRadius: '8px' }}>
-                          {getTranslation(lang, 'priceLists.defaultBadge')}
-                        </span>
+                        <StatusBadge tone="emerald" label={getTranslation(lang, 'priceLists.defaultBadge')} />
                       )}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
-                      <span>{pl.code} • {pl.currency}</span>
+                    <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
+                      <span dir="ltr">{pl.code} • {pl.currency}</span>
                       <span>{(pl.items || []).length} {getTranslation(lang, 'priceLists.itemsCount')}</span>
                     </div>
                   </div>
@@ -472,18 +469,17 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
           </div>
 
           {/* Right Details: Tiered Items */}
-          <div className="panel-clean" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="panel-clean p-5">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                <h3 className="m-0 text-base font-bold text-foreground">
                   {isAr && currentPriceList?.nameAr ? currentPriceList.nameAr : currentPriceList?.name}
                 </h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{currentPriceList?.description || currentPriceList?.code}</span>
+                <span className="text-xs text-muted-foreground">{currentPriceList?.description || currentPriceList?.code}</span>
               </div>
-              <button 
+              <button
                 type="button"
-                className="btn-clean-primary"
-                style={{ padding: '4px 10px', fontSize: '12px' }}
+                className="btn-clean-primary py-1.5 px-3 text-xs"
                 onClick={() => {
                   if (products.length > 0 && !tierProductId) setTierProductId(products[0].id);
                   setIsTierModalOpen(true);
@@ -507,26 +503,30 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 <tbody>
                   {(!currentPriceList?.items || currentPriceList.items.length === 0) ? (
                     <tr>
-                      <td colSpan={4} style={{ textAlign: 'center', padding: '30px 10px', color: '#64748b' }}>
-                        {getTranslation(lang, 'priceLists.noTiersConfigured')}
+                      <td colSpan={4} className="p-0">
+                        <EmptyState
+                          lang={lang}
+                          icon={<Percent size={22} />}
+                          title={getTranslation(lang, 'priceLists.noTiersConfigured')}
+                        />
                       </td>
                     </tr>
                   ) : (
                     currentPriceList.items.map(it => (
                       <tr key={it.id}>
                         <td>
-                          <span style={{ fontWeight: 600 }}>{it.productName || it.productId}</span>
+                          <span className="font-semibold text-foreground" dir="auto">{it.productName || it.productId}</span>
                           {it.productSku && (
-                            <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{it.productSku}</span>
+                            <span className="block text-[11px] font-mono text-muted-foreground" dir="ltr">{it.productSku}</span>
                           )}
                         </td>
-                        <td style={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                        <td className="font-bold font-mono tabular-nums" dir="ltr">
                           ≥ {it.minQuantity}
                         </td>
-                        <td style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--primary)' }}>
+                        <td className="font-bold font-mono tabular-nums text-primary" dir="ltr">
                           {it.customPrice ? formatMoney(it.customPrice) : '—'}
                         </td>
-                        <td style={{ color: '#16a34a', fontWeight: 700 }}>
+                        <td className="text-emerald-600 dark:text-emerald-400 font-bold font-mono tabular-nums" dir="ltr">
                           {it.discountPercent}%
                         </td>
                       </tr>
@@ -542,9 +542,9 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {/* Tab 2: Product Bundles & Kits */}
       {activeTab === 'BUNDLES' && (
         <div className="panel-clean">
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'rgba(248, 250, 252, 0.8)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Boxes size={18} style={{ color: 'var(--primary)' }} />
-            <span style={{ fontSize: '13px', color: '#475569', fontWeight: 500 }}>
+          <div className="px-5 py-3.5 border-b border-border bg-muted/40 flex items-center gap-2">
+            <Boxes size={17} style={{ color: 'var(--primary)' }} />
+            <span className="text-xs text-muted-foreground font-medium">
               {getTranslation(lang, 'priceLists.deductNotice')}
             </span>
           </div>
@@ -562,27 +562,34 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               <tbody>
                 {bundles.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                      {getTranslation(lang, 'priceLists.noBundlesFound')}
+                    <td colSpan={4} className="p-0">
+                      <EmptyState
+                        lang={lang}
+                        icon={<Boxes size={22} />}
+                        title={getTranslation(lang, 'priceLists.noBundlesFound')}
+                      />
                     </td>
                   </tr>
                 ) : (
                   bundles.map(b => (
                     <tr key={b.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                      <td className="font-bold text-primary" dir="auto">
                         {b.parentProductName || b.parentProductId}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 600 }}>{b.childProductName}</span>
+                        <span className="font-semibold text-foreground" dir="auto">{b.childProductName}</span>
                         {b.childProductSku && (
-                          <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{b.childProductSku}</span>
+                          <span className="block text-[11px] font-mono text-muted-foreground" dir="ltr">{b.childProductSku}</span>
                         )}
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>
-                        {b.quantity} pcs
+                      <td className="font-mono font-bold tabular-nums">
+                        <bdi>{b.quantity} {getTranslation(lang, 'priceLists.unitPiece')}</bdi>
                       </td>
-                      <td style={{ fontSize: '12px', color: '#64748b' }}>
-                        Ratio: {b.unitPriceRatio}
+                      <td className="text-xs text-muted-foreground">
+                        {getTranslation(lang, 'priceLists.priceRatio')}:{' '}
+                        <span className="font-mono font-bold tabular-nums text-foreground" dir="ltr">
+                          {b.unitPriceRatio}
+                        </span>
                       </td>
                     </tr>
                   ))
@@ -596,12 +603,11 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {/* Tab 3: Customer Assignments */}
       {activeTab === 'CUSTOMERS' && (
         <div className="panel-clean">
-          <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>{getTranslation(lang, 'priceLists.assignCustomer')}</h4>
+          <div className="px-5 py-3.5 flex justify-between items-center border-b border-border">
+            <h4 className="m-0 text-sm font-bold text-foreground">{getTranslation(lang, 'priceLists.assignCustomer')}</h4>
             <button
               type="button"
-              className="btn-clean-primary"
-              style={{ padding: '4px 10px', fontSize: '12px' }}
+              className="btn-clean-primary py-1.5 px-3 text-xs"
               onClick={() => {
                 if (customers.length > 0 && !assignCustomerId) setAssignCustomerId(customers[0].id);
                 if (priceLists.length > 0 && !assignListId) setAssignListId(priceLists[0].id);
@@ -617,9 +623,9 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
             <table className="table-clean">
               <thead>
                 <tr>
-                  <th>{getTranslation(lang, 'customers.customerName')}</th>
-                  <th>{getTranslation(lang, 'customers.phone')}</th>
-                  <th>{getTranslation(lang, 'customers.loyaltyTier')}</th>
+                  <th>{getTranslation(lang, 'priceLists.customerName')}</th>
+                  <th>{getTranslation(lang, 'priceLists.customerPhone')}</th>
+                  <th>{getTranslation(lang, 'priceLists.loyaltyTier')}</th>
                   <th>{getTranslation(lang, 'priceLists.tabLists')}</th>
                 </tr>
               </thead>
@@ -628,15 +634,13 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                   const assignedPL = priceLists.find(pl => pl.id === (c as any).priceListId);
                   return (
                     <tr key={c.id}>
-                      <td style={{ fontWeight: 600 }}>{c.name}</td>
-                      <td style={{ fontSize: '12px', color: '#64748b' }}>{c.phone}</td>
+                      <td className="font-semibold text-foreground" dir="auto">{c.name}</td>
+                      <td className="text-xs text-muted-foreground font-mono tabular-nums" dir="ltr">{c.phone}</td>
                       <td>
-                        <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '6px', background: '#f1f5f9' }}>
-                          {c.loyaltyTier}
-                        </span>
+                        <StatusBadge tone="slate" label={c.loyaltyTier} />
                       </td>
                       <td>
-                        <span style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                        <span className="font-bold text-primary">
                           {assignedPL ? (isAr && assignedPL.nameAr ? assignedPL.nameAr : assignedPL.name) : getTranslation(lang, 'priceLists.defaultBadge')}
                         </span>
                       </td>
@@ -801,7 +805,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
 
               {/* Components */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', background: '#f8fafc' }}>
+              <div className="border border-border rounded-xl p-3 bg-muted/40">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 700 }}>{getTranslation(lang, 'priceLists.components')}</span>
                   <button 
@@ -952,19 +956,19 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                  {getTranslation(lang, 'priceLists.tierPrice')} (Special Fixed Price)
-                </label>
-                <input 
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={tierPrice}
-                  onChange={e => setTierPrice(e.target.value ? Number(e.target.value) : '')}
-                  placeholder="Optional fixed unit price"
-                  className="input-clean"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
-                />
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'priceLists.tierPrice')} {getTranslation(lang, 'priceLists.optionalFixedPriceNote')}
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={tierPrice}
+                    onChange={e => setTierPrice(e.target.value ? Number(e.target.value) : '')}
+                    placeholder={getTranslation(lang, 'priceLists.tierPrice')}
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>

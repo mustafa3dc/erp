@@ -44,9 +44,14 @@ import {
   Edit3,
   Sun,
   Moon,
-  Building2
+  Building2,
+  TrendingUp,
+  Command
 } from 'lucide-react';
 import { SettingsProvider, useSettings } from './context/settings-context';
+import { getTranslation } from './lib/i18n';
+import CommandPaletteModal from './components/modals/CommandPaletteModal';
+import MiniSparkline from './components/ui/MiniSparkline';
 import { Toaster, toast } from 'sonner';
 import BarcodeSvg from './components/BarcodeSvg';
 import WarehouseCapacityBars from './components/WarehouseCapacityBars';
@@ -487,6 +492,27 @@ function DashboardApp() {
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState<boolean>(false);
   const [copiedSku, setCopiedSku] = useState<string>('');
   const [poToReceivePrefill, setPoToReceivePrefill] = useState<any | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [serialLookupQuery, setSerialLookupQuery] = useState<string>('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('zilox_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('zilox_sidebar_collapsed', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   // Collapsible Sidebar Groups State
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -687,10 +713,18 @@ function DashboardApp() {
     document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
   }, [lang]);
 
-  // Keyboard shortcut [Q] to focus search with strict input isolation
+  // Keyboard shortcuts: [Cmd/Ctrl + K] for Global Command Bar, [Q] to focus quick search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Strict Active Element Isolation: Ignore keypress if emitted from within any form field or editable area
+      // 1. Global Cmd+K / Ctrl+K works from anywhere
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K' || e.code === 'KeyK')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsCommandPaletteOpen(prev => !prev);
+        return;
+      }
+
+      // 2. Ignore single-letter shortcut if emitted from within any form field or editable area
       const target = (e.target || document.activeElement) as HTMLElement | null;
       if (target) {
         const tagName = target.tagName ? target.tagName.toUpperCase() : '';
@@ -699,10 +733,10 @@ function DashboardApp() {
         }
       }
 
-      // 2. Only trigger shortcut when typing outside any input
-      if ((e.key === 'q' || e.key === 'Q') && document.activeElement !== searchInputRef.current) {
+      // 3. [Q] opens quick command bar
+      if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
-        searchInputRef.current?.focus();
+        setIsCommandPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1296,17 +1330,17 @@ function DashboardApp() {
         </div>
       )}
 
-      {/* Global Unified Topbar Header - Merged Brand & Controls */}
+      {/* Global Unified Topbar Header - Executive SaaS Command Bar & Controls */}
       <header className="topbar bg-card text-foreground border-border">
-        {/* Brand Section (Merged into Topbar, permanently fixed on scroll without @i tag) */}
-        <div 
-          className="topbar-brand" 
-          onClick={() => setActiveNav('Dashboard')} 
+        {/* Brand Section */}
+        <div
+          className="topbar-brand"
+          onClick={() => setActiveNav('Dashboard')}
           style={{ cursor: 'pointer' }}
-          title={isAr ? 'العودة إلى لوحة القيادة' : 'Back to Dashboard'}
+          title={getTranslation(lang, 'ui.header.backToDashboard')}
         >
           <div className="brand-cube-icon">
-            <Boxes size={22} className="cube-svg" />
+            <Boxes size={20} strokeWidth={1.9} className="cube-svg" />
           </div>
           <span className="brand-name">
             Bontu <span className="brand-badge">Suite</span>
@@ -1317,103 +1351,103 @@ function DashboardApp() {
 
         <div className="topbar-title-block">
           <h1 className="page-title">
-            {activeNav === 'Dashboard' 
-              ? (isAr ? 'لوحة القيادة والمؤشرات الحية' : 'Live Dashboard & KPIs')
+            {activeNav === 'Dashboard'
+              ? getTranslation(lang, 'ui.header.dashboardTitle')
               : (NAV_TITLES[activeNav] ? (isAr ? NAV_TITLES[activeNav].ar : NAV_TITLES[activeNav].en) : activeNav)}
           </h1>
           <p className="page-subtitle">
-            {isAr ? 'إدارة المستودعات، الشحنات، ونقاط البيع' : 'Warehouse, Freight & POS Management'}
+            {getTranslation(lang, 'ui.header.dashboardSubtitle')}
           </p>
         </div>
 
           <div className="topbar-center">
             {/* Interactive Warehouse Dropdown */}
             <div className="dropdown-container">
-              <div 
+              <div
                 className="dropdown-pill"
                 onClick={() => toggleMenu('warehouse')}
               >
-                <span>
+                <span className="truncate max-w-[160px]">
                   {selectedWarehouseId === 'ALL'
-                    ? (isAr ? 'جميع المستودعات والفروع' : 'All Warehouses & Branches')
+                    ? getTranslation(lang, 'ui.header.warehouseAll')
                     : <span dir="auto">{localizeWarehouse(warehouses.find(w => w.id === selectedWarehouseId)?.nameAr || selectedWarehouseId, lang)}</span>}
                 </span>
-                <ChevronDown size={15} className="chevron-muted" />
+                <ChevronDown size={14} className="chevron-muted shrink-0" />
               </div>
 
               {activeMenu === 'warehouse' && (
                 <div className="dropdown-menu-floating glass-panel fade-in">
                   {warehouseFilterOptions.map((wh) => (
-                    <div 
-                      key={wh.id} 
+                    <div
+                      key={wh.id}
                       className={`dropdown-menu-item ${selectedWarehouseId === wh.id ? 'selected' : ''}`}
                       onClick={() => {
                         setSelectedWarehouseId(wh.id);
                         saveStoredSelectedWarehouseId(wh.id);
                         closeMenu();
-                        showToast(isAr 
-                          ? `تم التصفية حسب: ${wh.id === 'ALL' ? 'جميع المستودعات والفروع' : wh.ar}` 
-                          : `Filtered by: ${wh.id === 'ALL' ? 'All Warehouses & Branches' : wh.ar}`);
+                        showToast(
+                          `${getTranslation(lang, 'ui.header.filteredBy')}: ${
+                            wh.id === 'ALL' ? getTranslation(lang, 'ui.header.warehouseAll') : wh.ar
+                          }`
+                        );
                       }}
                     >
-                      {wh.id === 'ALL' ? (isAr ? wh.ar : wh.en) : <span dir="auto">{wh.ar}</span>}
+                      {wh.id === 'ALL' ? getTranslation(lang, 'ui.header.warehouseAll') : <span dir="auto">{wh.ar}</span>}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Search Input with [Q] shortcut */}
-            <div className="search-bar-wrap" style={{ flex: 1, position: 'relative' }}>
-              <input
-                ref={searchInputRef}
-                type="text"
-                style={{ width: '100%', paddingInlineEnd: '42px' }}
-                placeholder={isAr ? 'بحث سريع في النظام...' : 'Search system...'}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleBarcodeSearch(searchTerm);
-                  }
-                }}
-              />
-              <kbd className="search-shortcut-kbd">Q</kbd>
-              <Search size={16} className="search-icon-inside" />
-            </div>
+            {/* Executive Cmd+K Command Bar Trigger */}
+            <button
+              type="button"
+              className="command-bar-trigger"
+              onClick={() => setIsCommandPaletteOpen(true)}
+              aria-label={getTranslation(lang, 'ui.header.commandBarPlaceholder')}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Search size={14} className="shrink-0 text-muted-foreground" />
+                <span className="truncate">{getTranslation(lang, 'ui.header.commandBarPlaceholder')}</span>
+              </span>
+              <kbd className="command-bar-kbd" dir="ltr">
+                {getTranslation(lang, 'ui.header.commandBarShortcut')}
+              </kbd>
+            </button>
           </div>
 
           <div className="topbar-controls">
             {/* Quick Theme Switcher Button */}
-            <button 
+            <button
               type="button"
-              className="icon-btn-square" 
+              className="icon-btn-square"
               onClick={() => setTheme(effectiveTheme === 'dark' ? 'light' : 'dark')}
-              title={isAr ? (effectiveTheme === 'dark' ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن') : (effectiveTheme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode')}
+              title={effectiveTheme === 'dark' ? getTranslation(lang, 'ui.header.switchToLight') : getTranslation(lang, 'ui.header.switchToDark')}
             >
-              {effectiveTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              {effectiveTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
             {/* Calendar Range Filter */}
             <div className="dropdown-container">
-              <button 
-                className="icon-btn-square" 
+              <button
+                type="button"
+                className="icon-btn-square"
                 onClick={() => toggleMenu('date')}
-                title={isAr ? 'تصفية حسب الفترة الزمنية' : 'Date Range Filter'}
+                title={getTranslation(lang, 'ui.header.dateRangeTitle')}
               >
-                <Calendar size={18} />
+                <Calendar size={16} />
               </button>
 
               {activeMenu === 'date' && (
-                <div className="dropdown-menu-floating glass-panel fade-in" style={{ width: '180px' }}>
+                <div className="dropdown-menu-floating glass-panel fade-in" style={{ width: '185px' }}>
                   {DATE_RANGE_OPTIONS.map((opt) => (
-                    <div 
-                      key={opt.id} 
+                    <div
+                      key={opt.id}
                       className={`dropdown-menu-item ${selectedDateRangeId === opt.id ? 'selected' : ''}`}
                       onClick={() => {
                         setSelectedDateRangeId(opt.id);
                         closeMenu();
-                        showToast(isAr ? `الفترة الزمنية: ${opt.ar}` : `Date range: ${opt.en}`);
+                        showToast(isAr ? opt.ar : opt.en);
                       }}
                     >
                       {isAr ? opt.ar : opt.en}
@@ -1425,12 +1459,13 @@ function DashboardApp() {
 
             {/* Notification Bell with Dynamic Live Alerts */}
             <div className="notification-bell-container">
-              <button 
-                className="bell-btn" 
+              <button
+                type="button"
+                className="bell-btn"
                 onClick={() => toggleMenu('notifications')}
-                title={isAr ? 'التنبيهات والإشعارات' : 'Notifications'}
+                title={getTranslation(lang, 'ui.header.notificationsTitle')}
               >
-                <Bell size={18} />
+                <Bell size={16} />
                 {totalNotifications > 0 && (
                   <span className="bell-badge-count">{totalNotifications}</span>
                 )}
@@ -1441,40 +1476,43 @@ function DashboardApp() {
                   {totalNotifications > 0 ? (
                     <>
                       {lowStockCount > 0 && (
-                        <div 
-                          className="notif-line warning clickable" 
+                        <div
+                          className="notif-line warning clickable"
                           onClick={() => {
                             setActiveNav('Inventory & Items');
                             closeMenu();
-                            showToast(isAr ? 'تم فتح الأصناف التي بحاجة لإعادة طلب' : 'Showing low stock items requiring reorder');
+                            showToast(getTranslation(lang, 'ui.dashboard.openingLowStockToast'));
                           }}
                         >
-                          <AlertTriangle size={14} className="icon-orange" />
-                          <span>{isAr ? `تنبيهات نقص المخزون (${lowStockCount})` : `Low stock alerts (${lowStockCount})`}</span>
+                          <AlertTriangle size={14} className="icon-orange shrink-0" />
+                          <span>
+                            {getTranslation(lang, 'ui.header.lowStockAlerts')} (<span className="tabular-nums">{lowStockCount}</span>)
+                          </span>
                         </div>
                       )}
                       {shipmentStats.outboundPicking > 0 && (
-                        <div 
-                          className="notif-line success clickable" 
+                        <div
+                          className="notif-line success clickable"
                           onClick={() => {
                             setActiveNav('Outbound (Goods Out)');
                             closeMenu();
-                            showToast(isAr ? 'تم فتح أوامر الشحن الجاهزة' : 'Showing ready dispatch alerts');
                           }}
                         >
-                          <Send size={14} className="icon-green" />
-                          <span>{isAr ? `أذونات الصرف قيد التجهيز (${shipmentStats.outboundPicking})` : `Pending dispatch alerts (${shipmentStats.outboundPicking})`}</span>
+                          <Send size={14} className="icon-green shrink-0" />
+                          <span>
+                            {getTranslation(lang, 'ui.header.pendingDispatchAlerts')} (<span className="tabular-nums">{shipmentStats.outboundPicking}</span>)
+                          </span>
                         </div>
                       )}
                     </>
                   ) : (
-                    <div style={{ padding: '14px 16px', textAlign: 'center', color: '#64748b', fontSize: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                      <Bell size={18} style={{ color: '#94a3b8' }} />
-                      <span style={{ fontWeight: 600, color: '#334155' }}>
-                        {isAr ? 'لا توجد تنبيهات جديدة' : 'No new notifications'}
+                    <div className="py-3 px-4 text-center flex flex-col items-center gap-1.5">
+                      <Bell size={18} className="text-muted-foreground opacity-60" />
+                      <span className="text-xs font-semibold text-foreground">
+                        {getTranslation(lang, 'ui.header.noNotifications')}
                       </span>
-                      <small style={{ color: '#10b981', fontSize: '11px' }}>
-                        {isAr ? 'المخزون متوازن والعمليات مكتملة' : 'Stock levels and operations are normal'}
+                      <small className="text-[11px] text-emerald-500 font-medium">
+                        {getTranslation(lang, 'ui.header.stockBalanced')}
                       </small>
                     </div>
                   )}
@@ -1482,7 +1520,7 @@ function DashboardApp() {
               )}
             </div>
 
-            {/* Clean UserNav Component (shadcn/ui style with strict tenant isolation) */}
+            {/* Clean UserNav Component */}
             <UserNav
               user={currentUser}
               isAr={isAr}
@@ -1492,7 +1530,7 @@ function DashboardApp() {
           </div>
         </header>
 
-        {/* Workspace Area: Fixed Sidebar + Scrollable Main Content */}
+        {/* Workspace Area: Collapsible Sidebar + Scrollable Main Content */}
         <div className="app-workspace">
           <AppSidebar
             activeNav={activeNav}
@@ -1503,6 +1541,8 @@ function DashboardApp() {
             expandedGroups={expandedGroups}
             onToggleGroup={toggleGroup}
             onOpenSettings={() => setActiveNav('Settings')}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebarCollapse}
           />
 
           {/* Main Content Viewport */}
@@ -1520,155 +1560,192 @@ function DashboardApp() {
           />
         ) : (
           <>
-            {/* View 1: Main Dashboard */}
+            {/* View 1: Executive Dashboard */}
             {activeNav === 'Dashboard' && (
           <div className="dashboard-tab-content fade-in">
-            {/* Dashboard Quick Operations Bar (Strict RTL Grouping - Zero Dead Space) */}
+            {/* Dashboard Quick Operations Bar */}
             <QuickOperationsBar
+              onNewSale={() => setIsCreateInvoiceOpen(true)}
+              onQuickExpense={() => setIsQuickExpenseOpen(true)}
+              onSerialLookup={() => {
+                setSerialLookupQuery('');
+                setActiveNav('Serial & Warranty Tracking');
+              }}
               onNewProduct={() => {
                 setAddProductModalMode('new_product');
                 setIsAddProductOpen(true);
               }}
-              onPos={() => {
-                setActiveNav('Cloud POS');
-              }}
-              onInboundReceipt={() => {
-                setActiveNav('Purchases & POs');
-              }}
-              onQuickExpense={() => {
-                setIsQuickExpenseOpen(true);
-              }}
+              onPos={() => setActiveNav('Cloud POS')}
+              onInboundReceipt={() => setActiveNav('Purchases & POs')}
               onTransfer={() => setIsTransferModalOpen(true)}
               isAr={isAr}
+              lang={lang}
             />
 
-            {/* Row 1: 4 KPI Cards */}
+            {/* Row 1: 4 Executive KPI Cards with Trend Pills & Sparklines */}
             <div className="kpi-row">
               {/* KPI 1: SKU Varieties */}
-              <div 
-                className="kpi-card clickable" 
-                onClick={() => setActiveNav('Inventory & Items')} 
-                title={isAr ? 'عرض دليل الأصناف' : 'Click to view all SKU varieties'}
+              <div
+                className="kpi-card clickable"
+                onClick={() => setActiveNav('Inventory & Items')}
+                title={getTranslation(lang, 'ui.dashboard.skuVarieties')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{isAr ? 'أصناف الـ SKU المسجلة' : 'Total SKU Varieties'}</span>
-                  <Package size={18} style={{ color: 'var(--muted-slate)' }} />
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.skuVarieties')}</span>
+                  <span className="kpi-trend-pill indigo">
+                    <TrendingUp size={11} />
+                    <span>{getTranslation(lang, 'ui.dashboard.trendActive')}</span>
+                  </span>
                 </div>
-                <div className="kpi-main-number">
-                  {products.length.toLocaleString()} <span className="kpi-unit">{isAr ? 'صنف' : 'items'}</span>
+                <div className="kpi-value-spark-row">
+                  <div className="kpi-main-number m-0">
+                    {products.length.toLocaleString()}{' '}
+                    <span className="kpi-unit">{getTranslation(lang, 'ui.dashboard.itemsUnit')}</span>
+                  </div>
+                  <MiniSparkline
+                    data={[Math.max(2, products.length - 8), Math.max(4, products.length - 5), Math.max(3, products.length - 6), Math.max(5, products.length - 2), products.length || 1]}
+                    color="var(--primary)"
+                  />
                 </div>
                 <div className={`kpi-card-footer ${products.length > 0 ? 'green' : 'text-muted'}`}>
-                  <span>{products.length > 0 ? (isAr ? `${products.length} صنف مسجل في الدليل` : `${products.length} registered items`) : (isAr ? 'الدليل صافٍ - جاهز لإدخال المواد' : 'Clean catalog - ready for items')}</span>
+                  <span>
+                    {products.length > 0
+                      ? getTranslation(lang, 'ui.dashboard.registeredItemsHint')
+                      : getTranslation(lang, 'ui.dashboard.cleanCatalogHint')}
+                  </span>
                 </div>
               </div>
 
               {/* KPI 2: Total Inventory Value with Eye Toggle */}
               <div className="kpi-card">
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{isAr ? 'إجمالي قيمة المخزون' : 'Total Inventory Value'}</span>
-                  <button 
-                    type="button" 
-                    className="btn-toggle-eye" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') {
-                        setShowValuation(!showValuation);
-                      } else {
-                        showToast(isAr ? 'عذراً: عرض القيمة المالية محصور بالمدير العام والمحاسب' : 'Access Restricted: Valuation viewable by Managers & Accountants only');
-                      }
-                    }}
-                    title={showValuation ? (isAr ? 'حجب القيمة المالية للحماية' : 'Hide financial value') : (isAr ? 'إظهار القيمة المالية' : 'Show financial value')}
-                  >
-                    {showValuation ? <Eye size={15} /> : <EyeOff size={15} />}
-                  </button>
-                </div>
-                <div className="kpi-main-number">
-                  {showValuation && (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') ? (
-                    <>
-                      {formattedValuation}
-                    </>
-                  ) : (
-                    <span className="confidential-masked">
-                      •••••••• <span className="confidential-tag">{isAr ? 'سري للغاية' : 'Confidential'}</span>
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.inventoryValuation')}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="kpi-trend-pill neutral font-mono" dir="ltr">
+                      {settings.costValuationMethod || 'FIFO'}
                     </span>
-                  )}
+                    <button
+                      type="button"
+                      className="btn-toggle-eye"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') {
+                          setShowValuation(!showValuation);
+                        } else {
+                          showToast(getTranslation(lang, 'ui.dashboard.accessRestrictedValuation'));
+                        }
+                      }}
+                      title={showValuation ? getTranslation(lang, 'ui.dashboard.hideValueTitle') : getTranslation(lang, 'ui.dashboard.showValueTitle')}
+                    >
+                      {showValuation ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="kpi-value-spark-row">
+                  <div className="kpi-main-number m-0" dir="ltr">
+                    {showValuation && (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') ? (
+                      formattedValuation
+                    ) : (
+                      <span className="confidential-masked">
+                        •••••••• <span className="confidential-tag">{getTranslation(lang, 'ui.dashboard.confidential')}</span>
+                      </span>
+                    )}
+                  </div>
+                  <MiniSparkline
+                    data={[62, 68, 65, 74, 79, 86]}
+                    color="#10b981"
+                  />
                 </div>
                 <div className="kpi-card-footer text-muted">
-                  <span>{isAr ? `تقييم المخزون المالي (${settings.costValuationMethod || 'FIFO'})` : `Financial Inventory Valuation (${settings.costValuationMethod || 'FIFO'})`}</span>
+                  <span>
+                    {getTranslation(lang, 'ui.dashboard.valuationMethod')}: {settings.costValuationMethod || 'FIFO'}
+                  </span>
                 </div>
               </div>
 
-              {/* KPI 3: Daily Shipments (Inbound & Outbound) */}
-              <div 
-                className="kpi-card kpi-card-green clickable" 
-                onClick={() => setActiveNav('Inbound (Goods In)')} 
-                title={isAr ? 'عرض تفاصيل حركة الشحنات اليومية' : 'View daily inbound & outbound cargo'}
+              {/* KPI 3: Daily Shipments Flow */}
+              <div
+                className="kpi-card kpi-card-green clickable"
+                onClick={() => setActiveNav('Inbound (Goods In)')}
+                title={getTranslation(lang, 'ui.dashboard.dailyShipmentsFlow')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{isAr ? 'حركة الشحنات اليومية' : 'Daily Shipments Flow'}</span>
-                  <div className="kpi-signal-meter">
-                    <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} style={{ backgroundColor: 'var(--chart-3)' }}></span>
-                    <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} style={{ backgroundColor: 'var(--chart-3)' }}></span>
-                    <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} style={{ backgroundColor: 'var(--chart-1)' }}></span>
-                    <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} style={{ backgroundColor: 'var(--chart-1)' }}></span>
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.dailyShipmentsFlow')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="kpi-trend-pill positive">
+                      {getTranslation(lang, 'ui.dashboard.trendLive')}
+                    </span>
+                    <div className="kpi-signal-meter">
+                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
+                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
+                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
+                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
+                    </div>
                   </div>
                 </div>
                 <div className="kpi-dual-shipments">
                   <div className="shipment-flow-row">
                     <span className="shipment-flow-label">
-                      <ArrowDownToLine size={13} style={{ color: 'var(--chart-1)' }} />
-                      <span>{isAr ? 'الوارد:' : 'Inbound:'}</span>
+                      <ArrowDownToLine size={13} style={{ color: 'var(--primary)' }} />
+                      <span>{getTranslation(lang, 'ui.dashboard.inbound')}:</span>
                     </span>
-                    <span className="shipment-flow-values">
-                      <span className="val-pending">{shipmentStats.inboundPending} {isAr ? 'معلق' : 'pending'}</span> / <span className="val-received">{shipmentStats.inboundReceived} {isAr ? 'مستلم' : 'rcvd'}</span>
+                    <span className="shipment-flow-values tabular-nums">
+                      <span className="val-pending">{shipmentStats.inboundPending} {getTranslation(lang, 'ui.dashboard.pending')}</span> / <span className="val-received">{shipmentStats.inboundReceived} {getTranslation(lang, 'ui.dashboard.received')}</span>
                     </span>
                   </div>
                   <div className="shipment-flow-row">
                     <span className="shipment-flow-label">
-                      <ArrowUpFromLine size={13} style={{ color: 'var(--chart-3)' }} />
-                      <span>{isAr ? 'الصادر:' : 'Outbound:'}</span>
+                      <ArrowUpFromLine size={13} style={{ color: '#10b981' }} />
+                      <span>{getTranslation(lang, 'ui.dashboard.outbound')}:</span>
                     </span>
-                    <span className="shipment-flow-values">
-                      <span className="val-pending">{shipmentStats.outboundPicking} {isAr ? 'قيد التجهيز' : 'picking'}</span> / <span className="val-received">{shipmentStats.outboundShipped} {isAr ? 'تم شحنه' : 'shipped'}</span>
+                    <span className="shipment-flow-values tabular-nums">
+                      <span className="val-pending">{shipmentStats.outboundPicking} {getTranslation(lang, 'ui.dashboard.picking')}</span> / <span className="val-received">{shipmentStats.outboundShipped} {getTranslation(lang, 'ui.dashboard.shipped')}</span>
                     </span>
                   </div>
                 </div>
-                <div className="kpi-card-footer green">
-                  <span>{isAr ? 'متابعة حركة الشحن والتسليم لحظياً' : 'Live freight & shipment dispatch'}</span>
+                <div className="kpi-card-footer green mt-1">
+                  <span>{getTranslation(lang, 'ui.dashboard.liveFreightHint')}</span>
                 </div>
               </div>
 
-              {/* KPI 4: Low Stock Alerts with Immediate Action Button */}
-              <div 
-                className="kpi-card kpi-card-orange clickable" 
-                onClick={() => setActiveNav('Inventory & Items')} 
-                title={isAr ? 'عرض الأصناف التي بحاجة لإعادة طلب' : 'View low stock items needing reorder'}
+              {/* KPI 4: Low Stock Alerts */}
+              <div
+                className="kpi-card kpi-card-orange clickable"
+                onClick={() => setActiveNav('Inventory & Items')}
+                title={getTranslation(lang, 'ui.dashboard.lowStockAlerts')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{isAr ? 'تنبيهات نقص المخزون' : 'Low Stock Alerts'}</span>
-                  <AlertTriangle size={18} className="kpi-alert-icon" />
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.lowStockAlerts')}</span>
+                  <span className={`kpi-trend-pill ${lowStockCount > 0 ? 'warning' : 'positive'}`}>
+                    {lowStockCount > 0 ? getTranslation(lang, 'ui.dashboard.trendAttention') : getTranslation(lang, 'ui.dashboard.trendHealthy')}
+                  </span>
                 </div>
                 <div className={`kpi-main-number ${lowStockCount > 0 ? 'orange-text' : ''}`}>
-                  {lowStockCount} <span className={lowStockCount > 0 ? 'kpi-unit-orange' : 'kpi-unit'}>{isAr ? (lowStockCount > 0 ? 'صنف بحاجة لإعادة الطلب' : 'أصناف تحت حد الطلب') : 'items need reorder'}</span>
+                  {lowStockCount}{' '}
+                  <span className={lowStockCount > 0 ? 'kpi-unit-orange' : 'kpi-unit'}>
+                    {lowStockCount > 0
+                      ? getTranslation(lang, 'ui.dashboard.itemsNeedReorder')
+                      : getTranslation(lang, 'ui.dashboard.itemsBelowThreshold')}
+                  </span>
                 </div>
                 {lowStockCount > 0 ? (
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="kpi-direct-action-btn"
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveNav('Inventory & Items');
-                      showToast(isAr ? 'تم فتح قائمة الأصناف التي بحاجة لإعادة طلب فوري' : 'Opening low stock items for replenishment');
+                      showToast(getTranslation(lang, 'ui.dashboard.openingLowStockToast'));
                     }}
                   >
                     <ShoppingCart size={13} />
-                    <span>{isAr ? 'عرض المواد وإصدار أمر شراء' : 'View Items & Issue PO'}</span>
+                    <span>{getTranslation(lang, 'ui.dashboard.viewItemsIssuePo')}</span>
                   </button>
                 ) : (
-                  <div className="kpi-card-footer text-muted" style={{ marginTop: '6px' }}>
-                    <span style={{ fontSize: '11.5px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 500 }}>
+                  <div className="kpi-card-footer green mt-1.5">
+                    <span className="inline-flex items-center gap-1.5">
                       <CheckCircle2 size={13} />
-                      {isAr ? 'المخزون متوازن ضمن الحدود الآمنة' : 'Stock is balanced within safe thresholds'}
+                      <span>{getTranslation(lang, 'ui.dashboard.stockBalancedMsg')}</span>
                     </span>
                   </div>
                 )}
@@ -1899,7 +1976,7 @@ function DashboardApp() {
 
         {/* View: Serial & Warranty Tracking */}
         {activeNav === 'Serial & Warranty Tracking' && (
-          <SerialTrackingView lang={lang} />
+          <SerialTrackingView lang={lang} initialSerialLookup={serialLookupQuery} />
         )}
 
         {/* View: Warehouses & Racks */}
@@ -2159,6 +2236,34 @@ function DashboardApp() {
           }}
         />
       )}
+
+      {/* Global Cmd+K Executive Command Palette */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        lang={lang}
+        currentUser={currentUser}
+        products={products}
+        invoices={invoices}
+        onNavigate={(navId) => {
+          if (navId !== 'Serial & Warranty Tracking') {
+            setSerialLookupQuery('');
+          }
+          setActiveNav(navId);
+        }}
+        onSelectProduct={(prod) => setSelectedProductForModal(prod)}
+        onSelectInvoice={(inv) => setSelectedInvoiceForModal(inv)}
+        onLookupSerial={(serial) => {
+          setSerialLookupQuery(serial);
+          setActiveNav('Serial & Warranty Tracking');
+        }}
+        onNewSale={() => setIsCreateInvoiceOpen(true)}
+        onNewExpense={() => setIsQuickExpenseOpen(true)}
+        onNewProduct={() => {
+          setAddProductModalMode('new_product');
+          setIsAddProductOpen(true);
+        }}
+      />
 
       {/* Quick Expense Modal */}
       <QuickExpenseModal

@@ -34,12 +34,15 @@ import {
   SerialLookupResult 
 } from '../../types/businessModules';
 import { Product, Warehouse } from '../../types/warehouse';
+import { StatusBadge } from '../ui/StatusBadge';
+import { EmptyState } from '../ui/EmptyState';
 
 interface SerialTrackingViewProps {
   lang: 'en' | 'ar';
+  initialSerialLookup?: string;
 }
 
-export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
+export default function SerialTrackingView({ lang, initialSerialLookup }: SerialTrackingViewProps) {
   const isAr = lang === 'ar';
   const { formatMoney } = useSettings();
   const getProdName = (p?: Product) => p ? ((isAr ? p.nameAr : p.nameEn) || p.nameAr || p.nameEn) : '';
@@ -50,7 +53,7 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
   const [warehouses] = useState<Warehouse[]>(() => getStoredWarehouses());
   const [suppliers] = useState(() => getStoredSuppliers());
 
-  const [scanInput, setScanInput] = useState('');
+  const [scanInput, setScanInput] = useState(initialSerialLookup || '');
   const [lookupResult, setLookupResult] = useState<SerialLookupResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [notFoundMsg, setNotFoundMsg] = useState(false);
@@ -118,9 +121,8 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
   }).length;
 
   // Handle Fast Scan / Lookup
-  const handleScanSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const query = scanInput.trim();
+  const executeLookup = async (rawQuery: string) => {
+    const query = rawQuery.trim();
     if (!query) return;
 
     setIsSearching(true);
@@ -173,6 +175,18 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
     }
 
     setIsSearching(false);
+  };
+
+  useEffect(() => {
+    if (initialSerialLookup && initialSerialLookup.trim()) {
+      setScanInput(initialSerialLookup.trim());
+      executeLookup(initialSerialLookup);
+    }
+  }, [initialSerialLookup]);
+
+  const handleScanSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    await executeLookup(scanInput);
   };
 
   // Filtered Serials
@@ -287,121 +301,97 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
       </div>
 
       {/* FAST SCANNER LOOKUP BAR */}
-      <div 
-        className="panel-clean" 
-        style={{ 
-          padding: '20px 24px', 
-          marginBottom: '20px', 
-          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(168, 85, 247, 0.04) 100%)',
-          border: '1px solid rgba(99, 102, 241, 0.2)',
-          borderRadius: '16px'
+      <div
+        className="panel-clean p-5 mb-5"
+        style={{
+          background: 'linear-gradient(135deg, var(--primary-light) 0%, color-mix(in oklch, var(--primary) 4%, var(--card)) 100%)',
+          borderColor: 'var(--primary-border)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-          <Scan size={18} style={{ color: 'var(--primary)' }} />
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+        <div className="flex items-center gap-2 mb-3">
+          <Scan size={17} style={{ color: 'var(--primary)' }} />
+          <h3 className="m-0 text-sm font-bold text-foreground">
             {getTranslation(lang, 'serialTracking.fastLookup')}
           </h3>
         </div>
 
-        <form onSubmit={handleScanSubmit} style={{ display: 'flex', gap: '10px' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <Scan size={18} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', [isAr ? 'right' : 'left']: '14px', color: '#94a3b8' }} />
-            <input 
+        <form onSubmit={handleScanSubmit} className="flex items-center gap-2.5">
+          <div className="relative flex-1">
+            <Scan size={16} className="absolute top-1/2 -translate-y-1/2 start-3.5 text-muted-foreground pointer-events-none" />
+            <input
               ref={scanInputRef}
-              type="text" 
+              type="text"
               value={scanInput}
               onChange={e => setScanInput(e.target.value)}
               placeholder={getTranslation(lang, 'serialTracking.scanPlaceholder')}
-              className="input-clean font-mono"
-              style={{ 
-                width: '100%', 
-                padding: '12px 16px', 
-                [isAr ? 'paddingRight' : 'paddingLeft']: '42px', 
-                fontSize: '15px', 
-                fontWeight: 600,
-                borderRadius: '12px',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.08)'
-              }}
+              className="input-clean font-mono w-full h-11 ps-10 pe-4 text-sm font-semibold rounded-xl border border-primary/30 bg-background text-foreground shadow-xs"
               autoFocus
             />
           </div>
-          <button 
-            type="submit" 
-            className="btn-clean-primary"
-            style={{ padding: '0 24px', fontSize: '14px', borderRadius: '12px' }}
+          <button
+            type="submit"
+            className="btn-clean-primary h-11 px-5 rounded-xl"
             disabled={isSearching}
           >
-            <Search size={16} />
-            <span>{getTranslation(lang, 'common.actions')}</span>
+            <Search size={15} />
+            <span>{getTranslation(lang, 'ui.common.actions')}</span>
           </button>
         </form>
 
         {/* Lookup Result Card */}
         {lookupResult && (
-          <div 
-            className="fade-in" 
-            style={{ 
-              marginTop: '18px', 
-              padding: '18px 20px', 
-              borderRadius: '14px', 
-              background: '#fff', 
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.04)'
-            }}
+          <div
+            className="fade-in mt-4 p-5 rounded-2xl bg-card border border-border"
+            style={{ boxShadow: 'var(--shadow-card)' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                  <h4 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+                <div className="flex items-center gap-2.5 mb-1">
+                  <h4 className="m-0 text-base font-extrabold text-foreground" dir="auto">
                     {lookupResult.productName}
                   </h4>
-                  <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#64748b' }}>
+                  <span className="text-xs font-mono text-muted-foreground" dir="ltr">
                     ({lookupResult.productSku})
                   </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--primary)' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold font-mono text-primary" dir="ltr">
                     SN: {lookupResult.serialNumber}
                   </span>
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    background: lookupResult.status === 'InStock' ? 'rgba(34, 197, 94, 0.12)' :
-                                lookupResult.status === 'Sold' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                    color: lookupResult.status === 'InStock' ? '#16a34a' :
-                           lookupResult.status === 'Sold' ? '#2563eb' : '#dc2626'
-                  }}>
-                    {lookupResult.status}
-                  </span>
+                  <StatusBadge
+                    tone={
+                      lookupResult.status === 'InStock'
+                        ? 'emerald'
+                        : lookupResult.status === 'Sold'
+                          ? 'indigo'
+                          : 'rose'
+                    }
+                    dot
+                    label={lookupResult.status}
+                  />
                 </div>
               </div>
 
               {/* Warranty Card */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '10px', 
-                padding: '8px 14px', 
-                borderRadius: '10px',
-                background: lookupResult.isWarrantyActive ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-                border: `1px solid ${lookupResult.isWarrantyActive ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`
-              }}>
+              <div
+                className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl border"
+                style={{
+                  background: lookupResult.isWarrantyActive ? 'rgba(16, 185, 129, 0.10)' : 'rgba(239, 68, 68, 0.10)',
+                  borderColor: lookupResult.isWarrantyActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'
+                }}
+              >
                 {lookupResult.isWarrantyActive ? (
-                  <ShieldCheck size={24} style={{ color: '#16a34a' }} />
+                  <ShieldCheck size={22} className="text-emerald-500 shrink-0" />
                 ) : (
-                  <ShieldAlert size={24} style={{ color: '#dc2626' }} />
+                  <ShieldAlert size={22} className="text-destructive shrink-0" />
                 )}
                 <div>
-                  <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: lookupResult.isWarrantyActive ? '#16a34a' : '#dc2626' }}>
+                  <span className={`block text-xs font-bold ${lookupResult.isWarrantyActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
                     {lookupResult.isWarrantyActive ? getTranslation(lang, 'serialTracking.activeWarranty') : getTranslation(lang, 'serialTracking.expiredWarranty')}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>
-                    {lookupResult.isWarrantyActive 
-                      ? `${lookupResult.warrantyDaysRemaining} ${getTranslation(lang, 'quotations.daysRemaining')}` 
+                  <span className="text-[11px] text-muted-foreground tabular-nums" dir="ltr">
+                    {lookupResult.isWarrantyActive
+                      ? `${lookupResult.warrantyDaysRemaining} ${getTranslation(lang, 'quotations.daysRemaining')}`
                       : (lookupResult.warrantyEndDate ? lookupResult.warrantyEndDate.slice(0, 10) : '—')}
                   </span>
                 </div>
@@ -409,42 +399,42 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
             </div>
 
             {/* Inbound & Outbound details grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', borderTop: '1px solid #f1f5f9', paddingTop: '14px' }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-3.5 border-t border-border">
               {/* Inbound */}
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px' }}>
-                <span style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>
+              <div className="bg-muted/50 border border-border/70 p-3.5 rounded-xl space-y-1.5">
+                <span className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2">
                   {getTranslation(lang, 'serialTracking.purchaseInfo')}
                 </span>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'serialTracking.supplier')}:</span>
-                  <span style={{ fontWeight: 600 }}>{lookupResult.supplierName || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'serialTracking.supplier')}:</span>
+                  <span className="font-semibold text-foreground" dir="auto">{lookupResult.supplierName || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'serialTracking.purchaseBill')}:</span>
-                  <span style={{ fontFamily: 'monospace' }}>{lookupResult.purchaseBillNo || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'serialTracking.purchaseBill')}:</span>
+                  <span className="font-mono text-foreground" dir="ltr">{lookupResult.purchaseBillNo || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'expenses.voucherDate')}:</span>
-                  <span>{(lookupResult.purchaseDate || '').slice(0, 10) || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'expenses.voucherDate')}:</span>
+                  <span className="tabular-nums text-foreground" dir="ltr">{(lookupResult.purchaseDate || '').slice(0, 10) || '—'}</span>
                 </div>
               </div>
 
               {/* Outbound */}
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px' }}>
-                <span style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>
+              <div className="bg-muted/50 border border-border/70 p-3.5 rounded-xl space-y-1.5">
+                <span className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2">
                   {getTranslation(lang, 'serialTracking.salesInfo')}
                 </span>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'serialTracking.customer')}:</span>
-                  <span style={{ fontWeight: 600 }}>{lookupResult.customerName || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'serialTracking.customer')}:</span>
+                  <span className="font-semibold text-foreground" dir="auto">{lookupResult.customerName || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'serialTracking.salesInvoice')}:</span>
-                  <span style={{ fontFamily: 'monospace' }}>{lookupResult.salesInvoiceNo || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'serialTracking.salesInvoice')}:</span>
+                  <span className="font-mono text-foreground" dir="ltr">{lookupResult.salesInvoiceNo || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: '#64748b' }}>{getTranslation(lang, 'expenses.voucherDate')}:</span>
-                  <span>{(lookupResult.saleDate || '').slice(0, 10) || '—'}</span>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{getTranslation(lang, 'expenses.voucherDate')}:</span>
+                  <span className="tabular-nums text-foreground" dir="ltr">{(lookupResult.saleDate || '').slice(0, 10) || '—'}</span>
                 </div>
               </div>
             </div>
@@ -452,8 +442,8 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
         )}
 
         {notFoundMsg && (
-          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', fontSize: '13px', fontWeight: 600 }}>
-            <AlertTriangle size={16} />
+          <div className="mt-3 flex items-center gap-2 text-destructive text-xs font-semibold">
+            <AlertTriangle size={15} />
             <span>{getTranslation(lang, 'serialTracking.notFound')}</span>
           </div>
         )}
@@ -464,48 +454,48 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
         <div className="module-kpi-card">
           <div className="module-kpi-info">
             <span className="module-kpi-label">{getTranslation(lang, 'serialTracking.inStock')}</span>
-            <div className="module-kpi-value font-mono" style={{ color: '#16a34a' }}>
+            <div className="module-kpi-value font-mono text-emerald-600 dark:text-emerald-400">
               {inStockCount} <span className="kpi-sub-unit">IMEI</span>
             </div>
           </div>
           <div className="module-kpi-icon emerald">
-            <WarehouseIcon size={20} />
+            <WarehouseIcon size={19} />
           </div>
         </div>
 
         <div className="module-kpi-card">
           <div className="module-kpi-info">
             <span className="module-kpi-label">{getTranslation(lang, 'serialTracking.sold')}</span>
-            <div className="module-kpi-value font-mono" style={{ color: '#2563eb' }}>
+            <div className="module-kpi-value font-mono text-primary">
               {soldCount} <span className="kpi-sub-unit">IMEI</span>
             </div>
           </div>
           <div className="module-kpi-icon indigo">
-            <User size={20} />
+            <User size={19} />
           </div>
         </div>
 
         <div className="module-kpi-card">
           <div className="module-kpi-info">
             <span className="module-kpi-label">{getTranslation(lang, 'serialTracking.activeWarranty')}</span>
-            <div className="module-kpi-value font-mono" style={{ color: '#8b5cf6' }}>
+            <div className="module-kpi-value font-mono text-purple-600 dark:text-purple-400">
               {activeWarrantyCount} <span className="kpi-sub-unit">{getTranslation(lang, 'serialTracking.warrantyStatus')}</span>
             </div>
           </div>
           <div className="module-kpi-icon purple">
-            <ShieldCheck size={20} />
+            <ShieldCheck size={19} />
           </div>
         </div>
 
         <div className="module-kpi-card">
           <div className="module-kpi-info">
             <span className="module-kpi-label">{getTranslation(lang, 'serialTracking.title')}</span>
-            <div className="module-kpi-value">
-              {totalSerials} <span className="kpi-sub-unit">Units</span>
+            <div className="module-kpi-value font-mono">
+              {totalSerials} <span className="kpi-sub-unit">IMEI</span>
             </div>
           </div>
           <div className="module-kpi-icon amber">
-            <Smartphone size={20} />
+            <Smartphone size={19} />
           </div>
         </div>
       </div>
@@ -513,9 +503,9 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
       {/* Toolbar */}
       <div className="module-toolbar">
         <div className="module-search-box">
-          <Search size={16} />
-          <input 
-            type="text" 
+          <Search size={15} />
+          <input
+            type="text"
             placeholder={getTranslation(lang, 'serialTracking.searchPlaceholder')}
             value={filterSearch}
             onChange={(e) => setFilterSearch(e.target.value)}
@@ -560,8 +550,12 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
             <tbody>
               {filteredSerials.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                    {getTranslation(lang, 'serialTracking.noSerialsFound')}
+                  <td colSpan={7} className="p-0">
+                    <EmptyState
+                      lang={lang}
+                      icon={<Smartphone size={22} />}
+                      title={getTranslation(lang, 'serialTracking.noSerialsFound')}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -569,69 +563,73 @@ export default function SerialTrackingView({ lang }: SerialTrackingViewProps) {
                   const isWarrantyActive = s.warrantyEndDate ? new Date(s.warrantyEndDate) >= new Date() : false;
                   return (
                     <tr key={s.id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                      <td className="font-mono font-bold text-primary" dir="ltr">
                         {s.serialNumber}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 600 }}>{s.productName}</span>
+                        <span className="font-semibold text-foreground" dir="auto">{s.productName}</span>
                         {s.productSku && (
-                          <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{s.productSku}</span>
+                          <span className="block text-[11px] font-mono text-muted-foreground" dir="ltr">{s.productSku}</span>
                         )}
                       </td>
                       <td>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          background: s.status === 'InStock' ? 'rgba(34, 197, 94, 0.12)' :
-                                      s.status === 'Sold' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                          color: s.status === 'InStock' ? '#16a34a' :
-                                 s.status === 'Sold' ? '#2563eb' : '#dc2626'
-                        }}>
-                          {s.status === 'InStock' ? getTranslation(lang, 'serialTracking.inStock') :
-                           s.status === 'Sold' ? getTranslation(lang, 'serialTracking.sold') :
-                           s.status === 'Returned' ? getTranslation(lang, 'serialTracking.returned') :
-                           getTranslation(lang, 'serialTracking.defective')}
-                        </span>
+                        <StatusBadge
+                          tone={
+                            s.status === 'InStock'
+                              ? 'emerald'
+                              : s.status === 'Sold'
+                                ? 'indigo'
+                                : s.status === 'Returned'
+                                  ? 'amber'
+                                  : 'rose'
+                          }
+                          dot
+                          label={
+                            s.status === 'InStock'
+                              ? getTranslation(lang, 'serialTracking.inStock')
+                              : s.status === 'Sold'
+                                ? getTranslation(lang, 'serialTracking.sold')
+                                : s.status === 'Returned'
+                                  ? getTranslation(lang, 'serialTracking.returned')
+                                  : getTranslation(lang, 'serialTracking.defective')
+                          }
+                        />
                       </td>
                       <td>
                         {s.status === 'Sold' ? (
                           <div>
-                            <span style={{ fontWeight: 600, color: '#0f172a' }}>{s.customerName || 'Walk-in'}</span>
+                            <span className="font-semibold text-foreground" dir="auto">{s.customerName || '—'}</span>
                             {s.salesInvoiceNo && (
-                              <span style={{ display: 'block', fontSize: '11px', fontFamily: 'monospace', color: '#2563eb' }}>
+                              <span className="block text-[11px] font-mono text-primary" dir="ltr">
                                 #{s.salesInvoiceNo}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '13px', color: '#475569' }}>
+                          <span className="text-xs text-muted-foreground" dir="auto">
                             {s.warehouseName || s.warehouseId}
                           </span>
                         )}
                       </td>
-                      <td style={{ fontFamily: 'monospace' }}>
+                      <td className="font-mono tabular-nums text-foreground" dir="ltr">
                         {s.warrantyMonths}m
                       </td>
                       <td>
                         {s.status === 'Sold' ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: isWarrantyActive ? '#16a34a' : '#dc2626'
-                          }}>
-                            {isWarrantyActive ? <Check size={12} /> : <X size={12} />}
-                            <span>{isWarrantyActive ? getTranslation(lang, 'serialTracking.activeWarranty') : getTranslation(lang, 'serialTracking.expiredWarranty')}</span>
-                          </span>
+                          <StatusBadge
+                            tone={isWarrantyActive ? 'emerald' : 'rose'}
+                            icon={isWarrantyActive ? <Check size={11} /> : <X size={11} />}
+                            label={
+                              isWarrantyActive
+                                ? getTranslation(lang, 'serialTracking.activeWarranty')
+                                : getTranslation(lang, 'serialTracking.expiredWarranty')
+                            }
+                          />
                         ) : (
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>—</span>
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td style={{ fontSize: '12px', color: '#64748b' }}>
+                      <td className="text-xs text-muted-foreground tabular-nums" dir="ltr">
                         {(s.createdAt || '').slice(0, 10)}
                       </td>
                     </tr>

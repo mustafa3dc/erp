@@ -1,103 +1,146 @@
 import React from 'react';
-import { Plus, Store, ArrowDownToLine, Wallet, ArrowLeftRight, Zap } from 'lucide-react';
+import { Plus, Store, ArrowDownToLine, Wallet, ArrowLeftRight, Zap, Scan, Receipt } from 'lucide-react';
 import { Button } from './ui/button';
+import { getTranslation } from '../lib/i18n';
 
 export interface QuickOperationsBarProps {
+  onNewSale?: () => void;
   onNewProduct?: () => void;
   onPos?: () => void;
   onInboundReceipt?: () => void;
   onQuickExpense?: () => void;
+  onSerialLookup?: () => void;
   onTransfer?: () => void;
   isAr?: boolean;
+  lang?: 'ar' | 'en';
 }
 
 export const QuickOperationsBar: React.FC<QuickOperationsBarProps> = ({
+  onNewSale,
   onNewProduct,
   onPos,
   onInboundReceipt,
   onQuickExpense,
+  onSerialLookup,
   onTransfer,
   isAr = true,
+  lang
 }) => {
+  const effectiveLang = lang || (isAr ? 'ar' : 'en');
+
   return (
-    <div className="w-full bg-card border border-border/80 rounded-xl p-3.5 shadow-xs dashboard-quick-actions-bar fade-in">
-      <div className="flex items-center gap-3 dqa-main-wrap">
-        
+    <div
+      className="w-full bg-card border border-border rounded-2xl p-3.5 dashboard-quick-actions-bar fade-in"
+      style={{ boxShadow: 'var(--shadow-card)' }}
+    >
+      <div className="flex items-center justify-between gap-3 flex-wrap dqa-main-wrap">
         {/* Title and Icon */}
         <div className="flex items-center gap-2.5 dqa-title-flex">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 dqa-icon-wrap" style={{ background: 'rgba(37, 99, 235, 0.08)', color: 'var(--primary)' }}>
-            <Zap className="w-5 h-5" size={20} />
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border"
+            style={{
+              background: 'var(--primary-light)',
+              borderColor: 'var(--primary-border)',
+              color: 'var(--primary)'
+            }}
+          >
+            <Zap size={17} strokeWidth={2} />
           </div>
           <div className="flex flex-col dqa-title-text">
             <span className="text-sm font-bold text-foreground leading-tight">
-              {isAr ? 'العمليات السريعة' : 'Quick Operations'}
+              {getTranslation(effectiveLang, 'ui.quickOps.title')}
             </span>
-            <span className="text-[11px] text-muted-foreground font-medium leading-tight">
-              {isAr ? 'إجراءات المخازن والمبيعات المباشرة' : 'Direct warehouse & sales actions'}
+            <span className="text-[11px] text-muted-foreground font-medium leading-tight mt-0.5">
+              {getTranslation(effectiveLang, 'ui.quickOps.subtitle')}
             </span>
           </div>
         </div>
 
-        {/* Separator */}
-        <div className="hidden sm:block border-l border-border h-8 mx-1 shrink-0" />
+        {/* Executive Quick-Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap dqa-buttons-flex">
+          {onNewSale && (
+            <Button
+              type="button"
+              onClick={onNewSale}
+              className="h-9 px-3.5 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs transition-all text-xs cursor-pointer"
+            >
+              <Receipt size={15} />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.newSale')}</span>
+            </Button>
+          )}
 
-        {/* Buttons Group (Strict Lucide Icons - Zero Emojis) */}
-        <div className="flex items-center gap-2.5 flex-wrap dqa-buttons-flex">
-          {/* 1. New Item */}
-          <Button 
-            type="button"
-            onClick={onNewProduct}
-            className="h-9 px-4 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs transition-colors text-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" size={16} />
-            <span>{isAr ? 'صنف جديد' : 'New Item'}</span>
-          </Button>
+          {onQuickExpense && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onQuickExpense}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Wallet size={15} className="text-amber-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.newExpense')}</span>
+            </Button>
+          )}
 
-          {/* 2. Point of Sale (POS) */}
-          <Button 
-            type="button"
-            variant="outline"
-            onClick={onPos}
-            className="h-9 px-3.5 gap-2 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-          >
-            <Store className="w-4 h-4 text-primary" size={16} />
-            <span>{isAr ? 'نقطة البيع (POS)' : 'POS Terminal'}</span>
-          </Button>
+          {onSerialLookup && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onSerialLookup}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Scan size={15} className="text-indigo-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.serialLookup')}</span>
+            </Button>
+          )}
 
-          {/* 3. Inbound Goods Receipt */}
-          <Button 
-            type="button"
-            variant="outline"
-            onClick={onInboundReceipt}
-            className="h-9 px-3.5 gap-2 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-          >
-            <ArrowDownToLine className="w-4 h-4 text-emerald-500" size={16} />
-            <span>{isAr ? 'استلام بضاعة واردة' : 'Inbound Goods'}</span>
-          </Button>
+          {onPos && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onPos}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Store size={15} className="text-primary" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.posTerminal')}</span>
+            </Button>
+          )}
 
-          {/* 4. Quick Expense */}
-          <Button 
-            type="button"
-            variant="outline"
-            onClick={onQuickExpense}
-            className="h-9 px-3.5 gap-2 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-          >
-            <Wallet className="w-4 h-4 text-amber-500" size={16} />
-            <span>{isAr ? 'تسجيل مصروف' : 'Record Expense'}</span>
-          </Button>
+          {onNewProduct && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onNewProduct}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Plus size={15} className="text-emerald-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.newItem')}</span>
+            </Button>
+          )}
 
-          {/* 5. Inter-Warehouse Transfer */}
-          <Button 
-            type="button"
-            variant="outline"
-            onClick={onTransfer}
-            className="h-9 px-3.5 gap-2 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-          >
-            <ArrowLeftRight className="w-4 h-4 text-muted-foreground" size={16} />
-            <span>{isAr ? 'تحويل بين المخازن' : 'Inter-Warehouse Transfer'}</span>
-          </Button>
+          {onInboundReceipt && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onInboundReceipt}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <ArrowDownToLine size={15} className="text-emerald-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.inboundGoods')}</span>
+            </Button>
+          )}
+
+          {onTransfer && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onTransfer}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <ArrowLeftRight size={15} className="text-muted-foreground" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.interTransfer')}</span>
+            </Button>
+          )}
         </div>
-
       </div>
     </div>
   );

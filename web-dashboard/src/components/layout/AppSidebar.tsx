@@ -1,20 +1,25 @@
-import React, { useMemo } from 'react';
-import { 
-  LayoutGrid, 
-  Zap, 
-  ShoppingCart, 
-  ShoppingBag, 
-  Package, 
+import React, { useMemo, useState } from 'react';
+import {
+  LayoutGrid,
+  Zap,
+  ShoppingCart,
+  ShoppingBag,
+  Package,
   Box,
-  Wallet, 
-  Settings, 
-  ChevronRight, 
-  Globe 
+  Wallet,
+  Settings,
+  ChevronRight,
+  Globe,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen
 } from 'lucide-react';
 import { NavGroupDef, NAVIGATION_GROUPS, MAIN_DASHBOARD_ITEM, isFeatureAllowed } from '../../config/navigationSchema';
 import { UserProfile } from '../../types/rbac';
 import { usePermissions } from '../../hooks/usePermissions';
 import { getStoredTransfers } from '../../services/storageService';
+import { getTranslation } from '../../lib/i18n';
 
 export interface AppSidebarProps {
   activeNav: string;
@@ -25,26 +30,29 @@ export interface AppSidebarProps {
   expandedGroups: Record<string, boolean>;
   onToggleGroup: (groupKey: string) => void;
   onOpenSettings?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-const renderGroupIcon = (iconName: NavGroupDef['iconName']) => {
+const renderGroupIcon = (iconName: NavGroupDef['iconName'], size = 16) => {
+  const props = { size, strokeWidth: 1.8, className: 'nav-icon' };
   switch (iconName) {
     case 'Zap':
-      return <Zap size={15} className="nav-icon" />;
+      return <Zap {...props} />;
     case 'ShoppingCart':
-      return <ShoppingCart size={15} className="nav-icon" />;
+      return <ShoppingCart {...props} />;
     case 'ShoppingBag':
-      return <ShoppingBag size={15} className="nav-icon" />;
+      return <ShoppingBag {...props} />;
     case 'Package':
-      return <Package size={15} className="nav-icon" />;
+      return <Package {...props} />;
     case 'Box':
-      return <Box size={15} className="nav-icon" />;
+      return <Box {...props} />;
     case 'Wallet':
-      return <Wallet size={15} className="nav-icon" />;
+      return <Wallet {...props} />;
     case 'Settings':
-      return <Settings size={15} className="nav-icon" />;
+      return <Settings {...props} />;
     default:
-      return <Package size={15} className="nav-icon" />;
+      return <Package {...props} />;
   }
 };
 
@@ -56,20 +64,25 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   lang = 'ar',
   expandedGroups,
   onToggleGroup,
-  onOpenSettings
+  onOpenSettings,
+  isCollapsed = false,
+  onToggleCollapse
 }) => {
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions(currentUser);
+  const [hoveredGroupKey, setHoveredGroupKey] = useState<string | null>(null);
 
   const permittedNav = useMemo(() => {
-    const isDashboardAllowed = hasPermission(MAIN_DASHBOARD_ITEM.requiredPermission) || hasPermission('dashboard.view');
+    const isDashboardAllowed =
+      hasPermission(MAIN_DASHBOARD_ITEM.requiredPermission) || hasPermission('dashboard.view');
 
     const permittedGroups = NAVIGATION_GROUPS
       .filter(group => isFeatureAllowed(currentUser?.features, group.requiredFeature))
       .map(group => {
-        const permittedItems = group.items.filter(item => 
-          isFeatureAllowed(currentUser?.features, item.requiredFeature) &&
-          hasPermission(item.requiredPermission)
+        const permittedItems = group.items.filter(
+          item =>
+            isFeatureAllowed(currentUser?.features, item.requiredFeature) &&
+            hasPermission(item.requiredPermission)
         );
         return {
           ...group,
@@ -82,7 +95,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       isDashboardAllowed,
       groups: permittedGroups
     };
-  }, [hasPermission]);
+  }, [hasPermission, currentUser?.features]);
 
   const inTransitTransfersCount = useMemo(() => {
     try {
@@ -93,57 +106,116 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     }
   }, [activeNav]);
 
+  const CollapseIcon = isAr
+    ? (isCollapsed ? PanelRightOpen : PanelRightClose)
+    : (isCollapsed ? PanelLeftOpen : PanelLeftClose);
+
+  const collapseLabel = isCollapsed
+    ? getTranslation(lang, 'ui.sidebar.expand')
+    : getTranslation(lang, 'ui.sidebar.collapse');
+
   return (
-    <aside className="sidebar bg-sidebar text-sidebar-foreground border-sidebar-border" id="app-sidebar">
-      {/* Navigation Items - Structured Hierarchical Navigation */}
+    <aside
+      className={`sidebar bg-sidebar text-sidebar-foreground border-sidebar-border ${isCollapsed ? 'collapsed' : ''}`}
+      id="app-sidebar"
+    >
+      {/* Top Collapse Bar */}
+      {onToggleCollapse && (
+        <div className="sidebar-top-controls">
+          {!isCollapsed && (
+            <span className="sidebar-section-caption">
+              {getTranslation(lang, 'ui.sidebar.railHint')}
+            </span>
+          )}
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={onToggleCollapse}
+            title={collapseLabel}
+            aria-label={collapseLabel}
+          >
+            <CollapseIcon size={15} strokeWidth={1.85} />
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Items */}
       <nav className="sidebar-nav">
-        {/* Main Dashboard (Rendered only if permitted for role) */}
+        {/* Main Dashboard */}
         {permittedNav.isDashboardAllowed && (
-          <button 
+          <button
             type="button"
             className={`nav-btn ${activeNav === 'Dashboard' ? 'active' : ''}`}
             onClick={() => setActiveNav('Dashboard')}
+            title={getTranslation(lang, 'ui.sidebar.mainDashboard')}
           >
-            <LayoutGrid size={17} className="nav-icon" />
-            <span>{isAr ? 'لوحة القيادة والمؤشرات' : 'Dashboard & Live KPIs'}</span>
+            <LayoutGrid size={17} strokeWidth={1.8} className="nav-icon" />
+            {!isCollapsed && (
+              <span className="truncate">{getTranslation(lang, 'ui.sidebar.mainDashboard')}</span>
+            )}
           </button>
         )}
 
-        {/* Dynamically Filtered Groups */}
+        {/* Hierarchical Nav Groups */}
         {permittedNav.groups.map(group => {
           const isGroupActive = group.items.some(i => i.id === activeNav);
           const isExpanded = expandedGroups[group.key] ?? true;
+          const groupTitle = isAr ? group.titleAr : group.titleEn;
 
           return (
-            <div key={group.key} className="nav-group-container">
-              <button 
+            <div
+              key={group.key}
+              className="nav-group-container"
+              onMouseEnter={() => isCollapsed && setHoveredGroupKey(group.key)}
+              onMouseLeave={() => isCollapsed && setHoveredGroupKey(prev => (prev === group.key ? null : prev))}
+            >
+              <button
                 type="button"
                 className={`nav-group-header ${isGroupActive ? 'has-active' : ''}`}
-                onClick={() => onToggleGroup(group.key)}
-                aria-expanded={isExpanded}
+                onClick={() => {
+                  if (isCollapsed) {
+                    setHoveredGroupKey(prev => (prev === group.key ? null : group.key));
+                  } else {
+                    onToggleGroup(group.key);
+                  }
+                }}
+                aria-expanded={isCollapsed ? hoveredGroupKey === group.key : isExpanded}
+                title={isCollapsed ? groupTitle : undefined}
               >
                 <div className="nav-group-left">
-                  {renderGroupIcon(group.iconName)}
-                  <span>{isAr ? group.titleAr : group.titleEn}</span>
+                  {renderGroupIcon(group.iconName, isCollapsed ? 18 : 15)}
+                  {!isCollapsed && <span className="truncate">{groupTitle}</span>}
                 </div>
-                <ChevronRight size={13} className={`nav-group-chevron ${isExpanded ? 'expanded' : ''}`} />
+                {!isCollapsed && (
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={2}
+                    className={`nav-group-chevron ${isExpanded ? 'expanded' : ''}`}
+                  />
+                )}
               </button>
 
-              {isExpanded && (
+              {/* Expanded Sub-menu */}
+              {!isCollapsed && isExpanded && (
                 <div className="nav-sub-menu">
                   {group.items.map(item => {
-                    const badgeContent = item.id === 'Transfers & In-Transit'
-                      ? (inTransitTransfersCount > 0 ? String(inTransitTransfersCount) : null)
-                      : (isAr ? item.badge : (item.badgeEn || item.badge));
+                    const badgeContent =
+                      item.id === 'Transfers & In-Transit'
+                        ? inTransitTransfersCount > 0
+                          ? String(inTransitTransfersCount)
+                          : null
+                        : isAr
+                          ? item.badge
+                          : item.badgeEn || item.badge;
 
                     return (
-                      <button 
+                      <button
                         key={item.id}
                         type="button"
                         className={`nav-sub-btn ${activeNav === item.id ? 'active' : ''}`}
                         onClick={() => setActiveNav(item.id)}
                       >
-                        <span>{isAr ? item.titleAr : item.titleEn}</span>
+                        <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
                         {badgeContent && (
                           <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
                             {badgeContent}
@@ -154,6 +226,44 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   })}
                 </div>
               )}
+
+              {/* Collapsed Icon-Only Rail Flyout Popover */}
+              {isCollapsed && hoveredGroupKey === group.key && (
+                <div className="sidebar-rail-flyout">
+                  <div className="sidebar-rail-flyout-title">{groupTitle}</div>
+                  <div className="flex flex-col gap-0.5">
+                    {group.items.map(item => {
+                      const badgeContent =
+                        item.id === 'Transfers & In-Transit'
+                          ? inTransitTransfersCount > 0
+                            ? String(inTransitTransfersCount)
+                            : null
+                          : isAr
+                            ? item.badge
+                            : item.badgeEn || item.badge;
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`nav-sub-btn ${activeNav === item.id ? 'active' : ''}`}
+                          onClick={() => {
+                            setActiveNav(item.id);
+                            setHoveredGroupKey(null);
+                          }}
+                        >
+                          <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
+                          {badgeContent && (
+                            <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
+                              {badgeContent}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -161,23 +271,34 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       {/* Live Sync Status & Language Switcher */}
       <div className="sidebar-footer">
-        <div className="sidebar-sync-status">
+        <div
+          className="sidebar-sync-status"
+          title={
+            isOnline
+              ? `${getTranslation(lang, 'ui.sidebar.onlineSynced')} — ${getTranslation(lang, 'ui.sidebar.cloudSyncActive')}`
+              : `${getTranslation(lang, 'ui.sidebar.offlineMode')} — ${getTranslation(lang, 'ui.sidebar.localStorageActive')}`
+          }
+        >
           <div className="sync-status-indicator">
-            <span className={`sync-dot ${isOnline ? 'online' : 'offline'}`}></span>
-            <span className="sync-label">
-              {isOnline 
-                ? (isAr ? 'متصل ومزامن لحظياً' : 'Online & Synced') 
-                : (isAr ? 'وضع العمل دون اتصال' : 'Offline Mode')}
-            </span>
+            <span className={`sync-dot ${isOnline ? 'online' : 'offline'}`} />
+            {!isCollapsed && (
+              <span className="sync-label">
+                {isOnline
+                  ? getTranslation(lang, 'ui.sidebar.onlineSynced')
+                  : getTranslation(lang, 'ui.sidebar.offlineMode')}
+              </span>
+            )}
           </div>
-          <span className="sync-subtext">
-            {isOnline 
-              ? (isAr ? 'المزامنة السحابية نشطة' : 'Cloud sync is active')
-              : (isAr ? 'يتم حفظ البيانات محلياً' : 'Local storage active')}
-          </span>
+          {!isCollapsed && (
+            <span className="sync-subtext">
+              {isOnline
+                ? getTranslation(lang, 'ui.sidebar.cloudSyncActive')
+                : getTranslation(lang, 'ui.sidebar.localStorageActive')}
+            </span>
+          )}
         </div>
 
-        <button 
+        <button
           type="button"
           id="sidebar-lang-toggle"
           className="lang-pill-btn"
@@ -188,17 +309,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               setActiveNav('Settings');
             }
           }}
-          title={isAr ? 'فتح إعدادات المظهر واللغة' : 'Open Appearance & Language Settings'}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            cursor: 'pointer'
-          }}
+          title={getTranslation(lang, 'ui.sidebar.openSettingsTooltip')}
         >
           <Globe size={14} />
-          <span>{isAr ? 'المظهر واللغة (العربية)' : 'Appearance & Language (EN)'}</span>
+          {!isCollapsed && <span>{getTranslation(lang, 'ui.sidebar.appearanceLanguage')}</span>}
         </button>
       </div>
     </aside>

@@ -6,6 +6,7 @@ import {
   CheckCircle2, 
   Clock, 
   ArrowRight, 
+  ArrowLeft,
   Send, 
   Check, 
   AlertCircle, 
@@ -34,6 +35,8 @@ import {
   QuotationStatus 
 } from '../../types/businessModules';
 import { Product, Warehouse, SalesInvoice } from '../../types/warehouse';
+import { StatusBadge } from '../ui/StatusBadge';
+import { EmptyState } from '../ui/EmptyState';
 
 interface QuotationsViewProps {
   lang: 'en' | 'ar';
@@ -518,8 +521,12 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
             <tbody>
               {filteredQuotes.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                    {getTranslation(lang, 'quotations.noQuotesFound')}
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      lang={lang}
+                      icon={<FileText size={22} />}
+                      title={getTranslation(lang, 'quotations.noQuotesFound')}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -527,117 +534,111 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
                   const isExpired = new Date(q.validUntil) < new Date() && q.status !== 'Converted';
                   return (
                     <tr key={q.id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                      <td className="font-mono font-bold text-primary" dir="ltr">
                         {q.quotationNo}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 600, color: '#0f172a' }}>{q.customerName}</span>
+                        <span className="font-semibold text-foreground" dir="auto">{q.customerName}</span>
                         {q.customerPhone && (
-                          <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{q.customerPhone}</span>
+                          <span className="block text-[11px] font-mono text-muted-foreground tabular-nums" dir="ltr">{q.customerPhone}</span>
                         )}
                       </td>
                       <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#475569' }}>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                           <WarehouseIcon size={12} />
-                          <span>{q.warehouseName || getWhName(warehouses.find(w => w.id === q.warehouseId)) || q.warehouseId}</span>
+                          <span dir="auto">{q.warehouseName || getWhName(warehouses.find(w => w.id === q.warehouseId)) || q.warehouseId}</span>
                         </span>
                       </td>
-                      <td style={{ fontSize: '13px', color: '#64748b' }}>
+                      <td className="text-xs text-muted-foreground tabular-nums" dir="ltr">
                         {(q.date || '').slice(0, 10)}
                       </td>
                       <td>
-                        <span style={{ fontSize: '12px', color: isExpired ? '#ef4444' : '#64748b', fontWeight: isExpired ? 700 : 400 }}>
+                        <span
+                          className={`text-xs tabular-nums ${isExpired ? 'text-destructive font-bold' : 'text-muted-foreground font-medium'}`}
+                          dir="ltr"
+                        >
                           {(q.validUntil || '').slice(0, 10)}
                         </span>
                       </td>
-                      <td style={{ fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                      <td className="font-bold text-foreground font-mono tabular-nums" dir="ltr">
                         {formatMoney(q.total)}
                       </td>
                       <td>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          background: q.status === 'Converted' ? 'rgba(59, 130, 246, 0.12)' :
-                                      q.status === 'Accepted' ? 'rgba(34, 197, 94, 0.12)' :
-                                      q.status === 'Sent' ? 'rgba(168, 85, 247, 0.12)' :
-                                      q.status === 'Expired' || isExpired ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                          color: q.status === 'Converted' ? '#2563eb' :
-                                 q.status === 'Accepted' ? '#16a34a' :
-                                 q.status === 'Sent' ? '#9333ea' :
-                                 q.status === 'Expired' || isExpired ? '#dc2626' : '#d97706',
-                          border: `1px solid ${q.status === 'Converted' ? 'rgba(59, 130, 246, 0.3)' :
-                                               q.status === 'Accepted' ? 'rgba(34, 197, 94, 0.3)' :
-                                               q.status === 'Sent' ? 'rgba(168, 85, 247, 0.3)' :
-                                               q.status === 'Expired' || isExpired ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
-                        }}>
-                          {q.status === 'Converted' ? getTranslation(lang, 'quotations.converted') :
-                           q.status === 'Accepted' ? getTranslation(lang, 'quotations.accepted') :
-                           q.status === 'Sent' ? getTranslation(lang, 'quotations.sent') :
-                           q.status === 'Expired' || isExpired ? getTranslation(lang, 'quotations.expired') :
-                           getTranslation(lang, 'quotations.draft')}
-                        </span>
+                        <StatusBadge
+                          tone={
+                            q.status === 'Converted'
+                              ? 'indigo'
+                              : q.status === 'Accepted'
+                                ? 'emerald'
+                                : q.status === 'Sent'
+                                  ? 'purple'
+                                  : q.status === 'Expired' || isExpired
+                                    ? 'rose'
+                                    : 'amber'
+                          }
+                          dot
+                          label={
+                            q.status === 'Converted'
+                              ? getTranslation(lang, 'quotations.converted')
+                              : q.status === 'Accepted'
+                                ? getTranslation(lang, 'quotations.accepted')
+                                : q.status === 'Sent'
+                                  ? getTranslation(lang, 'quotations.sent')
+                                  : q.status === 'Expired' || isExpired
+                                    ? getTranslation(lang, 'quotations.expired')
+                                    : getTranslation(lang, 'quotations.draft')
+                          }
+                        />
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <td className="text-center">
+                        <div className="inline-flex items-center gap-1.5">
                           <button
                             type="button"
-                            className="btn-clean-secondary"
-                            style={{ padding: '3px 8px', fontSize: '11px' }}
+                            className="btn-clean-secondary py-1 px-2 text-xs"
                             onClick={() => setSelectedQuote(q)}
                             title={getTranslation(lang, 'quotations.viewDetails')}
                           >
-                            <Eye size={12} />
+                            <Eye size={13} />
                           </button>
 
                           {q.status === 'Draft' && (
                             <button
                               type="button"
-                              className="btn-clean-secondary"
-                              style={{ padding: '3px 8px', fontSize: '11px', color: '#9333ea' }}
+                              className="btn-clean-secondary py-1 px-2 text-xs text-purple-600 dark:text-purple-400"
                               onClick={() => handleUpdateStatus(q, 'Sent')}
                               title={getTranslation(lang, 'quotations.markSent')}
                             >
-                              <Send size={12} />
+                              <Send size={13} />
                             </button>
                           )}
 
                           {q.status === 'Sent' && (
                             <button
                               type="button"
-                              className="btn-clean-secondary"
-                              style={{ padding: '3px 8px', fontSize: '11px', color: '#16a34a' }}
+                              className="btn-clean-secondary py-1 px-2 text-xs text-emerald-600 dark:text-emerald-400"
                               onClick={() => handleUpdateStatus(q, 'Accepted')}
                               title={getTranslation(lang, 'quotations.markAccepted')}
                             >
-                              <Check size={12} />
+                              <Check size={13} />
                             </button>
                           )}
 
                           {q.status === 'Accepted' && (
                             <button
                               type="button"
-                              className="btn-clean-primary"
-                              style={{ padding: '3px 8px', fontSize: '11px', background: '#2563eb', borderColor: '#2563eb' }}
+                              className="btn-clean-primary py-1 px-2.5 text-[11px]"
                               onClick={() => setQuoteToConvert(q)}
                               title={getTranslation(lang, 'quotations.convertToInvoice')}
                             >
-                              <ArrowRight size={12} />
+                              {isAr ? <ArrowLeft size={12} /> : <ArrowRight size={12} />}
                               <span>{getTranslation(lang, 'quotations.convertToInvoice')}</span>
                             </button>
                           )}
 
                           {q.status === 'Converted' && q.convertedInvoiceNo && (
-                            <span 
-                              style={{ 
-                                fontSize: '11px', 
-                                fontFamily: 'monospace', 
-                                color: 'var(--primary)', 
-                                fontWeight: 700, 
-                                cursor: onNavigateToInvoices ? 'pointer' : 'default',
-                                textDecoration: onNavigateToInvoices ? 'underline' : 'none'
-                              }}
+                            <span
+                              className={`text-[11px] font-mono text-primary font-bold ${onNavigateToInvoices ? 'cursor-pointer underline' : ''}`}
+                              dir="ltr"
                               onClick={() => onNavigateToInvoices && onNavigateToInvoices()}
                             >
                               {q.convertedInvoiceNo}
@@ -725,9 +726,9 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
               </div>
 
               {/* Items Section */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', background: 'rgba(248, 250, 252, 0.5)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+              <div className="border border-border rounded-xl p-3.5 bg-muted/40">
+                <div className="flex justify-between items-center mb-2.5">
+                  <span className="text-xs font-bold text-foreground">
                     {getTranslation(lang, 'priceLists.components')} ({items.length})
                   </span>
                   <button 
@@ -804,58 +805,56 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
                 </div>
 
                 {/* Form Totals */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '20px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>
-                    {getTranslation(lang, 'quotations.subtotal')}: <strong style={{ color: '#0f172a' }}>{formatMoney(formSubtotal)}</strong>
+                <div className="flex justify-end gap-5 mt-3.5 pt-2.5 border-t border-border">
+                  <div className="text-xs text-muted-foreground">
+                    {getTranslation(lang, 'quotations.subtotal')}: <strong className="text-foreground tabular-nums" dir="ltr">{formatMoney(formSubtotal)}</strong>
                   </div>
                   {formDiscount > 0 && (
-                    <div style={{ fontSize: '12px', color: '#ef4444' }}>
-                      {getTranslation(lang, 'quotations.discount')}: <strong>-{formatMoney(formDiscount)}</strong>
+                    <div className="text-xs text-destructive">
+                      {getTranslation(lang, 'quotations.discount')}: <strong className="tabular-nums" dir="ltr">-{formatMoney(formDiscount)}</strong>
                     </div>
                   )}
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)' }}>
+                  <div className="text-sm font-bold text-primary tabular-nums" dir="ltr">
                     {getTranslation(lang, 'quotations.total')}: {formatMoney(formTotal)}
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">
                     {getTranslation(lang, 'quotations.termsPlaceholder')}
                   </label>
-                  <textarea 
+                  <textarea
                     rows={2}
                     value={terms}
                     onChange={e => setTerms(e.target.value)}
-                    className="input-clean"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', resize: 'none' }}
+                    className="input-clean w-full px-3 py-2 rounded-lg resize-none"
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">
                     {getTranslation(lang, 'quotations.notesPlaceholder')}
                   </label>
-                  <textarea 
+                  <textarea
                     rows={2}
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
-                    className="input-clean"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', resize: 'none' }}
+                    className="input-clean w-full px-3 py-2 rounded-lg resize-none"
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button 
-                  type="button" 
+              <div className="flex justify-end gap-2.5 mt-2.5">
+                <button
+                  type="button"
                   className="btn-clean-secondary"
                   onClick={() => setIsCreateModalOpen(false)}
                 >
                   {getTranslation(lang, 'quotations.cancel')}
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-clean-primary"
                 >
                   {getTranslation(lang, 'quotations.save')}
@@ -869,49 +868,48 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
       {/* Modal: View Quotation Details */}
       {selectedQuote && (
         <div className="modal-backdrop" onClick={() => setSelectedQuote(null)}>
-          <div 
-            className="modal-content glass-panel" 
-            style={{ maxWidth: '640px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+          <div
+            className="modal-content glass-panel max-w-2xl w-[92%] rounded-2xl p-6"
             onClick={e => e.stopPropagation()}
             dir={isAr ? 'rtl' : 'ltr'}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FileText size={20} />
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <FileText size={19} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{selectedQuote.quotationNo}</h3>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>{selectedQuote.customerName}</span>
+                  <h3 className="m-0 text-base font-bold text-foreground font-mono" dir="ltr">{selectedQuote.quotationNo}</h3>
+                  <span className="text-xs text-muted-foreground" dir="auto">{selectedQuote.customerName}</span>
                 </div>
               </div>
-              <button type="button" onClick={() => setSelectedQuote(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+              <button type="button" onClick={() => setSelectedQuote(null)} className="text-muted-foreground hover:text-foreground bg-transparent border-0 cursor-pointer p-1">
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>
+            <div className="grid grid-cols-2 gap-2.5 bg-muted/50 border border-border/70 p-3 rounded-xl mb-4">
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'quotations.quotationDate')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>{(selectedQuote.date || '').slice(0, 10)}</span>
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'quotations.quotationDate')}</span>
+                <span className="text-xs font-semibold text-foreground tabular-nums" dir="ltr">{(selectedQuote.date || '').slice(0, 10)}</span>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'quotations.expiryDate')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>{(selectedQuote.validUntil || '').slice(0, 10)}</span>
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'quotations.expiryDate')}</span>
+                <span className="text-xs font-semibold text-foreground tabular-nums" dir="ltr">{(selectedQuote.validUntil || '').slice(0, 10)}</span>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'quotations.warehouse')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>{selectedQuote.warehouseName || selectedQuote.warehouseId}</span>
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'quotations.warehouse')}</span>
+                <span className="text-xs font-semibold text-foreground" dir="auto">{selectedQuote.warehouseName || selectedQuote.warehouseId}</span>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'quotations.status')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary)' }}>{selectedQuote.status}</span>
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'quotations.status')}</span>
+                <span className="text-xs font-bold text-primary">{selectedQuote.status}</span>
               </div>
             </div>
 
             {/* Line Items Table */}
-            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '16px' }}>
-              <table className="table-clean" style={{ fontSize: '12px' }}>
+            <div className="max-h-52 overflow-y-auto mb-4 border border-border rounded-xl">
+              <table className="table-clean text-xs">
                 <thead>
                   <tr>
                     <th>{getTranslation(lang, 'quotations.product')}</th>
@@ -923,32 +921,32 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
                 <tbody>
                   {(selectedQuote.items || []).map((it, idx) => (
                     <tr key={idx}>
-                      <td>{it.productName} ({it.productSku})</td>
-                      <td>{it.quantity} {it.unit}</td>
-                      <td>{formatMoney(it.unitPrice)}</td>
-                      <td style={{ fontWeight: 700, fontFamily: 'monospace' }}>{formatMoney(it.total)}</td>
+                      <td dir="auto">{it.productName} ({it.productSku})</td>
+                      <td className="tabular-nums" dir="ltr">{it.quantity} {it.unit}</td>
+                      <td className="font-mono tabular-nums" dir="ltr">{formatMoney(it.unitPrice)}</td>
+                      <td className="font-bold font-mono tabular-nums" dir="ltr">{formatMoney(it.total)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+            <div className="flex justify-between items-center border-t border-border pt-3">
               <div>
                 {selectedQuote.convertedInvoiceNo && (
-                  <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 600 }}>
+                  <span className="text-xs text-primary font-semibold font-mono" dir="ltr">
                     {getTranslation(lang, 'quotations.converted')}: {selectedQuote.convertedInvoiceNo}
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+              <div className="text-base font-extrabold text-foreground tabular-nums" dir="ltr">
                 {getTranslation(lang, 'quotations.total')}: {formatMoney(selectedQuote.total)}
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button 
-                type="button" 
+            <div className="flex justify-end mt-4">
+              <button
+                type="button"
                 className="btn-clean-secondary"
                 onClick={() => setSelectedQuote(null)}
               >
@@ -962,51 +960,49 @@ export default function QuotationsView({ lang, onNavigateToInvoices }: Quotation
       {/* Confirmation Dialog: Convert to Sales Invoice */}
       {quoteToConvert && (
         <div className="modal-backdrop" onClick={() => setQuoteToConvert(null)}>
-          <div 
-            className="modal-content glass-panel" 
-            style={{ maxWidth: '440px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+          <div
+            className="modal-content glass-panel max-w-md w-[92%] rounded-2xl p-6"
             onClick={e => e.stopPropagation()}
             dir={isAr ? 'rtl' : 'ltr'}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ArrowRight size={24} />
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                {isAr ? <ArrowLeft size={22} /> : <ArrowRight size={22} />}
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{getTranslation(lang, 'quotations.confirmConvert')}</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{quoteToConvert.quotationNo}</span>
+                <h3 className="m-0 text-base font-bold text-foreground">{getTranslation(lang, 'quotations.confirmConvert')}</h3>
+                <span className="text-xs font-mono text-muted-foreground" dir="ltr">{quoteToConvert.quotationNo}</span>
               </div>
             </div>
 
-            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+            <p className="text-xs text-muted-foreground leading-relaxed m-0 mb-4">
               {getTranslation(lang, 'quotations.confirmConvertMsg')}
             </p>
 
-            <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.15)', borderRadius: '10px', padding: '12px', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'quotations.customer')}:</span>
-                <span style={{ fontSize: '13px', fontWeight: 700 }}>{quoteToConvert.customerName}</span>
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-4 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'quotations.customer')}:</span>
+                <span className="font-bold text-foreground" dir="auto">{quoteToConvert.customerName}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'quotations.total')}:</span>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace' }}>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'quotations.total')}:</span>
+                <span className="text-sm font-bold text-primary font-mono tabular-nums" dir="ltr">
                   {formatMoney(quoteToConvert.total)}
                 </span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button 
-                type="button" 
+            <div className="flex justify-end gap-2.5">
+              <button
+                type="button"
                 className="btn-clean-secondary"
                 onClick={() => setQuoteToConvert(null)}
               >
                 {getTranslation(lang, 'quotations.cancel')}
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn-clean-primary"
-                style={{ background: '#2563eb', borderColor: '#2563eb' }}
                 onClick={handleConfirmConvert}
               >
                 {getTranslation(lang, 'quotations.convertToInvoice')}

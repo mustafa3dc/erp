@@ -34,6 +34,8 @@ import {
 } from '../../types/businessModules';
 import { Warehouse } from '../../types/warehouse';
 import { PurchaseOrder } from '../../types/purchases';
+import { StatusBadge } from '../ui/StatusBadge';
+import { EmptyState } from '../ui/EmptyState';
 
 interface PurchaseReturnsViewProps {
   lang: 'en' | 'ar';
@@ -417,70 +419,62 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
             <tbody>
               {filteredReturns.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                    {getTranslation(lang, 'purchaseReturns.noReturnsFound')}
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      lang={lang}
+                      icon={<RotateCcw size={22} />}
+                      title={getTranslation(lang, 'purchaseReturns.noReturnsFound')}
+                    />
                   </td>
                 </tr>
               ) : (
                 filteredReturns.map(r => (
                   <tr key={r.id}>
-                    <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                    <td className="font-mono font-bold text-primary" dir="ltr">
                       {r.returnNo}
                     </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '13px', color: '#475569' }}>
+                    <td className="font-mono text-xs text-muted-foreground" dir="ltr">
                       {r.originalBillNo}
                     </td>
                     <td>
-                      <span style={{ fontWeight: 600 }}>{r.supplierName}</span>
+                      <span className="font-semibold text-foreground" dir="auto">{r.supplierName}</span>
                     </td>
-                    <td style={{ fontSize: '13px', color: '#64748b' }}>
+                    <td className="text-xs text-muted-foreground" dir="auto">
                       {r.warehouseName || r.warehouseId}
                     </td>
-                    <td style={{ fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+                    <td className="font-bold text-destructive font-mono tabular-nums" dir="ltr">
                       {formatMoney(r.totalAmount)}
                     </td>
                     <td>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: '10px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        background: r.refundMethod === 'SupplierCredit' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                        color: r.refundMethod === 'SupplierCredit' ? '#16a34a' : '#2563eb'
-                      }}>
-                        {r.refundMethod === 'SupplierCredit' 
-                          ? getTranslation(lang, 'purchaseReturns.supplierCredit') 
-                          : getTranslation(lang, 'purchaseReturns.cashRefund')}
-                      </span>
+                      <StatusBadge
+                        tone={r.refundMethod === 'SupplierCredit' ? 'emerald' : 'indigo'}
+                        label={
+                          r.refundMethod === 'SupplierCredit'
+                            ? getTranslation(lang, 'purchaseReturns.supplierCredit')
+                            : getTranslation(lang, 'purchaseReturns.cashRefund')
+                        }
+                      />
                     </td>
                     <td>
-                      <span style={{
-                        padding: '3px 8px',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        background: r.status === 'Approved' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                        color: r.status === 'Approved' ? '#16a34a' : '#d97706',
-                        border: `1px solid ${r.status === 'Approved' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
-                      }}>
-                        {r.status === 'Approved' ? getTranslation(lang, 'purchaseReturns.completed') : getTranslation(lang, 'purchaseReturns.draft')}
-                      </span>
+                      <StatusBadge
+                        tone={r.status === 'Approved' ? 'emerald' : 'amber'}
+                        dot
+                        label={r.status === 'Approved' ? getTranslation(lang, 'purchaseReturns.completed') : getTranslation(lang, 'purchaseReturns.draft')}
+                      />
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <td className="text-center">
+                      <div className="inline-flex items-center gap-1.5">
                         <button
                           type="button"
-                          className="btn-clean-secondary"
-                          style={{ padding: '3px 8px', fontSize: '11px' }}
+                          className="btn-clean-secondary py-1 px-2 text-xs"
                           onClick={() => setSelectedReturn(r)}
                         >
-                          <Eye size={12} />
+                          <Eye size={13} />
                         </button>
                         {r.status === 'Draft' && (
                           <button
                             type="button"
-                            className="btn-clean-primary"
-                            style={{ padding: '3px 8px', fontSize: '11px', background: '#16a34a', borderColor: '#16a34a' }}
+                            className="btn-clean-success py-1 px-2.5 text-[11px]"
                             onClick={() => setReturnToApprove(r)}
                           >
                             <CheckCircle2 size={12} />
@@ -595,8 +589,8 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
               )}
 
               {/* Items Section */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', background: '#f8fafc' }}>
-                <span style={{ display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>
+              <div className="border border-border rounded-xl p-3.5 bg-muted/40">
+                <span className="block text-xs font-bold text-foreground mb-2.5">
                   {getTranslation(lang, 'purchaseReturns.title')} ({returnItems.length})
                 </span>
 
@@ -618,7 +612,7 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
                           <td>
                             <span style={{ fontWeight: 600 }}>{it.productName}</span>
                             {it.productSku && (
-                              <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{it.productSku}</span>
+                              <span className="block text-[11px] font-mono text-muted-foreground" dir="ltr">{it.productSku}</span>
                             )}
                           </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>
@@ -725,7 +719,7 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{selectedReturn.returnNo}</h3>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>{selectedReturn.supplierName}</span>
+                  <span className="text-xs text-muted-foreground" dir="auto">{selectedReturn.supplierName}</span>
                 </div>
               </div>
               <button type="button" onClick={() => setSelectedReturn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
@@ -733,24 +727,24 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>
+            <div className="grid grid-cols-2 gap-2.5 bg-muted/50 border border-border/70 p-3 rounded-xl mb-4">
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'purchaseReturns.originalBill')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>{selectedReturn.originalBillNo}</span>
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'purchaseReturns.originalBill')}</span>
+                <span className="text-xs font-semibold font-mono text-foreground" dir="ltr">{selectedReturn.originalBillNo}</span>
               </div>
               <div>
-                <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{getTranslation(lang, 'purchaseReturns.refundMethod')}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                  {selectedReturn.refundMethod === 'SupplierCredit' 
-                    ? getTranslation(lang, 'purchaseReturns.supplierCredit') 
+                <span className="block text-[11px] text-muted-foreground">{getTranslation(lang, 'purchaseReturns.refundMethod')}</span>
+                <span className="text-xs font-semibold text-foreground">
+                  {selectedReturn.refundMethod === 'SupplierCredit'
+                    ? getTranslation(lang, 'purchaseReturns.supplierCredit')
                     : getTranslation(lang, 'purchaseReturns.cashRefund')}
                 </span>
               </div>
             </div>
 
             {/* Items */}
-            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '16px' }}>
-              <table className="table-clean" style={{ fontSize: '12px' }}>
+            <div className="max-h-52 overflow-y-auto mb-4 border border-border rounded-xl">
+              <table className="table-clean text-xs">
                 <thead>
                   <tr>
                     <th>{getTranslation(lang, 'purchaseReturns.product')}</th>
@@ -762,18 +756,18 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
                 <tbody>
                   {(selectedReturn.items || []).map((it, idx) => (
                     <tr key={idx}>
-                      <td>{it.productName} ({it.productSku})</td>
-                      <td style={{ fontWeight: 700 }}>{it.returnedQty}</td>
-                      <td>{formatMoney(it.unitCost)}</td>
-                      <td style={{ fontWeight: 700, fontFamily: 'monospace', color: '#ef4444' }}>{formatMoney(it.totalCost)}</td>
+                      <td dir="auto">{it.productName} ({it.productSku})</td>
+                      <td className="font-bold font-mono tabular-nums" dir="ltr">{it.returnedQty}</td>
+                      <td className="font-mono tabular-nums" dir="ltr">{formatMoney(it.unitCost)}</td>
+                      <td className="font-bold font-mono tabular-nums text-destructive" dir="ltr">{formatMoney(it.totalCost)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-              <div style={{ fontSize: '16px', fontWeight: 800, color: '#ef4444' }}>
+            <div className="flex justify-end border-t border-border pt-3">
+              <div className="text-base font-extrabold text-destructive tabular-nums" dir="ltr">
                 {getTranslation(lang, 'purchaseReturns.totalAmount')}: {formatMoney(selectedReturn.totalAmount)}
               </div>
             </div>
@@ -805,23 +799,23 @@ export default function PurchaseReturnsView({ lang }: PurchaseReturnsViewProps) 
                 <CheckCircle2 size={24} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{getTranslation(lang, 'purchaseReturns.confirmApprove')}</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{returnToApprove.returnNo}</span>
+                <h3 className="m-0 text-base font-bold text-foreground">{getTranslation(lang, 'purchaseReturns.confirmApprove')}</h3>
+                <span className="text-xs font-mono text-muted-foreground" dir="ltr">{returnToApprove.returnNo}</span>
               </div>
             </div>
 
-            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+            <p className="text-xs text-muted-foreground leading-relaxed m-0 mb-4">
               {getTranslation(lang, 'purchaseReturns.approveNotice')}
             </p>
 
-            <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '10px', padding: '12px', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'purchaseReturns.supplier')}:</span>
-                <span style={{ fontSize: '13px', fontWeight: 700 }}>{returnToApprove.supplierName}</span>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 mb-4 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'purchaseReturns.supplier')}:</span>
+                <span className="font-bold text-foreground" dir="auto">{returnToApprove.supplierName}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'purchaseReturns.totalAmount')}:</span>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'purchaseReturns.totalAmount')}:</span>
+                <span className="text-sm font-bold text-destructive font-mono tabular-nums" dir="ltr">
                   {formatMoney(returnToApprove.totalAmount)}
                 </span>
               </div>

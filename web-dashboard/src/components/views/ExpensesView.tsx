@@ -31,6 +31,8 @@ import {
   ExpenseStatus, 
   ExpensePaymentMethod 
 } from '../../types/businessModules';
+import { StatusBadge } from '../ui/StatusBadge';
+import { EmptyState } from '../ui/EmptyState';
 
 interface ExpensesViewProps {
   lang: 'en' | 'ar';
@@ -480,64 +482,62 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
                 <tbody>
                   {filteredVouchers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                        {getTranslation(lang, 'expenses.noVouchersFound')}
+                      <td colSpan={8} className="p-0">
+                        <EmptyState
+                          lang={lang}
+                          icon={<FileText size={22} />}
+                          title={getTranslation(lang, 'expenses.noVouchersFound')}
+                        />
                       </td>
                     </tr>
                   ) : (
                     filteredVouchers.map(v => (
                       <tr key={v.id}>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                        <td className="font-mono font-bold text-primary" dir="ltr">
                           {v.voucherNo}
                         </td>
                         <td>
-                          <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                          <span className="font-semibold text-foreground" dir="auto">
                             {v.categoryName || categories.find(c => c.id === v.categoryId)?.name || v.categoryId}
                           </span>
                         </td>
                         <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569' }}>
+                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Wallet size={13} />
-                            <span>{v.treasuryAccountName || treasuryAccounts.find(a => a.id === v.treasuryAccountId)?.name || v.treasuryAccountId}</span>
+                            <span dir="auto">{v.treasuryAccountName || treasuryAccounts.find(a => a.id === v.treasuryAccountId)?.name || v.treasuryAccountId}</span>
                           </span>
                         </td>
                         <td>
-                          <span style={{ fontWeight: 600 }}>{v.recipient}</span>
+                          <span className="font-semibold text-foreground" dir="auto">{v.recipient}</span>
                           {v.notes && (
-                            <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8' }}>{v.notes}</span>
+                            <span className="block text-[11px] text-muted-foreground" dir="auto">{v.notes}</span>
                           )}
                         </td>
-                        <td style={{ fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+                        <td className="font-bold text-destructive font-mono tabular-nums" dir="ltr">
                           {formatMoney(v.amount)}
                         </td>
-                        <td style={{ fontSize: '13px', color: '#64748b' }}>
+                        <td className="text-xs text-muted-foreground tabular-nums" dir="ltr">
                           {(v.createdAt || '').slice(0, 10)}
                         </td>
                         <td>
-                          <span style={{
-                            padding: '3px 8px',
-                            borderRadius: '12px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            background: v.status === 'Approved' ? 'rgba(34, 197, 94, 0.12)' :
-                                        v.status === 'Rejected' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                            color: v.status === 'Approved' ? '#16a34a' :
-                                   v.status === 'Rejected' ? '#dc2626' : '#d97706',
-                            border: `1px solid ${v.status === 'Approved' ? 'rgba(34, 197, 94, 0.3)' :
-                                                 v.status === 'Rejected' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
-                          }}>
-                            {v.status === 'Approved' ? getTranslation(lang, 'expenses.approved') :
-                             v.status === 'Rejected' ? getTranslation(lang, 'expenses.rejected') :
-                             getTranslation(lang, 'expenses.draft')}
-                          </span>
+                          <StatusBadge
+                            tone={v.status === 'Approved' ? 'emerald' : v.status === 'Rejected' ? 'rose' : 'amber'}
+                            dot
+                            label={
+                              v.status === 'Approved'
+                                ? getTranslation(lang, 'expenses.approved')
+                                : v.status === 'Rejected'
+                                  ? getTranslation(lang, 'expenses.rejected')
+                                  : getTranslation(lang, 'expenses.draft')
+                            }
+                          />
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td className="text-center">
                           {v.status !== 'Approved' && v.status !== 'Rejected' ? (
-                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                            <div className="inline-flex gap-1.5">
                               <button
                                 type="button"
-                                className="btn-clean-primary"
-                                style={{ padding: '3px 8px', fontSize: '11px' }}
+                                className="btn-clean-primary py-1 px-2.5 text-[11px]"
                                 onClick={() => setVoucherToApprove(v)}
                               >
                                 <CheckCircle2 size={12} />
@@ -545,8 +545,7 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
                               </button>
                               <button
                                 type="button"
-                                className="btn-clean-secondary"
-                                style={{ padding: '3px 8px', fontSize: '11px', color: '#dc2626' }}
+                                className="btn-clean-secondary py-1 px-2.5 text-[11px] text-destructive"
                                 onClick={() => handleRejectVoucher(v)}
                               >
                                 <XCircle size={12} />
@@ -554,7 +553,7 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
                               </button>
                             </div>
                           ) : (
-                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>—</span>
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
                       </tr>
@@ -585,33 +584,32 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
               <tbody>
                 {categories.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                      {getTranslation(lang, 'expenses.noCategoriesFound')}
+                    <td colSpan={6} className="p-0">
+                      <EmptyState
+                        lang={lang}
+                        icon={<Tag size={22} />}
+                        title={getTranslation(lang, 'expenses.noCategoriesFound')}
+                      />
                     </td>
                   </tr>
                 ) : (
                   categories.map(c => (
                     <tr key={c.id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                      <td className="font-mono font-bold text-primary" dir="ltr">
                         {c.code}
                       </td>
-                      <td style={{ fontWeight: 600 }}>{c.name}</td>
-                      <td style={{ fontWeight: 600 }}>{c.nameAr || '—'}</td>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                      <td className="font-semibold text-foreground">{c.name}</td>
+                      <td className="font-semibold text-foreground">{c.nameAr || '—'}</td>
+                      <td className="font-mono font-bold tabular-nums text-foreground" dir="ltr">
                         {c.budgetLimit ? formatMoney(c.budgetLimit) : '—'}
                       </td>
-                      <td style={{ fontSize: '13px', color: '#64748b' }}>{c.description || '—'}</td>
+                      <td className="text-xs text-muted-foreground">{c.description || '—'}</td>
                       <td>
-                        <span style={{
-                          padding: '2px 8px',
-                          borderRadius: '10px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          background: c.isActive ? 'rgba(34, 197, 94, 0.12)' : 'rgba(148, 163, 184, 0.12)',
-                          color: c.isActive ? '#16a34a' : '#64748b'
-                        }}>
-                          {c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
-                        </span>
+                        <StatusBadge
+                          tone={c.isActive ? 'emerald' : 'slate'}
+                          dot
+                          label={c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
+                        />
                       </td>
                     </tr>
                   ))
@@ -762,8 +760,8 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
                 />
               </div>
 
-              <p style={{ margin: '4px 0', fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <AlertTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+              <p className="my-1 text-xs text-muted-foreground flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-amber-500 shrink-0" />
                 <span>{getTranslation(lang, 'expenses.deductNotice')}</span>
               </p>
 
@@ -915,25 +913,25 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
                 <CheckCircle2 size={24} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{getTranslation(lang, 'expenses.confirmApprove')}</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{voucherToApprove.voucherNo}</span>
+                <h3 className="m-0 text-base font-bold text-foreground">{getTranslation(lang, 'expenses.confirmApprove')}</h3>
+                <span className="text-xs font-mono text-muted-foreground" dir="ltr">{voucherToApprove.voucherNo}</span>
               </div>
             </div>
 
-            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+            <p className="text-xs text-muted-foreground leading-relaxed m-0 mb-4">
               {getTranslation(lang, 'expenses.confirmApproveMsg')}
             </p>
 
-            <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '10px', padding: '12px', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'expenses.amount')}:</span>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 mb-4 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'expenses.amount')}:</span>
+                <span className="text-sm font-bold text-destructive font-mono tabular-nums" dir="ltr">
                   {formatMoney(voucherToApprove.amount)}
                 </span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'expenses.cashBox')}:</span>
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>{voucherToApprove.treasuryAccountName || voucherToApprove.treasuryAccountId}</span>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'expenses.cashBox')}:</span>
+                <span className="font-semibold text-foreground">{voucherToApprove.treasuryAccountName || voucherToApprove.treasuryAccountId}</span>
               </div>
             </div>
 

@@ -218,43 +218,30 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
               ) : (
                 filtered.map(c => (
                 <tr key={c.id}>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{c.code}</td>
-                  <td style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}><span dir="auto">{c.name}</span></td>
+                  <td className="font-mono font-bold text-primary" dir="ltr">{c.code}</td>
+                  <td className="font-bold text-foreground text-sm"><span dir="auto">{c.name}</span></td>
                   <td>
-                    <span style={{ display: 'block', fontSize: '13px', color: '#1e293b', fontWeight: 600 }}>{c.phone}</span>
-                    <span dir="auto" style={{ fontSize: '12px', color: '#64748b' }}>{c.city}</span>
+                    <span className="block text-xs text-foreground font-semibold font-mono tabular-nums" dir="ltr">{c.phone}</span>
+                    <span dir="auto" className="text-xs text-muted-foreground">{c.city}</span>
                   </td>
                   <td>
-                    <span style={{
-                      padding: '3px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      background: c.loyaltyTier === 'PLATINUM' ? 'var(--primary-light)' :
-                                  c.loyaltyTier === 'GOLD' ? '#fffbeb' :
-                                  c.loyaltyTier === 'SILVER' ? '#f1f5f9' : '#fff7ed',
-                      color: c.loyaltyTier === 'PLATINUM' ? 'var(--primary)' :
-                             c.loyaltyTier === 'GOLD' ? '#b45309' :
-                             c.loyaltyTier === 'SILVER' ? '#475569' : '#c2410c',
-                      border: `1px solid ${c.loyaltyTier === 'PLATINUM' ? 'var(--primary-border)' :
-                                           c.loyaltyTier === 'GOLD' ? '#fde68a' :
-                                           c.loyaltyTier === 'SILVER' ? '#e2e8f0' : '#ffedd5'}`,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}>
-                      <Star size={12} />
+                    <span className={`status-pill ${
+                      c.loyaltyTier === 'PLATINUM' ? 'indigo' :
+                      c.loyaltyTier === 'GOLD' ? 'amber' :
+                      c.loyaltyTier === 'SILVER' ? 'slate' : 'purple'
+                    }`}>
+                      <Star size={11} />
                       <span>{c.loyaltyTier}</span>
                     </span>
                   </td>
-                  <td style={{ fontWeight: 800, color: '#b45309' }}>
+                  <td className="font-extrabold text-amber-600 dark:text-amber-400 tabular-nums" dir="ltr">
                     {c.loyaltyPoints.toLocaleString()} {isAr ? 'نقطة' : 'pts'}
                   </td>
-                  <td style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                  <td className="text-xs text-muted-foreground font-semibold font-mono tabular-nums" dir="ltr">
                     {formatCustomerMoney(c.creditLimit)}
                   </td>
                   <td>
-                    <strong style={{ fontSize: '14px', color: c.currentBalance > 0 ? '#ef4444' : '#34d399' }}>
+                    <strong className={`text-sm font-mono tabular-nums ${c.currentBalance > 0 ? 'text-destructive' : 'text-emerald-500'}`} dir="ltr">
                       {formatCustomerMoney(c.currentBalance)}
                     </strong>
                   </td>

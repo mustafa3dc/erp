@@ -233,20 +233,20 @@ export default function SalesInvoicesView({
       </div>
 
       {/* Invoices Master Table */}
-      <div className="inventory-table-card bg-card border border-border rounded-xl shadow-xs overflow-hidden">
+      <div className="inventory-table-card bg-card border border-border rounded-2xl shadow-xs overflow-hidden">
         <div className="table-responsive-wrapper overflow-x-auto">
           <table className="inventory-master-table w-full text-sm text-start">
             <thead>
-              <tr className="bg-muted/80 border-b border-border text-xs uppercase font-bold text-slate-700 dark:text-slate-200">
-                <th className="py-3 px-3">{isAr ? 'رقم الفاتورة' : 'Invoice No'}</th>
-                <th className="py-3 px-3">{isAr ? 'تاريخ الإصدار' : 'Date'}</th>
-                <th className="py-3 px-3">{isAr ? 'العميل / المشتري' : 'Customer'}</th>
-                <th className="py-3 px-3">{isAr ? 'مستودع التجهيز' : 'Warehouse'}</th>
-                <th className="py-3 px-3">{isAr ? 'طريقة السداد' : 'Payment'}</th>
-                <th className="py-3 px-3 text-center">{isAr ? 'الأصناف' : 'Items'}</th>
-                <th className="py-3 px-3">{isAr ? 'المبلغ الإجمالي' : 'Total Amount'}</th>
-                <th className="py-3 px-3">{isAr ? 'حالة الفاتورة' : 'Status'}</th>
-                <th className="py-3 px-3 text-center">{isAr ? 'الإجراءات' : 'Actions'}</th>
+              <tr className="bg-muted/90 backdrop-blur-md border-b border-border text-xs uppercase font-bold text-muted-foreground sticky top-0 z-10">
+                <th className="py-3 px-3.5">{isAr ? 'رقم الفاتورة' : 'Invoice No'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'تاريخ الإصدار' : 'Date'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'العميل / المشتري' : 'Customer'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'مستودع التجهيز' : 'Warehouse'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'طريقة السداد' : 'Payment'}</th>
+                <th className="py-3 px-3.5 text-center">{isAr ? 'الأصناف' : 'Items'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'المبلغ الإجمالي' : 'Total Amount'}</th>
+                <th className="py-3 px-3.5">{isAr ? 'حالة الفاتورة' : 'Status'}</th>
+                <th className="py-3 px-3.5 text-center">{isAr ? 'الإجراءات' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
@@ -265,36 +265,36 @@ export default function SalesInvoicesView({
                   return (
                     <tr 
                       key={inv.id} 
-                      className="hover:bg-muted/30 transition-colors cursor-pointer"
+                      className="hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => onOpenInvoiceDetails(inv)}
                       title={isAr ? 'انقر لعرض وطباعة الفاتورة' : 'Click to view invoice details'}
                     >
                       {/* Invoice No */}
-                      <td className="py-3 px-3">
-                        <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded border border-border bg-slate-100 dark:bg-slate-800 text-primary dark:text-blue-400">
+                      <td className="py-3 px-3.5">
+                        <span className="font-mono text-xs font-semibold px-2.5 py-1 rounded-md border border-border bg-muted text-primary tabular-nums" dir="ltr">
                           {inv.invoiceNo}
                         </span>
                       </td>
 
                       {/* Date */}
-                      <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-200 font-mono font-medium">
+                      <td className="py-3 px-3.5 text-xs text-muted-foreground font-mono font-medium tabular-nums" dir="ltr">
                         {inv.date}
                       </td>
 
                       {/* Customer */}
-                      <td className="py-3 px-3">
-                        <strong className="block text-sm font-semibold text-slate-900 dark:text-slate-100" dir="auto">{inv.customerName}</strong>
-                        {inv.customerPhone && <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{inv.customerPhone}</span>}
+                      <td className="py-3 px-3.5">
+                        <strong className="block text-sm font-semibold text-foreground" dir="auto">{inv.customerName}</strong>
+                        {inv.customerPhone && <span className="text-xs text-muted-foreground font-mono tabular-nums" dir="ltr">{inv.customerPhone}</span>}
                       </td>
 
                       {/* Warehouse */}
-                      <td className="py-3 px-3 text-xs text-slate-700 dark:text-slate-200 font-medium" dir="auto">
+                      <td className="py-3 px-3.5 text-xs text-muted-foreground font-medium" dir="auto">
                         {localizeWarehouse(inv.warehouseName, lang)}
                       </td>
 
                       {/* Payment Method */}
-                      <td className="py-3 px-3">
-                        <span className="text-xs px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-border font-medium">
+                      <td className="py-3 px-3.5">
+                        <span className="text-xs px-2.5 py-1 rounded-md bg-muted text-foreground border border-border font-medium">
                           {isAr 
                             ? (inv.paymentMethod === 'cash' ? 'نقداً' : inv.paymentMethod === 'card' ? 'بطاقة مصرفية' : 'آجل')
                             : (inv.paymentMethod === 'cash' ? 'Cash' : inv.paymentMethod === 'card' ? 'Card' : 'Credit')}
@@ -302,12 +302,12 @@ export default function SalesInvoicesView({
                       </td>
 
                       {/* Items */}
-                      <td className="py-3 px-3 text-center font-bold text-xs text-slate-800 dark:text-slate-200">
+                      <td className="py-3 px-3.5 text-center font-bold text-xs text-foreground font-mono tabular-nums" dir="ltr">
                         {inv.itemsCount}
                       </td>
 
                       {/* Total */}
-                      <td className="py-3 px-3 font-mono font-bold text-sm text-slate-900 dark:text-emerald-400">
+                      <td className="py-3 px-3.5 font-mono font-bold text-sm text-foreground tabular-nums" dir="ltr">
                         {formatMoney(Number(inv.total || 0))}
                       </td>
 

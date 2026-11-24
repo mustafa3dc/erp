@@ -205,52 +205,26 @@ export const RecentTransactionsTable: React.FC<RecentTransactionsTableProps> = (
       {/* Table Container - No fixed height constraints */}
       <div className="table-wrapper" style={{ width: '100%', overflowX: 'auto', minHeight: 'auto' }}>
         <table 
-          className="logistock-table" 
+          className="logistock-table table-clean" 
           style={{
             width: '100%',
-            borderCollapse: 'collapse',
-            textAlign: isAr ? 'right' : 'left'
+            borderCollapse: 'separate',
+            borderSpacing: 0,
+            textAlign: 'start'
           }}
         >
           <thead>
             <tr>
-              {/* 1 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'رقم الإذن' : 'Transaction ID'}
-              </th>
-              {/* 2 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'التوقيت' : 'Date & Time'}
-              </th>
-              {/* 3 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'كود الصنف (SKU)' : 'SKU'}
-              </th>
-              {/* 4 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', minWidth: '180px' }}>
-                {isAr ? 'اسم المنتج' : 'Product Name'}
-              </th>
-              {/* 5 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'نوع الحركة' : 'Type'}
-              </th>
-              {/* 6 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'المسار (من إلى)' : 'Route (From / To)'}
-              </th>
-              {/* 7 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'الكمية' : 'Quantity'}
-              </th>
-              {/* 8 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'الحالة' : 'Status'}
-              </th>
-              {/* 9 */}
-              <th style={{ padding: '10px 12px', background: 'var(--muted)', color: 'var(--muted-foreground)', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-                {isAr ? 'المنفّذ' : 'Handled By'}
-              </th>
-              <th style={{ padding: '10px 8px', background: 'var(--muted)', borderBottom: '1px solid var(--border)', width: '28px' }}></th>
+              <th>{isAr ? 'رقم الإذن' : 'Transaction ID'}</th>
+              <th>{isAr ? 'التوقيت' : 'Date & Time'}</th>
+              <th>{isAr ? 'كود الصنف (SKU)' : 'SKU'}</th>
+              <th style={{ minWidth: '180px' }}>{isAr ? 'اسم المنتج' : 'Product Name'}</th>
+              <th>{isAr ? 'نوع الحركة' : 'Type'}</th>
+              <th>{isAr ? 'المسار (من إلى)' : 'Route (From / To)'}</th>
+              <th>{isAr ? 'الكمية' : 'Quantity'}</th>
+              <th>{isAr ? 'الحالة' : 'Status'}</th>
+              <th>{isAr ? 'المنفّذ' : 'Handled By'}</th>
+              <th style={{ width: '28px' }}></th>
             </tr>
           </thead>
           <tbody>

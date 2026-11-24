@@ -17,16 +17,29 @@ import {
   Boxes, 
   MapPin, 
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Layers,
+  Plus,
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Product } from '../../types/warehouse';
-import { getStoredWarehouses, getStoredCategories, saveStoredCategories } from '../../services/storageService';
+import {
+  getStoredWarehouses,
+  getStoredCategories,
+  saveStoredCategories,
+  getProductQuantityTiers,
+  saveProductQuantityTiers,
+  validateQuantityTierRanges
+} from '../../services/storageService';
 import { useSettings } from '../../context/settings-context';
 import { localizeWarehouse, localizeUnit } from '../../lib/localeHelpers';
 import { validateProductPricing } from '../../schemas/ProductValidationSchema';
+import { getTranslation } from '../../lib/i18n';
+import { apiClient } from '../../lib/api-client';
 
 interface EditProductModalProps {
   product: Product | null;
@@ -65,6 +78,9 @@ export default function EditProductModal({
   const [shelf, setShelf] = useState('A-01');
   const [warehouseId, setWarehouseId] = useState('');
   const [unit, setUnit] = useState('قطعة');
+  const [isTiersOpen, setIsTiersOpen] = useState(false);
+  const [tierDrafts, setTierDrafts] = useState<Array<{ id?: string; minQty: string; maxQty: string; unitPrice: string }>>([]);
+  const [tierError, setTierError] = useState('');
 
   // Synchronize state ONLY when modal opens or a different product is loaded
   useEffect(() => {
@@ -89,6 +105,18 @@ export default function EditProductModal({
       setCategoriesList(loadedCats);
       const inStored = loadedCats.some(c => c.name === product.category);
       setIsCustomCategory(!inStored && !!product.category);
+
+      const existingTiers = getProductQuantityTiers(product.id, product);
+      setTierDrafts(
+        existingTiers.map(t => ({
+          id: t.id,
+          minQty: String(t.minQty),
+          maxQty: t.maxQty != null ? String(t.maxQty) : '',
+          unitPrice: String(t.unitPrice),
+        }))
+      );
+      setIsTiersOpen(existingTiers.length > 0);
+      setTierError('');
     }
   }, [product?.id, isOpen]);
 
@@ -167,6 +195,36 @@ export default function EditProductModal({
       }
     }
 
+    const parsedTiers = tierDrafts
+      .filter(t => t.minQty.trim() !== '' || t.unitPrice.trim() !== '')
+      .map(t => ({
+        id: t.id,
+        minQty: Number(t.minQty),
+        maxQty: t.maxQty.trim() !== '' ? Number(t.maxQty) : null,
+        unitPrice: Number(t.unitPrice),
+      }));
+
+    if (parsedTiers.length > 0) {
+      const check = validateQuantityTierRanges(parsedTiers);
+      if (!check.valid) {
+        const errKey = check.errorCode ? `errors.${check.errorCode}` : 'errors.ERR_INVALID_QTY_RANGE';
+        setTierError(getTranslation(lang === 'en' ? 'en' : 'ar', errKey));
+        setIsTiersOpen(true);
+        return;
+      }
+    }
+
+    const updatedTiers = saveProductQuantityTiers(product.id, parsedTiers, {
+      sku: sku.trim() || product.sku,
+      name: cleanName,
+      baseSellingPrice: Number(sellingPrice) || 0,
+    });
+
+    apiClient.put('/api/quantity-tiers', {
+      productId: product.id,
+      tiers: parsedTiers.map(t => ({ minQty: t.minQty, maxQty: t.maxQty, unitPrice: t.unitPrice })),
+    }).catch(() => {});
+
     const updated: Product = {
       ...product,
       nameAr: cleanName,
@@ -184,6 +242,14 @@ export default function EditProductModal({
       warehouseId,
       warehouseName: localizedWhName,
       warehouseNameEn: localizedWhNameEn,
+      quantityTiers: updatedTiers.map(nt => ({
+        id: nt.id,
+        productId: nt.productId,
+        minQty: nt.minQty,
+        maxQty: nt.maxQty ?? null,
+        unitPrice: nt.unitPrice,
+        updatedAt: nt.updatedAt,
+      })),
       updatedAt: new Date().toISOString().slice(0, 10)
     };
     onSave(updated);
@@ -721,6 +787,127 @@ export default function EditProductModal({
                       </span>
                     )}
                   </div>
+                </div>
+
+                {/* Collapsible Card 3: Quantity Pricing Tiers */}
+                <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isTiersOpen;
+                      setIsTiersOpen(next);
+                      if (next && tierDrafts.length === 0) {
+                        setTierDrafts([{ minQty: '2', maxQty: '', unitPrice: sellingPrice > 0 ? String(Math.round(sellingPrice * 0.9 * 100) / 100) : '' }]);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-bold text-foreground bg-transparent border-0 cursor-pointer hover:bg-muted/30 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-primary" />
+                      <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionTitle')}</span>
+                      {tierDrafts.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-primary/10 text-primary">
+                          {tierDrafts.length}
+                        </span>
+                      )}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isTiersOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isTiersOpen && (
+                    <div className="px-3.5 pb-3.5 pt-2 border-t border-border/50 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10.5px] text-muted-foreground">
+                          {getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionHint')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const last = tierDrafts[tierDrafts.length - 1];
+                            const lastMax = last?.maxQty ? Number(last.maxQty) : 0;
+                            const lastMin = last?.minQty ? Number(last.minQty) : 2;
+                            const nextMin = lastMax >= lastMin ? lastMax + 1 : lastMin + 5;
+                            setTierDrafts([...tierDrafts, { minQty: String(nextMin), maxQty: '', unitPrice: '' }]);
+                          }}
+                          className="btn-clean-secondary py-1 px-2 text-[10.5px]"
+                        >
+                          <Plus size={11} />
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.addTierRange')}</span>
+                        </button>
+                      </div>
+
+                      {tierDrafts.length > 0 && (
+                        <div className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-1.5 text-[10px] font-semibold text-muted-foreground">
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.fromQty')}</span>
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQty')}</span>
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.unitPrice')}</span>
+                          <span />
+                        </div>
+                      )}
+
+                      {tierDrafts.map((row, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-1.5 items-center">
+                          <Input
+                            type="number"
+                            min="2"
+                            step="1"
+                            value={row.minQty}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].minQty = e.target.value;
+                              setTierDrafts(next);
+                              setTierError('');
+                            }}
+                            className="font-mono font-bold text-xs h-8 px-2 tabular-nums"
+                          />
+                          <Input
+                            type="number"
+                            min={Number(row.minQty) || 2}
+                            step="1"
+                            placeholder={getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQtyOptional')}
+                            value={row.maxQty}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].maxQty = e.target.value;
+                              setTierDrafts(next);
+                              setTierError('');
+                            }}
+                            className="font-mono text-xs h-8 px-2 tabular-nums"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={row.unitPrice}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].unitPrice = e.target.value;
+                              setTierDrafts(next);
+                              setTierError('');
+                            }}
+                            className="font-mono font-bold text-xs h-8 px-2 tabular-nums"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTierDrafts(tierDrafts.filter((_, i) => i !== idx));
+                              setTierError('');
+                            }}
+                            className="w-7 h-8 flex items-center justify-center rounded bg-transparent border-0 text-destructive hover:bg-destructive/10 cursor-pointer"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {tierError && (
+                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-[11px] font-medium">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{tierError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

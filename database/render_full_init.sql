@@ -1561,6 +1561,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_product_bundle_items
 CREATE INDEX IF NOT EXISTS idx_bundle_component 
     ON product_bundle_items(component_product_id);
 
+CREATE TABLE IF NOT EXISTS product_quantity_tiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    min_qty INT NOT NULL CHECK (min_qty >= 2),
+    max_qty INT NULL CHECK (max_qty IS NULL OR max_qty >= min_qty),
+    unit_price NUMERIC(18, 4) NOT NULL CHECK (unit_price >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_quantity_tiers_product
+    ON product_quantity_tiers(product_id, min_qty);
+
 -- ----------------------------------------------------------------------------
 -- 4. Supplier Purchase Returns & Return Line Items
 -- ----------------------------------------------------------------------------
@@ -1757,6 +1771,12 @@ BEFORE UPDATE ON price_list_items
 FOR EACH ROW
 EXECUTE FUNCTION fn_set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_product_quantity_tiers_updated_at ON product_quantity_tiers;
+CREATE TRIGGER trg_product_quantity_tiers_updated_at
+BEFORE UPDATE ON product_quantity_tiers
+FOR EACH ROW
+EXECUTE FUNCTION fn_set_updated_at();
+
 DROP TRIGGER IF EXISTS trg_purchase_returns_updated_at ON purchase_returns;
 CREATE TRIGGER trg_purchase_returns_updated_at
 BEFORE UPDATE ON purchase_returns
@@ -1779,6 +1799,7 @@ ALTER TABLE sales_quotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_quotation_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_list_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_quantity_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_bundle_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_returns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_return_items ENABLE ROW LEVEL SECURITY;
@@ -1820,6 +1841,15 @@ BEGIN
         FOR ALL USING (
             current_setting('app.is_super_admin', true) = 'true'
             OR tenant_id IS NULL 
+            OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID
+        );
+
+    -- Product Quantity Tiers RLS
+    DROP POLICY IF EXISTS tenant_isolation_product_quantity_tiers ON product_quantity_tiers;
+    CREATE POLICY tenant_isolation_product_quantity_tiers ON product_quantity_tiers
+        FOR ALL USING (
+            current_setting('app.is_super_admin', true) = 'true'
+            OR tenant_id IS NULL
             OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID
         );
 
@@ -1920,14 +1950,6 @@ BEGIN
             (t.id, 'EXP-SAL', 'رواتب وأجور تشغيلية', 'رواتب الكوادر، مكافآت، وبدلات تشغيل'),
             (t.id, 'EXP-MAINT', 'صيانة وتشغيل', 'صيانة المعدات، تجديدات الديكور، ومستلزمات الورش'),
             (t.id, 'EXP-LOG', 'شحن ونقل ولوجستيات', 'أجور التوصيل، بنزين المركبات، والجمارك')
-        ON CONFLICT (tenant_id, lower(code)) DO NOTHING;
-
-        -- Seed Standard Price Lists
-        INSERT INTO price_lists (tenant_id, code, name, is_default, description)
-        VALUES
-            (t.id, 'PL-RETAIL', 'سعر البيع بالتجزئة (قطاعي)', TRUE, 'قائمة أسعار البيع المباشر للمستهلك'),
-            (t.id, 'PL-WHOLESALE', 'سعر الجملة', FALSE, 'أسعار مخفضة لتجار الجملة والمحلات'),
-            (t.id, 'PL-VIP', 'سعر كبار العملاء (VIP)', FALSE, 'أسعار وخصومات خاصة للعملاء المميزين')
         ON CONFLICT (tenant_id, lower(code)) DO NOTHING;
     END LOOP;
 END $$;

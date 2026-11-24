@@ -20,7 +20,14 @@ import {
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { useSettings } from '../../context/settings-context';
-import { getStoredWarehouses, getStoredAuthSession, getStoredDispatchOrders, saveStoredDispatchOrders } from '../../services/storageService';
+import {
+  getStoredWarehouses,
+  getStoredAuthSession,
+  getStoredDispatchOrders,
+  saveStoredDispatchOrders,
+  resolveQuantityUnitPrice
+} from '../../services/storageService';
+import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
 
 interface CreateInvoiceModalProps {
@@ -161,10 +168,15 @@ export default function CreateInvoiceModal({
         setErrorMsg(isAr ? `إجمالي الكمية المطلوبة تتجاوز الرصيد المتاح بالمخزن (${selectedProduct.currentStock})` : 'Total item quantity exceeds stock');
         return;
       }
+      const tierRes = resolveQuantityUnitPrice(selectedProduct, newQty);
       updated[existingIndex].quantity = newQty;
-      updated[existingIndex].total = newQty * updated[existingIndex].unitPrice;
+      updated[existingIndex].unitPrice = tierRes.unitPrice;
+      updated[existingIndex].baseUnitPrice = tierRes.basePrice;
+      updated[existingIndex].isQuantityTierApplied = tierRes.isTierApplied;
+      updated[existingIndex].total = newQty * tierRes.unitPrice;
       setLineItems(updated);
     } else {
+      const tierRes = resolveQuantityUnitPrice(selectedProduct, itemQty);
       const newItem: InvoiceLineItem = {
         id: `LI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         productId: selectedProduct.id,
@@ -172,9 +184,11 @@ export default function CreateInvoiceModal({
         nameAr: selectedProduct.nameAr,
         nameEn: selectedProduct.nameEn,
         quantity: itemQty,
-        unitPrice: selectedProduct.sellingPrice,
+        unitPrice: tierRes.unitPrice,
+        baseUnitPrice: tierRes.basePrice,
+        isQuantityTierApplied: tierRes.isTierApplied,
         unit: selectedProduct.unit,
-        total: itemQty * selectedProduct.sellingPrice
+        total: itemQty * tierRes.unitPrice
       };
       setLineItems([...lineItems, newItem]);
     }
@@ -199,9 +213,17 @@ export default function CreateInvoiceModal({
       return;
     }
 
+    const tierRes = resolveQuantityUnitPrice(
+      product || { id: item.productId, sellingPrice: item.baseUnitPrice ?? item.unitPrice },
+      newQty
+    );
+
     setErrorMsg(null);
     item.quantity = newQty;
-    item.total = newQty * item.unitPrice;
+    item.unitPrice = tierRes.unitPrice;
+    item.baseUnitPrice = tierRes.basePrice;
+    item.isQuantityTierApplied = tierRes.isTierApplied;
+    item.total = newQty * tierRes.unitPrice;
     setLineItems(updated);
   };
 
@@ -217,15 +239,16 @@ export default function CreateInvoiceModal({
 
   const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
 
-  // Check if any individual line item is below its floor price
+  // Check if any individual line item is below its floor price (quantity tiers bypass manual floor error)
   const hasLineItemFloorBreach = lineItems.some(item => {
+    if (item.isQuantityTierApplied) return false;
     const floor = getProductFloor(item.productId);
     return item.unitPrice < floor;
   });
 
   // Total floor minimum cost of all items in invoice
   const invoiceFloorTotal = lineItems.reduce((sum, item) => {
-    const floor = getProductFloor(item.productId);
+    const floor = item.isQuantityTierApplied ? item.unitPrice : getProductFloor(item.productId);
     return sum + (floor * item.quantity);
   }, 0);
 
@@ -717,7 +740,7 @@ export default function CreateInvoiceModal({
                       <td className="price-cell">
                         {(() => {
                           const itemFloor = getProductFloor(item.productId);
-                          const isItemBreached = item.unitPrice < itemFloor;
+                          const isItemBreached = !item.isQuantityTierApplied && item.unitPrice < itemFloor;
 
                           return (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -732,6 +755,7 @@ export default function CreateInvoiceModal({
                                     const val = parseFloat(e.target.value) || 0;
                                     const updated = [...lineItems];
                                     updated[idx].unitPrice = val;
+                                    updated[idx].isQuantityTierApplied = false;
                                     updated[idx].total = val * updated[idx].quantity;
                                     setLineItems(updated);
                                   }}
@@ -747,6 +771,11 @@ export default function CreateInvoiceModal({
                                   }}
                                 />
                               </div>
+                              {item.isQuantityTierApplied && (
+                                <span style={{ fontSize: '9.5px', color: '#818cf8', fontWeight: 700 }}>
+                                  {getTranslation(lang, 'quantityPricing.tierAppliedBadge')}
+                                </span>
+                              )}
                               {isItemBreached && (
                                 <span style={{ fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
                                   {isAr ? 'دون حد الأمان' : 'Below floor'}

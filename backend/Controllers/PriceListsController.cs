@@ -9,7 +9,7 @@ namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/price-lists")]
+[Route("api/quantity-tiers")]
 public class PriceListsController : ControllerBase
 {
     private readonly IPriceListService _priceListService;
@@ -22,122 +22,65 @@ public class PriceListsController : ControllerBase
     }
 
     // =========================================================================
-    // Price Lists Management
+    // Direct Product Quantity Tiered Pricing
     // =========================================================================
 
     [HttpGet]
     [HasPermission(Permissions.Sales.PriceListsView)]
-    public async Task<ActionResult<ApiResponse<List<PriceListDto>>>> GetPriceLists()
+    public async Task<ActionResult<ApiResponse<List<ProductQuantityTierDto>>>> GetAllQuantityTiers()
     {
-        var list = await _priceListService.GetPriceListsAsync();
-        return Ok(ApiResponse<List<PriceListDto>>.Ok(list));
+        var tiers = await _priceListService.GetAllQuantityTiersAsync();
+        return Ok(ApiResponse<List<ProductQuantityTierDto>>.Ok(tiers));
     }
 
-    [HttpGet("{id:guid}")]
+    [HttpGet("product/{productId:guid}")]
     [HasPermission(Permissions.Sales.PriceListsView)]
-    public async Task<ActionResult<ApiResponse<PriceListDetailDto>>> GetPriceListById(Guid id)
+    public async Task<ActionResult<ApiResponse<List<ProductQuantityTierDto>>>> GetProductQuantityTiers(Guid productId)
     {
-        var pl = await _priceListService.GetPriceListByIdAsync(id);
-        if (pl == null)
-        {
-            return NotFound(ApiResponse<PriceListDetailDto>.Fail("ERR_PRICE_LIST_NOT_FOUND", "PRICING"));
-        }
-        return Ok(ApiResponse<PriceListDetailDto>.Ok(pl));
+        var tiers = await _priceListService.GetProductQuantityTiersAsync(productId);
+        return Ok(ApiResponse<List<ProductQuantityTierDto>>.Ok(tiers));
     }
 
+    [HttpPut]
     [HttpPost]
     [HasPermission(Permissions.Sales.PriceListsManage)]
-    public async Task<ActionResult<ApiResponse<PriceListDto>>> CreatePriceList([FromBody] CreatePriceListRequest request)
+    public async Task<ActionResult<ApiResponse<List<ProductQuantityTierDto>>>> SaveProductQuantityTiers(
+        [FromBody] SaveProductQuantityTiersRequest request)
     {
-        var result = await _priceListService.CreatePriceListAsync(request);
+        var performedBy = User?.Identity?.Name;
+        var result = await _priceListService.SaveProductQuantityTiersAsync(request, performedBy);
         if (!result.Success)
         {
             return BadRequest(result);
         }
-        return CreatedAtAction(nameof(GetPriceListById), new { id = result.Data!.Id }, result);
+        return Ok(result);
     }
 
-    [HttpPut("{id:guid}")]
+    [HttpDelete("{tierId:guid}")]
     [HasPermission(Permissions.Sales.PriceListsManage)]
-    public async Task<ActionResult<ApiResponse<PriceListDto>>> UpdatePriceList(Guid id, [FromBody] UpdatePriceListRequest request)
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteQuantityTier(Guid tierId)
     {
-        var result = await _priceListService.UpdatePriceListAsync(id, request);
+        var performedBy = User?.Identity?.Name;
+        var result = await _priceListService.DeleteQuantityTierAsync(tierId, performedBy);
         if (!result.Success)
         {
-            return BadRequest(result);
+            return NotFound(result);
         }
         return Ok(result);
     }
 
-    [HttpDelete("{id:guid}")]
-    [HasPermission(Permissions.Sales.PriceListsManage)]
-    public async Task<ActionResult<ApiResponse<bool>>> DeletePriceList(Guid id)
-    {
-        var result = await _priceListService.DeletePriceListAsync(id);
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
-    }
-
-    // =========================================================================
-    // Price List Tier Items
-    // =========================================================================
-
-    [HttpPost("{id:guid}/items")]
-    [HasPermission(Permissions.Sales.PriceListsManage)]
-    public async Task<ActionResult<ApiResponse<PriceListItemDto>>> SaveItemTier(Guid id, [FromBody] SavePriceListItemInputDto input)
-    {
-        var result = await _priceListService.SavePriceListItemAsync(id, input);
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
-    }
-
-    [HttpDelete("{id:guid}/items/{itemId:guid}")]
-    [HasPermission(Permissions.Sales.PriceListsManage)]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteItemTier(Guid id, Guid itemId)
-    {
-        var result = await _priceListService.DeletePriceListItemAsync(id, itemId);
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
-    }
-
-    // =========================================================================
-    // Customer Linking & Price Resolution
-    // =========================================================================
-
-    [HttpPost("assign-customer")]
-    [HasPermission(Permissions.Sales.CustomersManage)]
-    public async Task<ActionResult<ApiResponse<bool>>> AssignPriceListToCustomer([FromBody] AssignCustomerPriceListRequest request)
-    {
-        var result = await _priceListService.AssignPriceListToCustomerAsync(request);
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-        return Ok(result);
-    }
-
-    [HttpPost("resolve-price")]
+    [HttpGet("resolve")]
     [HasPermission(Permissions.Sales.PriceListsView)]
-    public async Task<ActionResult<ApiResponse<ResolvedPriceResultDto>>> ResolvePrice([FromBody] ResolveProductPriceRequest request)
+    public async Task<ActionResult<ApiResponse<ResolvedQuantityPriceDto>>> ResolveQuantityPrice(
+        [FromQuery] Guid productId,
+        [FromQuery] int quantity = 1)
     {
-        try
+        var resolved = await _priceListService.ResolveQuantityPriceAsync(productId, quantity);
+        if (resolved == null)
         {
-            var resolved = await _priceListService.ResolvePriceAsync(request);
-            return Ok(ApiResponse<ResolvedPriceResultDto>.Ok(resolved));
+            return NotFound(ApiResponse<ResolvedQuantityPriceDto>.Fail("ERR_PRODUCT_NOT_FOUND", "PRICING"));
         }
-        catch (KeyNotFoundException)
-        {
-            return NotFound(ApiResponse<ResolvedPriceResultDto>.Fail("ERR_PRODUCT_NOT_FOUND", "PRICING"));
-        }
+        return Ok(ApiResponse<ResolvedQuantityPriceDto>.Ok(resolved));
     }
 
     // =========================================================================
@@ -168,10 +111,24 @@ public class PriceListsController : ControllerBase
     [HasPermission(Permissions.Inventory.ItemsCreate)]
     public async Task<ActionResult<ApiResponse<ProductBundleDto>>> SaveBundle([FromBody] SaveProductBundleRequest request)
     {
-        var result = await _priceListService.SaveBundleAsync(request);
+        var performedBy = User?.Identity?.Name;
+        var result = await _priceListService.SaveBundleAsync(request, performedBy);
         if (!result.Success)
         {
             return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpDelete("/api/bundles/{productId:guid}")]
+    [HasPermission(Permissions.Inventory.ItemsDelete)]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteBundle(Guid productId)
+    {
+        var performedBy = User?.Identity?.Name;
+        var result = await _priceListService.DeleteBundleAsync(parentProductId: productId, performedBy: performedBy);
+        if (!result.Success)
+        {
+            return NotFound(result);
         }
         return Ok(result);
     }

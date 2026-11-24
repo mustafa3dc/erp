@@ -9,7 +9,15 @@ import BarcodeSvg from './BarcodeSvg';
 import { localizeCategory, localizeWarehouse, localizeUnit } from '../lib/localeHelpers';
 import { useSettings } from '../context/settings-context';
 import { validateProductPricing } from '../schemas/ProductValidationSchema';
-import { getStoredCategories, saveStoredCategories } from '../services/storageService';
+import {
+  getStoredCategories,
+  saveStoredCategories,
+  saveProductQuantityTiers,
+  validateQuantityTierRanges
+} from '../services/storageService';
+import { getTranslation } from '../lib/i18n';
+import { apiClient } from '../lib/api-client';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import { ModalBackdropPortal } from './ui/dialog';
 
 interface AddProductModalProps {
@@ -112,6 +120,8 @@ export default function AddProductModal({
   const [currentStock, setCurrentStock] = useState(30);
   const [minStockAlert, setMinStockAlert] = useState(10);
   const [newProdError, setNewProdError] = useState('');
+  const [isTiersOpen, setIsTiersOpen] = useState(false);
+  const [tierDrafts, setTierDrafts] = useState<Array<{ minQty: string; maxQty: string; unitPrice: string }>>([]);
 
   // ---------------- Restock Form State ----------------
   const [restockProductId, setRestockProductId] = useState<string>(products[0]?.id || '');
@@ -201,6 +211,23 @@ export default function AddProductModal({
       return;
     }
 
+    const parsedTiers = tierDrafts
+      .filter(t => t.minQty.trim() !== '' || t.unitPrice.trim() !== '')
+      .map(t => ({
+        minQty: Number(t.minQty),
+        maxQty: t.maxQty.trim() !== '' ? Number(t.maxQty) : null,
+        unitPrice: Number(t.unitPrice),
+      }));
+
+    if (parsedTiers.length > 0) {
+      const tierCheck = validateQuantityTierRanges(parsedTiers);
+      if (!tierCheck.valid) {
+        const errKey = tierCheck.errorCode ? `errors.${tierCheck.errorCode}` : 'errors.ERR_INVALID_QTY_RANGE';
+        setNewProdError(getTranslation(lang === 'en' ? 'en' : 'ar', errKey));
+        return;
+      }
+    }
+
     const selectedWh = warehouses.find(w => w.id === warehouseId);
     const resolvedWhName = selectedWh?.nameAr ? localizeWarehouse(selectedWh.nameAr, lang === 'en' ? 'en' : 'ar') : (isAr ? 'المستودع الرئيسي' : 'Main Warehouse');
     const resolvedWhNameEn = selectedWh?.nameEn ? localizeWarehouse(selectedWh.nameEn, 'en') : 'Main Warehouse';
@@ -225,7 +252,13 @@ export default function AddProductModal({
       warehouseNameEn: resolvedWhNameEn,
       status: Number(currentStock) > Number(minStockAlert) ? 'available' : Number(currentStock) > 0 ? 'low' : 'out_of_stock',
       shelf: shelf.trim() || 'A-01-01',
-      updatedAt: new Date().toISOString().slice(0, 10)
+      updatedAt: new Date().toISOString().slice(0, 10),
+      quantityTiers: parsedTiers.map((t, idx) => ({
+        id: `TIER-${Date.now()}-${idx}`,
+        minQty: t.minQty,
+        maxQty: t.maxQty,
+        unitPrice: t.unitPrice,
+      })),
     };
 
     // Ensure selected category is persisted to stored categories
@@ -238,6 +271,21 @@ export default function AddProductModal({
     } catch {}
 
     onAddProduct(newProd);
+
+    if (parsedTiers.length > 0) {
+      saveProductQuantityTiers(newProd.id, parsedTiers, {
+        sku: newProd.sku,
+        name: newProd.nameAr,
+        baseSellingPrice: newProd.sellingPrice,
+      });
+      apiClient.put('/api/quantity-tiers', {
+        productId: newProd.id,
+        tiers: parsedTiers,
+      }).catch(() => {});
+    }
+
+    setTierDrafts([]);
+    setIsTiersOpen(false);
     onClose();
   };
 
@@ -717,6 +765,117 @@ export default function AddProductModal({
                       className="goods-text-input text-amber"
                     />
                   </div>
+                </div>
+
+                {/* Collapsible Quantity Pricing Tiers */}
+                <div className="rounded-xl border border-border bg-muted/25 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isTiersOpen;
+                      setIsTiersOpen(next);
+                      if (next && tierDrafts.length === 0) {
+                        setTierDrafts([{ minQty: '2', maxQty: '', unitPrice: sellingPrice > 0 ? String(Math.round(sellingPrice * 0.9 * 100) / 100) : '' }]);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-bold text-foreground bg-transparent border-0 cursor-pointer hover:bg-muted/40 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Layers size={14} className="text-primary" />
+                      <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionTitle')}</span>
+                      {tierDrafts.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-primary/15 text-primary">
+                          {tierDrafts.length}
+                        </span>
+                      )}
+                    </span>
+                    <ChevronDown size={14} className={`text-muted-foreground transition-transform ${isTiersOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isTiersOpen && (
+                    <div className="px-3.5 pb-3.5 pt-1 border-t border-border/60 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          {getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionHint')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const last = tierDrafts[tierDrafts.length - 1];
+                            const lastMax = last?.maxQty ? Number(last.maxQty) : 0;
+                            const lastMin = last?.minQty ? Number(last.minQty) : 2;
+                            const nextMin = lastMax >= lastMin ? lastMax + 1 : lastMin + 5;
+                            setTierDrafts([...tierDrafts, { minQty: String(nextMin), maxQty: '', unitPrice: '' }]);
+                          }}
+                          className="btn-clean-secondary py-1 px-2.5 text-[11px]"
+                        >
+                          <Plus size={12} />
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.addTierRange')}</span>
+                        </button>
+                      </div>
+
+                      {tierDrafts.length > 0 && (
+                        <div className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-2 text-[10.5px] font-semibold text-muted-foreground">
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.fromQty')}</span>
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQty')}</span>
+                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.unitPrice')}</span>
+                          <span />
+                        </div>
+                      )}
+
+                      {tierDrafts.map((row, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-2 items-center">
+                          <input
+                            type="number"
+                            min="2"
+                            step="1"
+                            value={row.minQty}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].minQty = e.target.value;
+                              setTierDrafts(next);
+                              setNewProdError('');
+                            }}
+                            className="input-clean w-full h-9 px-2.5 text-xs font-mono font-bold tabular-nums rounded-lg"
+                          />
+                          <input
+                            type="number"
+                            min={Number(row.minQty) || 2}
+                            step="1"
+                            placeholder={getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQtyOptional')}
+                            value={row.maxQty}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].maxQty = e.target.value;
+                              setTierDrafts(next);
+                              setNewProdError('');
+                            }}
+                            className="input-clean w-full h-9 px-2.5 text-xs font-mono tabular-nums rounded-lg"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={row.unitPrice}
+                            onChange={e => {
+                              const next = [...tierDrafts];
+                              next[idx].unitPrice = e.target.value;
+                              setTierDrafts(next);
+                              setNewProdError('');
+                            }}
+                            className="input-clean w-full h-9 px-2.5 text-xs font-mono font-bold tabular-nums rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setTierDrafts(tierDrafts.filter((_, i) => i !== idx))}
+                            className="w-7 h-8 flex items-center justify-center rounded-md bg-transparent border-0 text-destructive hover:bg-destructive/10 cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

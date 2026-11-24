@@ -9,7 +9,8 @@ import {
   ExpenseVoucher, 
   SalesQuotation, 
   PriceList, 
-  ProductBundleItem, 
+  ProductBundleItem,
+  ProductQuantityTier,
   PurchaseReturn, 
   ProductSerial 
 } from '../types/businessModules';
@@ -75,6 +76,7 @@ export const KEYS = {
   get EXPENSE_VOUCHERS() { return getScopedKey('expense_vouchers'); },
   get SALES_QUOTATIONS() { return getScopedKey('sales_quotations'); },
   get PRICE_LISTS() { return getScopedKey('price_lists'); },
+  get PRODUCT_QUANTITY_TIERS() { return getScopedKey('product_quantity_tiers'); },
   get PRODUCT_BUNDLES() { return getScopedKey('product_bundles'); },
   get PURCHASE_RETURNS() { return getScopedKey('purchase_returns'); },
   get PRODUCT_SERIALS() { return getScopedKey('product_serials'); },
@@ -1214,44 +1216,55 @@ export function executePosSaleTransaction(
   const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   if (!isWarehouseDispatch) {
-    // IN_STORE: Immediate deduction and outbound record
+    // IN_STORE: Immediate deduction and outbound record (handles Product Bundles by deducting component SKUs)
+    const storedBundles = getStoredProductBundles();
     for (const item of req.items) {
-      const pIndex = updatedProducts.findIndex(p => p.id === item.product.id || p.sku === item.product.sku);
-      if (pIndex >= 0) {
-        const prod = updatedProducts[pIndex];
-        const prevStock = Number(prod.currentStock) || 0;
-        const newStock = Math.max(0, prevStock - item.quantity);
+      const bundleComponents = storedBundles.filter(b => b.parentProductId === item.product.id);
+      const deductionTargets: Array<{ product: Product | undefined; qty: number }> =
+        bundleComponents.length > 0
+          ? bundleComponents.map(bc => ({
+              product: updatedProducts.find(p => p.id === bc.childProductId || p.sku === bc.childProductSku),
+              qty: Math.ceil((Number(bc.quantity) || 1) * item.quantity),
+            }))
+          : [{ product: updatedProducts.find(p => p.id === item.product.id || p.sku === item.product.sku), qty: item.quantity }];
 
-        updatedProducts[pIndex] = {
-          ...prod,
-          currentStock: newStock,
-          status: newStock <= 0 ? 'out_of_stock' : newStock <= (prod.minStockAlert || 5) ? 'low' : 'available',
-          updatedAt: nowStr
-        };
+      for (const target of deductionTargets) {
+        if (!target.product) continue;
+        const pIndex = updatedProducts.findIndex(p => p.id === target.product!.id);
+        if (pIndex >= 0) {
+          const prod = updatedProducts[pIndex];
+          const prevStock = Number(prod.currentStock) || 0;
+          const newStock = Math.max(0, prevStock - target.qty);
 
-        // Create Stock Movement Transaction
-        const txId = getNextTransactionId(newTransactions.length);
-        const nowIso = new Date().toISOString();
-        const outboundTx: TransactionDetail = {
-          id: txId,
-          timestamp: nowIso,
-          movementDate: nowIso,
-          createdAt: nowIso,
-          date: nowIso,
-          type: 'Outbound', // POS Sale
-          status: 'Dispatched',
-          sku: prod.sku,
-          productName: prod.nameAr,
-          qty: -item.quantity, // Strict requirement: -Qty
-          unit: prod.unit || 'قطعة',
-          unitCost: prod.costPrice,
-          location: req.warehouseName,
-          fromLocation: req.warehouseName,
-          toLocation: req.customerName || 'عميل نقدي (POS Retail)',
-          referenceNo: req.invoiceNumber,
-          operator: req.cashierName || req.cashierId || 'الكاشير'
-        };
-        newTransactions.push(outboundTx);
+          updatedProducts[pIndex] = {
+            ...prod,
+            currentStock: newStock,
+            status: newStock <= 0 ? 'out_of_stock' : newStock <= (prod.minStockAlert || 5) ? 'low' : 'available',
+            updatedAt: nowStr
+          };
+
+          const txId = getNextTransactionId(newTransactions.length);
+          const nowIso = new Date().toISOString();
+          newTransactions.push({
+            id: txId,
+            timestamp: nowIso,
+            movementDate: nowIso,
+            createdAt: nowIso,
+            date: nowIso,
+            type: 'Outbound',
+            status: 'Dispatched',
+            sku: prod.sku,
+            productName: bundleComponents.length > 0 ? `${prod.nameAr} (${item.product.nameAr})` : prod.nameAr,
+            qty: -target.qty,
+            unit: prod.unit || 'قطعة',
+            unitCost: prod.costPrice,
+            location: req.warehouseName,
+            fromLocation: req.warehouseName,
+            toLocation: req.customerName || 'عميل نقدي (POS Retail)',
+            referenceNo: req.invoiceNumber,
+            operator: req.cashierName || req.cashierId || 'الكاشير'
+          });
+        }
       }
     }
   }
@@ -2847,6 +2860,166 @@ export function getStoredProductBundles(): ProductBundleItem[] {
 
 export function saveStoredProductBundles(bundles: ProductBundleItem[]): void {
   safeSet(KEYS.PRODUCT_BUNDLES, bundles);
+}
+
+// ----------------------------------------------------
+// Direct Product Quantity Tiered Pricing
+// ----------------------------------------------------
+export function getStoredQuantityTiers(): ProductQuantityTier[] {
+  return safeGet<ProductQuantityTier[]>(KEYS.PRODUCT_QUANTITY_TIERS, []);
+}
+
+export function saveStoredQuantityTiers(tiers: ProductQuantityTier[]): void {
+  safeSet(KEYS.PRODUCT_QUANTITY_TIERS, tiers);
+}
+
+export function validateQuantityTierRanges(
+  tiers: Array<{ minQty: number; maxQty?: number | null; unitPrice: number }>
+): { valid: boolean; errorCode?: 'ERR_INVALID_QTY_RANGE' | 'ERR_OVERLAPPING_QTY_TIER' } {
+  for (const t of tiers) {
+    if (!Number.isFinite(t.minQty) || t.minQty < 2 || (t.maxQty != null && (!Number.isFinite(t.maxQty) || t.maxQty < t.minQty)) || !Number.isFinite(t.unitPrice) || t.unitPrice < 0) {
+      return { valid: false, errorCode: 'ERR_INVALID_QTY_RANGE' };
+    }
+  }
+
+  const sorted = [...tiers].sort((a, b) => a.minQty - b.minQty);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (current.maxQty == null || current.maxQty >= next.minQty) {
+      return { valid: false, errorCode: 'ERR_OVERLAPPING_QTY_TIER' };
+    }
+  }
+
+  return { valid: true };
+}
+
+export function getProductQuantityTiers(productId: string, fallbackProduct?: Partial<Product>): ProductQuantityTier[] {
+  const stored = getStoredQuantityTiers().filter(t => t.productId === productId);
+  if (stored.length > 0) {
+    return [...stored].sort((a, b) => a.minQty - b.minQty);
+  }
+  const embedded = fallbackProduct?.quantityTiers;
+  if (Array.isArray(embedded) && embedded.length > 0) {
+    return embedded.map((t, idx) => ({
+      id: t.id || `TIER-${productId}-${idx}`,
+      productId,
+      minQty: Number(t.minQty),
+      maxQty: t.maxQty != null ? Number(t.maxQty) : null,
+      unitPrice: Number(t.unitPrice),
+      updatedAt: t.updatedAt,
+    })).sort((a, b) => a.minQty - b.minQty);
+  }
+  return [];
+}
+
+export function saveProductQuantityTiers(
+  productId: string,
+  tiers: Array<{ id?: string; minQty: number; maxQty?: number | null; unitPrice: number }>,
+  productMeta?: { sku?: string; name?: string; baseSellingPrice?: number }
+): ProductQuantityTier[] {
+  const existingAll = getStoredQuantityTiers().filter(t => t.productId !== productId);
+  const nowIso = new Date().toISOString();
+  const normalized: ProductQuantityTier[] = [...tiers]
+    .sort((a, b) => a.minQty - b.minQty)
+    .map((t, idx) => ({
+      id: t.id || `TIER-${Date.now()}-${idx}`,
+      productId,
+      productSku: productMeta?.sku,
+      productName: productMeta?.name,
+      baseSellingPrice: productMeta?.baseSellingPrice,
+      minQty: Math.floor(Number(t.minQty)),
+      maxQty: t.maxQty != null && String(t.maxQty) !== '' ? Math.floor(Number(t.maxQty)) : null,
+      unitPrice: Number(t.unitPrice),
+      updatedAt: nowIso,
+    }));
+
+  saveStoredQuantityTiers([...existingAll, ...normalized]);
+
+  // Keep product.quantityTiers in sync inside KEYS.PRODUCTS
+  const storedProducts = getStoredProducts();
+  const nextProducts = storedProducts.map(p =>
+    p.id === productId
+      ? {
+          ...p,
+          quantityTiers: normalized.map(nt => ({
+            id: nt.id,
+            productId: nt.productId,
+            minQty: nt.minQty,
+            maxQty: nt.maxQty ?? null,
+            unitPrice: nt.unitPrice,
+            updatedAt: nt.updatedAt,
+          })),
+        }
+      : p
+  );
+  saveStoredProducts(nextProducts);
+  return normalized;
+}
+
+export function deleteStoredQuantityTier(tierId: string): void {
+  const all = getStoredQuantityTiers();
+  const target = all.find(t => t.id === tierId);
+  const remaining = all.filter(t => t.id !== tierId);
+  saveStoredQuantityTiers(remaining);
+
+  if (target) {
+    const productTiers = remaining.filter(t => t.productId === target.productId);
+    const storedProducts = getStoredProducts();
+    saveStoredProducts(
+      storedProducts.map(p =>
+        p.id === target.productId
+          ? {
+              ...p,
+              quantityTiers: productTiers.map(nt => ({
+                id: nt.id,
+                productId: nt.productId,
+                minQty: nt.minQty,
+                maxQty: nt.maxQty ?? null,
+                unitPrice: nt.unitPrice,
+                updatedAt: nt.updatedAt,
+              })),
+            }
+          : p
+      )
+    );
+  }
+}
+
+export function resolveQuantityUnitPrice(
+  product: { id: string; sellingPrice?: number; retailPrice?: number; quantityTiers?: Product['quantityTiers'] } | undefined,
+  quantity: number,
+  explicitTiers?: Array<{ minQty: number; maxQty?: number | null; unitPrice: number }>
+): { unitPrice: number; basePrice: number; isTierApplied: boolean; minQty?: number; maxQty?: number | null } {
+  const basePrice = Number(product?.sellingPrice ?? product?.retailPrice ?? 0);
+  if (!product?.id) {
+    return { unitPrice: basePrice, basePrice, isTierApplied: false };
+  }
+
+  const safeQty = Math.max(1, Math.floor(Number(quantity) || 1));
+  const tiers = explicitTiers && explicitTiers.length > 0
+    ? explicitTiers
+    : getProductQuantityTiers(product.id, product);
+
+  if (!tiers || tiers.length === 0 || safeQty < 2) {
+    return { unitPrice: basePrice, basePrice, isTierApplied: false };
+  }
+
+  const matching = [...tiers]
+    .filter(t => safeQty >= t.minQty && (t.maxQty == null || safeQty <= t.maxQty))
+    .sort((a, b) => b.minQty - a.minQty)[0];
+
+  if (matching) {
+    return {
+      unitPrice: Number(matching.unitPrice),
+      basePrice,
+      isTierApplied: true,
+      minQty: matching.minQty,
+      maxQty: matching.maxQty ?? null,
+    };
+  }
+
+  return { unitPrice: basePrice, basePrice, isTierApplied: false };
 }
 
 // ----------------------------------------------------

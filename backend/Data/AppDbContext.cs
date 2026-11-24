@@ -52,6 +52,7 @@ public class AppDbContext : DbContext
     public DbSet<SalesQuotationItem> SalesQuotationItems => Set<SalesQuotationItem>();
     public DbSet<PriceList> PriceLists => Set<PriceList>();
     public DbSet<PriceListItem> PriceListItems => Set<PriceListItem>();
+    public DbSet<ProductQuantityTier> ProductQuantityTiers => Set<ProductQuantityTier>();
     public DbSet<ProductBundleItem> ProductBundleItems => Set<ProductBundleItem>();
     public DbSet<PurchaseReturn> PurchaseReturns => Set<PurchaseReturn>();
     public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
@@ -342,6 +343,17 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(bi => bi.ComponentProductId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ProductQuantityTier>(entity =>
+        {
+            entity.HasIndex(qt => new { qt.TenantId, qt.ProductId, qt.MinQty });
+            entity.Property(qt => qt.UnitPrice).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(qt => qt.Product)
+                .WithMany(p => p.QuantityTiers)
+                .HasForeignKey(qt => qt.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // 4. Purchase Returns Configurations

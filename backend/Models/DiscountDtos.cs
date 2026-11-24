@@ -4,6 +4,13 @@ namespace ERP.Warehouse.Api.Models;
 /// Strictly Masked Product DTO for POS and Cashiers.
 /// Guaranteed ZERO leakage of CostPrice or Profit Margin metrics.
 /// </summary>
+public record PosQuantityTierDto(
+    Guid Id,
+    int MinQty,
+    int? MaxQty,
+    decimal UnitPrice
+);
+
 public class PosProductDto
 {
     public Guid Id { get; set; }
@@ -27,6 +34,8 @@ public class PosProductDto
     public decimal MaxCashierDiscountPercent { get; set; } = 5.0m;
     
     public bool IsActive { get; set; }
+    public bool IsBundle { get; set; }
+    public List<PosQuantityTierDto> QuantityTiers { get; set; } = new();
 }
 
 public class ValidateDiscountRequest
@@ -142,6 +151,7 @@ public class PosInvoiceItemResponse
     public decimal DiscountAmount { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal TotalPrice { get; set; }
+    public bool IsQuantityTierApplied { get; set; }
     public bool WasManagerOverride { get; set; }
     public string? ApprovedByManagerId { get; set; }
 }

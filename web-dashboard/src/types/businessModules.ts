@@ -111,6 +111,18 @@ export interface PriceList {
   items: PriceListItem[];
 }
 
+export interface ProductQuantityTier {
+  id: string;
+  productId: string;
+  productSku?: string;
+  productName?: string;
+  baseSellingPrice?: number;
+  minQty: number;
+  maxQty?: number | null;
+  unitPrice: number;
+  updatedAt?: string;
+}
+
 export interface ProductBundleItem {
   id: string;
   parentProductId: string;

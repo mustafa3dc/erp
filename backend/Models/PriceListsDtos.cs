@@ -2,99 +2,48 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ERP.Warehouse.Api.Models;
 
-public record PriceListDto(
-    Guid Id,
-    string Code,
-    string Name,
-    string Currency,
-    bool IsDefault,
-    bool IsActive,
-    DateTime? StartDate,
-    DateTime? EndDate,
-    string? Description,
-    int ItemsCount,
-    DateTime CreatedAt
-);
+// ============================================================================
+// Direct Product Quantity Tiered Pricing DTOs
+// ============================================================================
 
-public record PriceListDetailDto(
-    Guid Id,
-    string Code,
-    string Name,
-    string Currency,
-    bool IsDefault,
-    bool IsActive,
-    DateTime? StartDate,
-    DateTime? EndDate,
-    string? Description,
-    DateTime CreatedAt,
-    List<PriceListItemDto> Items
-);
-
-public record PriceListItemDto(
+public record ProductQuantityTierDto(
     Guid Id,
     Guid ProductId,
     string ProductSku,
     string ProductName,
-    decimal StandardRetailPrice,
-    decimal MinQuantity,
+    decimal BaseSellingPrice,
+    int MinQty,
+    int? MaxQty,
     decimal UnitPrice,
-    decimal DiscountPercent,
     DateTime UpdatedAt
 );
 
-public record CreatePriceListRequest(
-    [Required] [MaxLength(50)] string Code,
-    [Required] [MaxLength(150)] string Name,
-    string Currency = "IQD",
-    bool IsDefault = false,
-    DateTime? StartDate = null,
-    DateTime? EndDate = null,
-    string? Description = null,
-    List<SavePriceListItemInputDto>? Items = null
+public record QuantityTierInputDto(
+    [Range(2, int.MaxValue)] int MinQty,
+    int? MaxQty,
+    [Range(0, double.MaxValue)] decimal UnitPrice
 );
 
-public record UpdatePriceListRequest(
-    [Required] [MaxLength(150)] string Name,
-    string Currency = "IQD",
-    bool IsDefault = false,
-    bool IsActive = true,
-    DateTime? StartDate = null,
-    DateTime? EndDate = null,
-    string? Description = null
-);
-
-public record SavePriceListItemInputDto(
+public record SaveProductQuantityTiersRequest(
     [Required] Guid ProductId,
-    [Range(0.001, double.MaxValue)] decimal MinQuantity = 1.0m,
-    [Range(0, double.MaxValue)] decimal UnitPrice = 0,
-    [Range(0, 100)] decimal DiscountPercent = 0
+    [Required] List<QuantityTierInputDto> Tiers = null!
 );
 
-public record AssignCustomerPriceListRequest(
-    [Required] Guid CustomerId,
-    Guid? PriceListId
-);
-
-public record ResolveProductPriceRequest(
-    [Required] Guid ProductId,
-    Guid? CustomerId,
-    Guid? PriceListId,
-    decimal Quantity = 1.0m
-);
-
-public record ResolvedPriceResultDto(
+public record ResolvedQuantityPriceDto(
     Guid ProductId,
-    string ProductSku,
-    string ProductName,
-    decimal StandardPrice,
-    decimal ResolvedUnitPrice,
-    string PriceSource, // "PRICE_LIST", "TIER_DISCOUNT", "STANDARD"
-    Guid? PriceListId,
-    string? PriceListName,
-    decimal AppliedDiscountPercent
+    int Quantity,
+    decimal BasePrice,
+    decimal AppliedUnitPrice,
+    bool IsTierApplied,
+    Guid? MatchedTierId,
+    int? MinQty,
+    int? MaxQty
 );
 
+// ============================================================================
 // Product Bundle / Kit DTOs
+// ============================================================================
+
 public record ProductBundleDto(
     Guid ParentProductId,
     string BundleSku,

@@ -24,7 +24,15 @@ import {
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { UserProfile } from '../../types/rbac';
-import { getStoredCustomers, getStoredWarehouses, getStoredDispatchOrders, saveStoredDispatchOrders, createInstallmentContract } from '../../services/storageService';
+import {
+  getStoredCustomers,
+  getStoredWarehouses,
+  getStoredDispatchOrders,
+  saveStoredDispatchOrders,
+  createInstallmentContract,
+  resolveQuantityUnitPrice
+} from '../../services/storageService';
+import { getTranslation } from '../../lib/i18n';
 import { useSettings } from '../../context/settings-context';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -201,8 +209,12 @@ export default function CreateInvoiceView({
           : `Requested quantity exceeds available stock (${availableStock})`);
         return;
       }
+      const tierRes = resolveQuantityUnitPrice(product, newQty);
       updated[existingIndex].quantity = newQty;
-      updated[existingIndex].total = newQty * updated[existingIndex].unitPrice;
+      updated[existingIndex].unitPrice = tierRes.unitPrice;
+      updated[existingIndex].baseUnitPrice = tierRes.basePrice;
+      updated[existingIndex].isQuantityTierApplied = tierRes.isTierApplied;
+      updated[existingIndex].total = newQty * tierRes.unitPrice;
       setLineItems(updated);
     } else {
       if (itemQty > availableStock) {
@@ -212,6 +224,7 @@ export default function CreateInvoiceView({
         return;
       }
 
+      const tierRes = resolveQuantityUnitPrice(product, itemQty);
       const newItem: InvoiceLineItem = {
         id: `LI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         productId: product.id,
@@ -219,9 +232,11 @@ export default function CreateInvoiceView({
         nameAr: product.nameAr,
         nameEn: product.nameEn || product.nameAr,
         quantity: itemQty,
-        unitPrice: product.sellingPrice,
+        unitPrice: tierRes.unitPrice,
+        baseUnitPrice: tierRes.basePrice,
+        isQuantityTierApplied: tierRes.isTierApplied,
         unit: product.unit || (isAr ? 'قطعة' : 'pcs'),
-        total: itemQty * product.sellingPrice
+        total: itemQty * tierRes.unitPrice
       };
       setLineItems([...lineItems, newItem]);
     }
@@ -249,9 +264,17 @@ export default function CreateInvoiceView({
       return;
     }
 
+    const tierRes = resolveQuantityUnitPrice(
+      product || { id: item.productId, sellingPrice: item.baseUnitPrice ?? item.unitPrice },
+      nextQty
+    );
+
     setFormError('');
     item.quantity = nextQty;
-    item.total = nextQty * item.unitPrice;
+    item.unitPrice = tierRes.unitPrice;
+    item.baseUnitPrice = tierRes.basePrice;
+    item.isQuantityTierApplied = tierRes.isTierApplied;
+    item.total = nextQty * tierRes.unitPrice;
     setLineItems(updated);
   };
 
@@ -730,8 +753,15 @@ export default function CreateInvoiceView({
                             </strong>
                             <span className="text-[10px] text-muted-foreground font-mono">{item.sku}</span>
                           </td>
-                          <td className="py-2 px-3 text-center font-mono font-medium text-xs">
-                            {formatMoney(item.unitPrice)}
+                          <td className="py-2 px-3 text-center font-mono font-medium text-xs tabular-nums">
+                            <div className="inline-flex flex-col items-center gap-0.5">
+                              <span>{formatMoney(item.unitPrice)}</span>
+                              {item.isQuantityTierApplied && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-sans font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
+                                  {getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.tierAppliedBadge')}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2 px-3 text-center">
                             <div className="inline-flex items-center gap-1.5 border border-border rounded-md px-1.5 py-0.5 bg-background shadow-2xs">

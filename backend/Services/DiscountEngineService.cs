@@ -31,6 +31,7 @@ public class DiscountEngineService : IDiscountEngineService
             .AsNoTracking()
             .Include(p => p.Category)
             .Include(p => p.WarehouseStocks)
+            .Include(p => p.QuantityTiers)
             .Where(p => p.IsActive)
             .AsQueryable();
 
@@ -59,7 +60,12 @@ public class DiscountEngineService : IDiscountEngineService
             UnitOfMeasure = p.UnitOfMeasure,
             AvailableStock = p.WarehouseStocks.Sum(ws => ws.Quantity),
             MaxCashierDiscountPercent = p.MaxCashierDiscountPercent > 0 ? p.MaxCashierDiscountPercent : 5.0m,
-            IsActive = p.IsActive
+            IsActive = p.IsActive,
+            IsBundle = p.IsBundle,
+            QuantityTiers = p.QuantityTiers
+                .OrderBy(t => t.MinQty)
+                .Select(t => new PosQuantityTierDto(t.Id, t.MinQty, t.MaxQty, t.UnitPrice))
+                .ToList()
         }).ToListAsync();
     }
 
@@ -229,22 +235,45 @@ public class DiscountEngineService : IDiscountEngineService
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // 1. Pre-flight Strict Stock Verification for ALL items
+            // 1. Pre-flight Strict Stock Verification for ALL items (including Bundle components)
             foreach (var itemReq in request.Items)
             {
-                var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == itemReq.ProductId);
+                var product = await _context.Products
+                    .Include(p => p.BundleComponents)
+                    .ThenInclude(bc => bc.ComponentProduct)
+                    .FirstOrDefaultAsync(p => p.Id == itemReq.ProductId);
+
                 if (product == null)
                 {
                     throw new ApplicationException($"المنتج برقم ({itemReq.ProductId}) غير متوفر في الدليل.");
                 }
 
-                var stock = await _context.WarehouseStocks
-                    .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == itemReq.ProductId);
-
-                var availableQty = stock != null ? (stock.Quantity - stock.ReservedQuantity) : 0;
-                if (stock == null || availableQty < itemReq.Quantity)
+                if (product.IsBundle && product.BundleComponents.Count > 0)
                 {
-                    throw new ApplicationException($"رصيد الصنف ({product.Name} - {product.Sku}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). الرصيد المتاح فعلياً للتجهيز: {availableQty}، بينما الكمية المطلوبة: {itemReq.Quantity}.");
+                    foreach (var comp in product.BundleComponents)
+                    {
+                        var requiredCompQty = (int)Math.Ceiling(comp.Quantity * itemReq.Quantity);
+                        var compStock = await _context.WarehouseStocks
+                            .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == comp.ComponentProductId);
+                        var availableCompQty = compStock != null ? (compStock.Quantity - compStock.ReservedQuantity) : 0;
+
+                        if (compStock == null || availableCompQty < requiredCompQty)
+                        {
+                            var compName = comp.ComponentProduct?.Name ?? comp.ComponentProductId.ToString();
+                            throw new ApplicationException($"رصيد مكون الحزمة ({compName}) داخل ({product.Name}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). المتاح: {availableCompQty}، المطلوب: {requiredCompQty}.");
+                        }
+                    }
+                }
+                else
+                {
+                    var stock = await _context.WarehouseStocks
+                        .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == itemReq.ProductId);
+
+                    var availableQty = stock != null ? (stock.Quantity - stock.ReservedQuantity) : 0;
+                    if (stock == null || availableQty < itemReq.Quantity)
+                    {
+                        throw new ApplicationException($"رصيد الصنف ({product.Name} - {product.Sku}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). الرصيد المتاح فعلياً للتجهيز: {availableQty}، بينما الكمية المطلوبة: {itemReq.Quantity}.");
+                    }
                 }
             }
 
@@ -281,36 +310,95 @@ public class DiscountEngineService : IDiscountEngineService
             int overriddenCount = 0;
 
             var invoiceItems = new List<SalesInvoiceItem>();
+            var invoiceTierFlags = new List<bool>();
             var auditLogs = new List<DiscountAuditLog>();
             var dispatchItemsSnapshot = new List<object>();
 
             foreach (var itemReq in request.Items)
             {
-                var product = await _context.Products.FirstAsync(p => p.Id == itemReq.ProductId);
+                var product = await _context.Products
+                    .Include(p => p.QuantityTiers)
+                    .Include(p => p.BundleComponents)
+                    .ThenInclude(bc => bc.ComponentProduct)
+                    .FirstAsync(p => p.Id == itemReq.ProductId);
 
-                var stock = await _context.WarehouseStocks
-                    .FirstAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == itemReq.ProductId);
+                string primaryShelfLocation = "A-01";
 
-                if (isWarehouseDispatch)
+                if (product.IsBundle && product.BundleComponents.Count > 0)
                 {
-                    // Reserve stock to prevent overselling while keeper picks items
-                    stock.ReservedQuantity += itemReq.Quantity;
+                    foreach (var comp in product.BundleComponents)
+                    {
+                        var requiredCompQty = (int)Math.Ceiling(comp.Quantity * itemReq.Quantity);
+                        var compStock = await _context.WarehouseStocks
+                            .FirstAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == comp.ComponentProductId);
+
+                        if (isWarehouseDispatch)
+                        {
+                            compStock.ReservedQuantity += requiredCompQty;
+                        }
+                        else
+                        {
+                            compStock.Quantity -= requiredCompQty;
+                            stockMovement.Items.Add(new StockMovementItem
+                            {
+                                ProductId = comp.ComponentProductId,
+                                Quantity = requiredCompQty,
+                                UnitCost = comp.ComponentProduct?.CostPrice ?? 0m
+                            });
+                        }
+                        compStock.LastCountedAt = DateTime.UtcNow;
+
+                        if (isWarehouseDispatch)
+                        {
+                            dispatchItemsSnapshot.Add(new
+                            {
+                                productId = comp.ComponentProductId,
+                                productName = $"{comp.ComponentProduct?.Name ?? ""} ({product.Name})",
+                                sku = comp.ComponentProduct?.Sku ?? "",
+                                quantity = requiredCompQty,
+                                unitPrice = comp.ComponentProduct?.SellingPrice ?? 0m,
+                                totalPrice = (comp.ComponentProduct?.SellingPrice ?? 0m) * requiredCompQty,
+                                shelfLocation = compStock.ShelfLocation ?? "A-01"
+                            });
+                        }
+                    }
                 }
                 else
                 {
-                    // Immediate storefront sale: direct stock deduction
-                    stock.Quantity -= itemReq.Quantity;
-                    stockMovement.Items.Add(new StockMovementItem
+                    var stock = await _context.WarehouseStocks
+                        .FirstAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == itemReq.ProductId);
+
+                    primaryShelfLocation = stock.ShelfLocation ?? "A-01";
+
+                    if (isWarehouseDispatch)
                     {
-                        ProductId = product.Id,
-                        Quantity = itemReq.Quantity,
-                        UnitCost = product.CostPrice
-                    });
+                        // Reserve stock to prevent overselling while keeper picks items
+                        stock.ReservedQuantity += itemReq.Quantity;
+                    }
+                    else
+                    {
+                        // Immediate storefront sale: direct stock deduction
+                        stock.Quantity -= itemReq.Quantity;
+                        stockMovement.Items.Add(new StockMovementItem
+                        {
+                            ProductId = product.Id,
+                            Quantity = itemReq.Quantity,
+                            UnitCost = product.CostPrice
+                        });
+                    }
+                    stock.LastCountedAt = DateTime.UtcNow;
                 }
-                stock.LastCountedAt = DateTime.UtcNow;
+
+                // Automatic Quantity Tier Resolution
+                var matchedTier = product.QuantityTiers
+                    .Where(t => itemReq.Quantity >= t.MinQty && (!t.MaxQty.HasValue || itemReq.Quantity <= t.MaxQty.Value))
+                    .OrderByDescending(t => t.MinQty)
+                    .FirstOrDefault();
+
+                decimal resolvedUnitBasePrice = matchedTier != null ? matchedTier.UnitPrice : product.SellingPrice;
 
                 var (discountAmountPerUnit, discountPercent, finalUnitPrice) = CalculateDiscount(
-                    product.SellingPrice, itemReq.DiscountType, itemReq.DiscountValue);
+                    resolvedUnitBasePrice, itemReq.DiscountType, itemReq.DiscountValue);
 
                 var cashierMax = product.MaxCashierDiscountPercent > 0 ? product.MaxCashierDiscountPercent : 5.0m;
                 var costFloor = product.CostPrice + product.MinProfitMargin;
@@ -320,7 +408,7 @@ public class DiscountEngineService : IDiscountEngineService
                 string? approvedManagerId = null;
                 string? approvedManagerName = null;
 
-                // If item has an applied discount
+                // If item has an explicit manual cashier discount on top of resolved tier/base price
                 if (discountAmountPerUnit > 0)
                 {
                     discountedCount++;
@@ -340,7 +428,7 @@ public class DiscountEngineService : IDiscountEngineService
                         DiscountType = itemReq.DiscountType,
                         DiscountValue = itemReq.DiscountValue,
                         DiscountAmountMoney = discountAmountPerUnit * itemReq.Quantity,
-                        OriginalRetailPrice = product.SellingPrice,
+                        OriginalRetailPrice = resolvedUnitBasePrice,
                         FinalSellingPrice = finalUnitPrice,
                         CashierId = request.CashierId,
                         CashierName = request.CashierName,
@@ -351,15 +439,16 @@ public class DiscountEngineService : IDiscountEngineService
                 }
 
                 var lineTotal = finalUnitPrice * itemReq.Quantity;
-                calculatedSubtotal += product.SellingPrice * itemReq.Quantity;
+                calculatedSubtotal += resolvedUnitBasePrice * itemReq.Quantity;
                 calculatedTotalDiscount += discountAmountPerUnit * itemReq.Quantity;
 
+                invoiceTierFlags.Add(matchedTier != null);
                 invoiceItems.Add(new SalesInvoiceItem
                 {
                     ProductId = product.Id,
                     SourceWarehouseId = fulfillmentWarehouseId,
                     Quantity = itemReq.Quantity,
-                    OriginalPrice = product.SellingPrice,
+                    OriginalPrice = resolvedUnitBasePrice,
                     DiscountType = itemReq.DiscountType,
                     DiscountValue = itemReq.DiscountValue,
                     DiscountAmount = discountAmountPerUnit,
@@ -369,16 +458,19 @@ public class DiscountEngineService : IDiscountEngineService
                     ApprovedByManagerId = approvedManagerId
                 });
 
-                dispatchItemsSnapshot.Add(new
+                if (!(product.IsBundle && product.BundleComponents.Count > 0))
                 {
-                    productId = product.Id,
-                    productName = product.Name,
-                    sku = product.Sku,
-                    quantity = itemReq.Quantity,
-                    unitPrice = finalUnitPrice,
-                    totalPrice = lineTotal,
-                    shelfLocation = stock.ShelfLocation ?? "A-01"
-                });
+                    dispatchItemsSnapshot.Add(new
+                    {
+                        productId = product.Id,
+                        productName = product.Name,
+                        sku = product.Sku,
+                        quantity = itemReq.Quantity,
+                        unitPrice = finalUnitPrice,
+                        totalPrice = lineTotal,
+                        shelfLocation = primaryShelfLocation
+                    });
+                }
             }
 
             salesInvoice.Subtotal = calculatedSubtotal;
@@ -440,7 +532,7 @@ public class DiscountEngineService : IDiscountEngineService
                 CreatedAt = salesInvoice.CreatedAt,
                 DiscounterItemsCount = discountedCount,
                 OverriddenItemsCount = overriddenCount,
-                Items = invoiceItems.Select(i => new PosInvoiceItemResponse
+                Items = invoiceItems.Select((i, idx) => new PosInvoiceItemResponse
                 {
                     ProductId = i.ProductId,
                     ProductName = i.Product?.Name ?? string.Empty,
@@ -449,6 +541,7 @@ public class DiscountEngineService : IDiscountEngineService
                     DiscountAmount = i.DiscountAmount,
                     UnitPrice = i.UnitPrice,
                     TotalPrice = i.TotalPrice,
+                    IsQuantityTierApplied = idx < invoiceTierFlags.Count && invoiceTierFlags[idx],
                     WasManagerOverride = i.WasManagerOverride,
                     ApprovedByManagerId = i.ApprovedByManagerId
                 }).ToList()

@@ -160,7 +160,7 @@ const NAV_TITLES: Record<string, { ar: string; en: string }> = {
   'Shifts & Cash Drawer': { ar: 'الورديات', en: 'Shifts' },
   'Sales Invoices': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
   'Sales Quotations': { ar: 'عروض الأسعار', en: 'Sales Quotations' },
-  'Price Lists & Promotions': { ar: 'قوائم الأسعار والعروض', en: 'Price Lists & Bundles' },
+  'Price Lists & Promotions': { ar: 'تسعير الكميات والحزم', en: 'Quantity Pricing & Bundles' },
   'Create Invoice': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
   'Invoices & Billing': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
   'Installments': { ar: 'إدارة الأقساط', en: 'Installments' },

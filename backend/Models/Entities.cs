@@ -165,6 +165,7 @@ public class Product : ITenantEntity
 
     public ICollection<WarehouseStock> WarehouseStocks { get; set; } = new List<WarehouseStock>();
     public ICollection<ProductBundleItem> BundleComponents { get; set; } = new List<ProductBundleItem>();
+    public ICollection<ProductQuantityTier> QuantityTiers { get; set; } = new List<ProductQuantityTier>();
 }
 
 [Table("warehouse_stock")]
@@ -1666,6 +1667,36 @@ public class ProductBundleItem : ITenantEntity
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("product_quantity_tiers")]
+public class ProductQuantityTier : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("product_id")]
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Column("min_qty")]
+    public int MinQty { get; set; } = 2;
+
+    [Column("max_qty")]
+    public int? MaxQty { get; set; }
+
+    [Column("unit_price")]
+    public decimal UnitPrice { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 // ============================================================================

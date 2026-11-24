@@ -30,6 +30,7 @@ public class ProductsController : ControllerBase
         var query = _context.Products
             .Include(p => p.Category)
             .Include(p => p.WarehouseStocks)
+            .Include(p => p.QuantityTiers)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -57,7 +58,19 @@ public class ProductsController : ControllerBase
             p.MinStockLevel,
             p.MaxCashierDiscountPercent,
             TotalQuantity = p.WarehouseStocks.Sum(ws => ws.Quantity),
-            p.IsActive
+            p.IsActive,
+            p.IsBundle,
+            QuantityTiers = p.QuantityTiers
+                .OrderBy(t => t.MinQty)
+                .Select(t => new
+                {
+                    t.Id,
+                    t.ProductId,
+                    t.MinQty,
+                    t.MaxQty,
+                    t.UnitPrice,
+                    t.UpdatedAt
+                }).ToList()
         }).ToListAsync();
 
         return Ok(results);

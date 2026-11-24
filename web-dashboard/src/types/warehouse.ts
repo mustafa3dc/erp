@@ -1,3 +1,12 @@
+export interface ProductQuantityTierRule {
+  id?: string;
+  productId?: string;
+  minQty: number;
+  maxQty?: number | null;
+  unitPrice: number;
+  updatedAt?: string;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -20,6 +29,8 @@ export interface Product {
   status: 'available' | 'low' | 'out_of_stock';
   shelf: string;
   updatedAt: string;
+  isBundle?: boolean;
+  quantityTiers?: ProductQuantityTierRule[];
 }
 
 export interface Warehouse {
@@ -77,6 +88,8 @@ export interface InvoiceLineItem {
   productName?: string;
   quantity: number;
   unitPrice: number;
+  baseUnitPrice?: number;
+  isQuantityTierApplied?: boolean;
   unit: string;
   total: number;
 }

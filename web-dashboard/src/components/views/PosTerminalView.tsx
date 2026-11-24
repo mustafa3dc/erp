@@ -53,8 +53,10 @@ import {
   getStoredSelectedWarehouseId,
   saveStoredSelectedWarehouseId,
   clearStoredSelectedWarehouseId,
-  validateAndResolveActiveWarehouse
+  validateAndResolveActiveWarehouse,
+  resolveQuantityUnitPrice
 } from '../../services/storageService';
+import { getTranslation } from '../../lib/i18n';
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
 import PosCategoryFilter from '../PosCategoryFilter';
 import { useCategories } from '../../hooks/useCategories';
@@ -518,23 +520,26 @@ export default function PosTerminalView({
 
 
 
-  // Floor Price Engine: Get the current effective unit price
+  // Floor Price & Quantity Tier Engine: Get the current effective unit price
   const getEffectiveUnitPrice = (item: CartItem): number => {
     if (item.customPrice !== undefined) {
       return item.customPrice;
     }
+    const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
+    const tierOrBasePrice = tierRes.unitPrice;
     if (item.discountType === 'PERCENT' && item.discountValue) {
-      return Math.max(0, Math.round((item.product.sellingPrice * (1 - item.discountValue / 100)) * 100) / 100);
+      return Math.max(0, Math.round((tierOrBasePrice * (1 - item.discountValue / 100)) * 100) / 100);
     }
     if (item.discountType === 'FIXED' && item.discountValue) {
-      return Math.max(0, item.product.sellingPrice - item.discountValue);
+      return Math.max(0, tierOrBasePrice - item.discountValue);
     }
-    return item.product.sellingPrice;
+    return tierOrBasePrice;
   };
 
   const getDiscountAmountPerUnit = (item: CartItem): number => {
+    const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
     const effective = getEffectiveUnitPrice(item);
-    return Math.max(0, item.product.sellingPrice - effective);
+    return Math.max(0, tierRes.unitPrice - effective);
   };
 
   // Floor Price Engine (نظام الحد الأدنى للبيع):
@@ -630,7 +635,7 @@ export default function PosTerminalView({
     isIqdBase,
     totalIqd
   } = useMemo(() => {
-    const sub = cart.reduce((sum, item) => sum + (item.product.sellingPrice * item.quantity), 0);
+    const sub = cart.reduce((sum, item) => sum + (resolveQuantityUnitPrice(item.product, item.quantity).unitPrice * item.quantity), 0);
     const disc = cart.reduce((sum, item) => sum + (getDiscountAmountPerUnit(item) * item.quantity), 0);
     const subAfter = Math.max(0, sub - disc);
 
@@ -1482,13 +1487,15 @@ export default function PosTerminalView({
               </div>
             ) : (
               cart.map(item => {
-                const discountPerUnit = getDiscountAmountPerUnit(item);
+                const tierResolution = resolveQuantityUnitPrice(item.product, item.quantity);
+                const isManualBargain = item.customPrice !== undefined || (item.discountValue || 0) > 0;
+                const isTierActive = tierResolution.isTierApplied && !isManualBargain;
                 const finalUnitPrice = getEffectiveUnitPrice(item);
-                const isModified = item.customPrice !== undefined || (item.discountValue || 0) > 0;
+                const isModified = isTierActive || isManualBargain;
                 const floorPrice = item.product.minSellingPrice !== undefined 
                   ? item.product.minSellingPrice 
                   : Math.round(item.product.sellingPrice * 0.88);
-                const isBreached = !!item.priceError || finalUnitPrice < floorPrice;
+                const isBreached = !!item.priceError || (!tierResolution.isTierApplied && finalUnitPrice < floorPrice);
 
                 return (
                   <div 
@@ -1517,8 +1524,8 @@ export default function PosTerminalView({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--foreground)' }}>{getProductName(item.product)}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', textDecoration: isTierActive ? 'line-through' : 'none' }}>
                             {formatMoney(item.product.sellingPrice)}
                           </span>
                           {isModified && (
@@ -1528,6 +1535,11 @@ export default function PosTerminalView({
                               fontWeight: 700 
                             }}>
                               ({formatMoney(finalUnitPrice)})
+                            </span>
+                          )}
+                          {isTierActive && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
+                              {getTranslation(lang, 'quantityPricing.tierAppliedBadge')} ({tierResolution.maxQty != null ? `${tierResolution.minQty}-${tierResolution.maxQty}` : `${tierResolution.minQty}+`})
                             </span>
                           )}
                         </div>
@@ -1645,7 +1657,7 @@ export default function PosTerminalView({
                             <AlertCircle size={11} />
                             <span>{isAr ? `تعديل السعر المرفوض (${formatMoney(finalUnitPrice)})` : `Invalid Price (${formatMoney(finalUnitPrice)})`}</span>
                           </button>
-                        ) : isModified ? (
+                        ) : isManualBargain ? (
                           <button
                             type="button"
                             onClick={() => {

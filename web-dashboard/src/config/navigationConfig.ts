@@ -29,7 +29,7 @@ export const navigationItems: NavigationSection[] = [
     items: [
       { name: 'فواتير المبيعات', href: '/sales/invoices' },
       { name: 'عروض الأسعار', href: '/sales/quotations', requiredFeature: 'enableQuotations' },
-      { name: 'قوائم الأسعار والعروض', href: '/sales/price-lists', requiredFeature: 'enablePriceLists' },
+      { name: 'تسعير الكميات والحزم', href: '/sales/price-lists', requiredFeature: 'enablePriceLists' },
       { name: 'إدارة الأقساط', href: '/sales/installments', requiredFeature: 'enableInstallments' },
       { name: 'المرتجعات', href: '/sales/returns' },
       { name: 'العملاء', href: '/sales/customers' },

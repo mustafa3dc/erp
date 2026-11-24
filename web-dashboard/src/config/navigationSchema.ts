@@ -90,8 +90,8 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
       },
       {
         id: 'Price Lists & Promotions',
-        titleAr: 'قوائم الأسعار والعروض',
-        titleEn: 'Price Lists & Bundles',
+        titleAr: 'تسعير الكميات والحزم',
+        titleEn: 'Quantity Pricing & Bundles',
         path: '/sales/price-lists',
         requiredPermission: 'invoices.manage',
         requiredFeature: 'enablePriceLists'

@@ -65,11 +65,12 @@ public sealed class CreateSalesInvoiceCommandHandler
         }
         catch (ApplicationException ex)
         {
-            var isWarehouseError = ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع") || ex.Message.Contains("INVALID_WAREHOUSE");
+            var isStockError = ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد");
+            var isWarehouseError = !isStockError && (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"));
             return Result<PosInvoiceResponse>.Failure(
-                isWarehouseError ? "INVALID_WAREHOUSE" : "ERR_SALES_COMMAND_FAILED",
+                isStockError ? "ERR_INSUFFICIENT_STOCK" : (isWarehouseError ? "INVALID_WAREHOUSE" : "ERR_SALES_COMMAND_FAILED"),
                 "SALES",
-                new[] { new ErrorDetail(isWarehouseError ? "WarehouseId" : "DispenseMode", ex.Message, cmd.WarehouseId) }
+                new[] { new ErrorDetail(isWarehouseError ? "WarehouseId" : (isStockError ? "Items" : "DispenseMode"), ex.Message, cmd.WarehouseId) }
             );
         }
         catch (Exception ex)

@@ -31,7 +31,11 @@
     "defaultCustomer": "Retail Walk-in Customer",
     "saleSuccess": "Sale completed & inventory deducted from warehouse successfully!",
     "saleFailed": "Sale transaction failed",
-    "transactionError": "Error executing POS sales transaction"
+    "transactionError": "Error executing POS sales transaction",
+    "cartShortageWarning": "Shortage: available {available} only (Req: {requested})",
+    "cartComponentConflict": "Component \"{component}\" stock ({available}) is exceeded by combined cart items (Req: {requested})",
+    "checkoutShortageBanner": "Warning: Requested quantities (including bundle components) exceed warehouse stock! Please adjust quantities before checkout.",
+    "outOfStockBundle": "Cannot add bundle \"{name}\": insufficient component stock in warehouse ({warehouse})!"
   },
   "general_settings": {
     "title": "System Settings",

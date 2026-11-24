@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 
@@ -10,15 +11,20 @@ public class DiscountEngineService : IDiscountEngineService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<DiscountEngineService> _logger;
+    private readonly IDatabase? _redisDb;
 
     // Standardized generic error message (Strict Cost Masking: Never leak CostPrice or Margins)
     private const string ErrorCodeLimitExceeded = "ERR_DISCOUNT_EXCEEDED_LIMIT";
     private const string GenericExceededMessageAr = "تجاوزت الحد المسموح به للخصم على هذه المادة";
 
-    public DiscountEngineService(AppDbContext context, ILogger<DiscountEngineService> logger)
+    public DiscountEngineService(
+        AppDbContext context,
+        ILogger<DiscountEngineService> logger,
+        IConnectionMultiplexer? redis = null)
     {
         _context = context;
         _logger = logger;
+        _redisDb = redis?.GetDatabase();
     }
 
     /// <summary>
@@ -250,53 +256,108 @@ public class DiscountEngineService : IDiscountEngineService
             fulfillmentWarehouse = targetWh;
         }
 
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            // 1. Pre-flight Strict Stock Verification for ALL items (including Bundle components)
-            foreach (var itemReq in request.Items)
-            {
-                var product = await _context.Products
-                    .Include(p => p.BundleComponents)
-                    .ThenInclude(bc => bc.ComponentProduct)
-                    .FirstOrDefaultAsync(p => p.Id == itemReq.ProductId);
+        // Pre-resolve physical stock demand (expanding bundles into their physical components and aggregating shared items)
+        var requestedIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
+        var catalogProducts = await _context.Products
+            .Include(p => p.BundleComponents)
+                .ThenInclude(bc => bc.ComponentProduct)
+            .Include(p => p.QuantityTiers)
+            .Where(p => requestedIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
 
-                if (product == null)
+        var aggregatedPhysicalDemand = new Dictionary<Guid, (string Name, string Sku, int RequiredQty)>();
+
+        foreach (var itemReq in request.Items)
+        {
+            if (!catalogProducts.TryGetValue(itemReq.ProductId, out var product))
+            {
+                throw new ApplicationException($"المنتج برقم ({itemReq.ProductId}) غير متوفر في الدليل.");
+            }
+
+            if (product.IsBundle)
+            {
+                if (product.BundleComponents.Count == 0)
                 {
-                    throw new ApplicationException($"المنتج برقم ({itemReq.ProductId}) غير متوفر في الدليل.");
+                    throw new ApplicationException($"ERR_INSUFFICIENT_STOCK: حزمة المنتجات ({product.Name}) لا تحتوي على مكونات صالحة.");
                 }
 
-                if (product.IsBundle)
+                foreach (var comp in product.BundleComponents)
                 {
-                    if (product.BundleComponents.Count == 0)
-                    {
-                        throw new ApplicationException($"حزمة المنتجات ({product.Name}) لا تحتوي على مكونات صالحة.");
-                    }
+                    var reqCompQty = (int)Math.Ceiling(comp.Quantity * itemReq.Quantity);
+                    var compName = comp.ComponentProduct?.Name ?? comp.ComponentProductId.ToString();
+                    var compSku = comp.ComponentProduct?.Sku ?? "";
 
-                    foreach (var comp in product.BundleComponents)
+                    if (aggregatedPhysicalDemand.TryGetValue(comp.ComponentProductId, out var existing))
                     {
-                        var requiredCompQty = (int)Math.Ceiling(comp.Quantity * itemReq.Quantity);
-                        var compStock = await _context.WarehouseStocks
-                            .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == comp.ComponentProductId);
-                        var availableCompQty = compStock != null ? (compStock.Quantity - compStock.ReservedQuantity) : 0;
-
-                        if (compStock == null || availableCompQty < requiredCompQty)
-                        {
-                            var compName = comp.ComponentProduct?.Name ?? comp.ComponentProductId.ToString();
-                            throw new ApplicationException($"رصيد مكون الحزمة ({compName}) داخل ({product.Name}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). المتاح: {availableCompQty}، المطلوب: {requiredCompQty}.");
-                        }
+                        aggregatedPhysicalDemand[comp.ComponentProductId] = (existing.Name, existing.Sku, existing.RequiredQty + reqCompQty);
                     }
+                    else
+                    {
+                        aggregatedPhysicalDemand[comp.ComponentProductId] = (compName, compSku, reqCompQty);
+                    }
+                }
+            }
+            else
+            {
+                if (aggregatedPhysicalDemand.TryGetValue(product.Id, out var existing))
+                {
+                    aggregatedPhysicalDemand[product.Id] = (existing.Name, existing.Sku, existing.RequiredQty + itemReq.Quantity);
                 }
                 else
                 {
-                    var stock = await _context.WarehouseStocks
-                        .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == itemReq.ProductId);
+                    aggregatedPhysicalDemand[product.Id] = (product.Name, product.Sku, itemReq.Quantity);
+                }
+            }
+        }
 
-                    var availableQty = stock != null ? (stock.Quantity - stock.ReservedQuantity) : 0;
-                    if (stock == null || availableQty < itemReq.Quantity)
+        // Acquire Redis distributed stock locks (sorted by ProductId to avoid deadlocks)
+        var acquiredLocks = new List<(string Key, string Token)>();
+        if (_redisDb != null)
+        {
+            foreach (var physId in aggregatedPhysicalDemand.Keys.OrderBy(id => id))
+            {
+                var lockKey = $"zilox:stock-lock:{fulfillmentWarehouseId}:{physId}";
+                var lockToken = Guid.NewGuid().ToString("N");
+                bool locked = false;
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    if (await _redisDb.LockTakeAsync(lockKey, lockToken, TimeSpan.FromSeconds(15)))
                     {
-                        throw new ApplicationException($"رصيد الصنف ({product.Name} - {product.Sku}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). الرصيد المتاح فعلياً للتجهيز: {availableQty}، بينما الكمية المطلوبة: {itemReq.Quantity}.");
+                        locked = true;
+                        acquiredLocks.Add((lockKey, lockToken));
+                        break;
                     }
+                    await Task.Delay(50);
+                }
+                if (!locked)
+                {
+                    foreach (var (k, t) in acquiredLocks)
+                    {
+                        try { await _redisDb.LockReleaseAsync(k, t); } catch { }
+                    }
+                    throw new ApplicationException("ERR_INSUFFICIENT_STOCK: تعذر قفل المخزون مؤقتاً بسبب تزامن الطلبات، يرجى المحاولة مرة أخرى.");
+                }
+            }
+        }
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // 1. Pre-flight Strict Stock Verification for ALL aggregated physical items & bundle components
+            // Never checks physical stock on the bundle record itself (IsBundle == true)
+            foreach (var kvp in aggregatedPhysicalDemand)
+            {
+                var physProductId = kvp.Key;
+                var (physName, physSku, totalRequiredQty) = kvp.Value;
+
+                var stock = await _context.WarehouseStocks
+                    .FirstOrDefaultAsync(ws => ws.WarehouseId == fulfillmentWarehouseId && ws.ProductId == physProductId);
+
+                var availableQty = stock != null ? Math.Max(0, stock.Quantity - stock.ReservedQuantity) : 0;
+                if (stock == null || availableQty < totalRequiredQty)
+                {
+                    var skuLabel = string.IsNullOrWhiteSpace(physSku) ? "" : $" - {physSku}";
+                    throw new ApplicationException($"ERR_INSUFFICIENT_STOCK: رصيد الصنف ({physName}{skuLabel}) غير كافٍ في مستودع ({fulfillmentWarehouse.Name}). الرصيد المتاح فعلياً للتجهيز: {availableQty}، بينما الكمية المطلوبة: {totalRequiredQty}.");
                 }
             }
 
@@ -575,6 +636,16 @@ public class DiscountEngineService : IDiscountEngineService
             await transaction.RollbackAsync();
             _logger.LogError(ex, "Failed to create POS invoice with discounts");
             throw;
+        }
+        finally
+        {
+            if (_redisDb != null && acquiredLocks.Count > 0)
+            {
+                foreach (var (k, t) in acquiredLocks)
+                {
+                    try { await _redisDb.LockReleaseAsync(k, t); } catch { }
+                }
+            }
         }
     }
 

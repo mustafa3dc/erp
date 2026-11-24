@@ -31,7 +31,11 @@
     "defaultCustomer": "عميل كاشير مباشر (POS Retail)",
     "saleSuccess": "تم إتمام عملية البيع وخصم الكميات من المستودع وتوثيق حركة الصرف بنجاح!",
     "saleFailed": "فشل تنفيذ عملية البيع",
-    "transactionError": "حدث خطأ أثناء تنفيذ معاملة البيع وخصم المخزون"
+    "transactionError": "حدث خطأ أثناء تنفيذ معاملة البيع وخصم المخزون",
+    "cartShortageWarning": "تنبيه: الكمية المطلوبة ({requested}) تتجاوز الرصيد المتاح ({available})!",
+    "cartComponentConflict": "إجمالي الكمية المطلوبة للمكون \"{component}\" في السلة ({requested}) يتجاوز المتاح ({available})!",
+    "checkoutShortageBanner": "تنبيه: الكميات المطلوبة لبعض المواد أو مكونات الحزم تتجاوز الرصيد الفعلي للمستودع! يرجى تعديل الكمية لإتمام البيع.",
+    "outOfStockBundle": "لا يمكن إضافة الحزمة \"{name}\": رصيد المكونات غير كافٍ في مستودع ({warehouse})!"
   },
   "general_settings": {
     "title": "إعدادات المنظومة",

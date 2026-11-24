@@ -56,7 +56,9 @@ import {
   validateAndResolveActiveWarehouse,
   resolveQuantityUnitPrice,
   getStoredProductBundles,
-  getEffectiveProductStock
+  getEffectiveProductStock,
+  validateCartStockWithBundles,
+  getMaxAllowedCartQuantity
 } from '../../services/storageService';
 import { getTranslation } from '../../lib/i18n';
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
@@ -436,26 +438,45 @@ export default function PosTerminalView({
   });
 
   const addToCart = (product: Product, quantityToAdd: number = 1) => {
-    // 1. Strict Stock Check against current available inventory (dynamic for bundles)
-    const currentAvailable = getEffectiveProductStock(product, products, storedBundles, selectedWarehouseId);
-    if (currentAvailable <= 0) {
+    // 1. Strict Stock Check against current available inventory (dynamic for bundles + shared cart components)
+    const { maxQty: maxAllowedForCart, limitingComponentName } = getMaxAllowedCartQuantity(
+      product,
+      cart,
+      products,
+      storedBundles,
+      selectedWarehouseId
+    );
+    const totalPhysicalOrBundleStock = getEffectiveProductStock(product, products, storedBundles, selectedWarehouseId);
+
+    if (totalPhysicalOrBundleStock <= 0 || maxAllowedForCart <= 0) {
+      const whLabel = isAr ? selectedWarehouse.nameAr : (selectedWarehouse.nameEn || selectedWarehouse.nameAr);
       setStockError(
-        isAr 
-          ? `لا يمكن إضافة الصنف "${getProductName(product)}": نفد المخزون في مستودع (${selectedWarehouse.nameAr})!`
-          : `Cannot add "${getProductName(product)}": Out of stock in (${selectedWarehouse.nameEn || selectedWarehouse.nameAr})!`
+        product.isBundle
+          ? t('posMessages.outOfStockBundle', isAr
+              ? `لا يمكن إضافة الحزمة "${getProductName(product)}": رصيد المكونات غير كافٍ في مستودع (${whLabel})!`
+              : `Cannot add bundle "${getProductName(product)}": insufficient component stock in (${whLabel})!`)
+              .replace('{name}', getProductName(product))
+              .replace('{warehouse}', whLabel)
+          : (isAr
+              ? `لا يمكن إضافة الصنف "${getProductName(product)}": نفد المخزون في مستودع (${selectedWarehouse.nameAr})!`
+              : `Cannot add "${getProductName(product)}": Out of stock in (${selectedWarehouse.nameEn || selectedWarehouse.nameAr})!`)
       );
       return;
     }
 
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
+      const { maxQty: currentMax } = getMaxAllowedCartQuantity(product, prev, products, storedBundles, selectedWarehouseId);
       if (existing) {
         const nextQty = Math.round((existing.quantity + quantityToAdd) * 1000) / 1000;
-        if (nextQty > currentAvailable) {
+        if (nextQty > currentMax) {
+          const itemLabel = limitingComponentName && product.isBundle
+            ? `${getProductName(product)} (${limitingComponentName})`
+            : getProductName(product);
           setStockError(
             isAr
-              ? `الكمية المطلوبة تتجاوز الرصيد المتاح (${currentAvailable}) للصنف "${getProductName(product)}" في (${selectedWarehouse.nameAr}).`
-              : `Requested quantity exceeds available stock (${currentAvailable}) for "${getProductName(product)}".`
+              ? `الكمية المطلوبة (${nextQty}) تتجاوز الرصيد المتاح (${currentMax}) للصنف "${itemLabel}" في (${selectedWarehouse.nameAr}).`
+              : `Requested quantity (${nextQty}) exceeds available stock (${currentMax}) for "${itemLabel}".`
           );
           return prev;
         }
@@ -467,11 +488,11 @@ export default function PosTerminalView({
         );
       }
       const initialQty = Math.round(quantityToAdd * 1000) / 1000;
-      if (initialQty > currentAvailable) {
+      if (initialQty > currentMax) {
         setStockError(
           isAr
-            ? `الكمية المطلوبة (${initialQty}) تتجاوز الرصيد المتاح (${currentAvailable}) للصنف "${getProductName(product)}".`
-            : `Requested quantity exceeds available stock (${currentAvailable}) for "${getProductName(product)}".`
+            ? `الكمية المطلوبة (${initialQty}) تتجاوز الرصيد المتاح (${currentMax}) للصنف "${getProductName(product)}".`
+            : `Requested quantity (${initialQty}) exceeds available stock (${currentMax}) for "${getProductName(product)}".`
         );
         return prev;
       }
@@ -484,14 +505,23 @@ export default function PosTerminalView({
     setCart(prev => prev.map(item => {
       if (item.product.id === productId) {
         const freshProd = products.find(p => p.id === productId) || item.product;
-        const currentAvailable = getEffectiveProductStock(freshProd, products, storedBundles, selectedWarehouseId);
+        const { maxQty: currentAvailable, limitingComponentName } = getMaxAllowedCartQuantity(
+          freshProd,
+          prev,
+          products,
+          storedBundles,
+          selectedWarehouseId
+        );
         const newQty = item.quantity + delta;
 
         if (delta > 0 && newQty > currentAvailable) {
+          const itemLabel = limitingComponentName && freshProd.isBundle
+            ? `${getProductName(freshProd)} (${limitingComponentName})`
+            : getProductName(freshProd);
           setStockError(
             isAr
-              ? `الكمية المطلوبة (${newQty}) تتجاوز الرصيد المتاح (${currentAvailable}) للصنف "${getProductName(freshProd)}".`
-              : `Requested quantity (${newQty}) exceeds available stock (${currentAvailable}) for "${getProductName(freshProd)}".`
+              ? `الكمية المطلوبة (${newQty}) تتجاوز الرصيد المتاح (${currentAvailable}) للصنف "${itemLabel}".`
+              : `Requested quantity (${newQty}) exceeds available stock (${currentAvailable}) for "${itemLabel}".`
           );
           return item;
         }
@@ -711,21 +741,14 @@ export default function PosTerminalView({
       : selectedWarehouse;
     const targetWhLabel = isAr ? targetWh.nameAr : (targetWh.nameEn || targetWh.nameAr);
 
-    // 1. Strict Stock Availability Check across ALL cart items for the designated warehouse (bundles dynamically resolved)
-    const stockShortages: string[] = [];
-    for (const item of cart) {
-      const freshProd = products.find(p => p.id === item.product.id || p.sku === item.product.sku) || item.product;
-      const currentAvailable = getEffectiveProductStock(freshProd, products, storedBundles, targetWh.id);
-      if (item.quantity > currentAvailable) {
-        stockShortages.push(
-          isAr
-            ? `• الصنف "${getProductName(freshProd)}" [كود: ${freshProd.sku}] — المطلوب: ${item.quantity} | المتبقي فعلياً في ${targetWhLabel}: ${currentAvailable} قطعة`
-            : `• "${getProductName(freshProd)}" [${freshProd.sku}] — Requested: ${item.quantity} | Remaining in ${targetWhLabel}: ${currentAvailable}`
-        );
-      }
-    }
-
-    if (stockShortages.length > 0) {
+    // 1. Strict Aggregated Stock Availability Check across ALL cart items (bundles + standalone items combined)
+    const cartValidation = validateCartStockWithBundles(cart, products, storedBundles, targetWh.id);
+    if (!cartValidation.isValid) {
+      const stockShortages = cartValidation.shortages.map(s =>
+        isAr
+          ? `• الصنف "${s.name}"${s.sku ? ` [كود: ${s.sku}]` : ''} — إجمالي المطلوب: ${s.required} | المتبقي فعلياً في ${targetWhLabel}: ${s.available} قطعة`
+          : `• "${s.name}"${s.sku ? ` [${s.sku}]` : ''} — Total Requested: ${s.required} | Remaining in ${targetWhLabel}: ${s.available}`
+      );
       const msg = isAr
         ? `تم رفض الفاتورة! رصيد المخزون غير كافٍ في مستودع (${targetWhLabel}):\n${stockShortages.join('\n')}`
         : `Checkout Rejected! Insufficient inventory in (${targetWhLabel}):\n${stockShortages.join('\n')}`;
@@ -1496,16 +1519,20 @@ export default function PosTerminalView({
                 <span style={{ fontSize: '12px' }}>{isAr ? 'امسح الباركود أو انقر على صنف لإضافته' : 'Scan barcode or click items to add'}</span>
               </div>
             ) : (
-              cart.map(item => {
-                const tierResolution = resolveQuantityUnitPrice(item.product, item.quantity);
-                const isManualBargain = item.customPrice !== undefined || (item.discountValue || 0) > 0;
-                const isTierActive = tierResolution.isTierApplied && !isManualBargain;
-                const finalUnitPrice = getEffectiveUnitPrice(item);
-                const isModified = isTierActive || isManualBargain;
-                const floorPrice = item.product.minSellingPrice !== undefined 
-                  ? item.product.minSellingPrice 
-                  : Math.round(item.product.sellingPrice * 0.88);
-                const isBreached = !!item.priceError || (!tierResolution.isTierApplied && finalUnitPrice < floorPrice);
+              (() => {
+                const targetCheckWhId = dispenseMode === 'WAREHOUSE_DISPATCH' ? targetDispatchWarehouseId : selectedWarehouseId;
+                const cartStockCheck = validateCartStockWithBundles(cart, products, storedBundles, targetCheckWhId);
+                return cart.map(item => {
+                  const tierResolution = resolveQuantityUnitPrice(item.product, item.quantity);
+                  const isManualBargain = item.customPrice !== undefined || (item.discountValue || 0) > 0;
+                  const isTierActive = tierResolution.isTierApplied && !isManualBargain;
+                  const finalUnitPrice = getEffectiveUnitPrice(item);
+                  const isModified = isTierActive || isManualBargain;
+                  const floorPrice = item.product.minSellingPrice !== undefined 
+                    ? item.product.minSellingPrice 
+                    : (item.product.isBundle ? 0 : Math.round(item.product.sellingPrice * 0.88));
+                  const isBreached = !!item.priceError || (!tierResolution.isTierApplied && finalUnitPrice < floorPrice);
+                  const lineIssue = cartStockCheck.lineIssues[item.product.id];
 
                 return (
                   <div 
@@ -1571,35 +1598,37 @@ export default function PosTerminalView({
                       </div>
                     </div>
 
-                    {/* Stock Deficit Warning */}
-                    {(() => {
-                      const freshProd = products.find(p => p.id === item.product.id || p.sku === item.product.sku) || item.product;
-                      const available = Number(freshProd.currentStock) || 0;
-                      if (item.quantity > available) {
-                        return (
-                          <div style={{
-                            background: '#fef2f2',
-                            border: '1px solid #fecaca',
-                            borderRadius: '6px',
-                            padding: '6px 8px',
-                            color: '#dc2626',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                          }}>
-                            <AlertCircle size={14} style={{ color: '#dc2626', flexShrink: 0 }} />
-                            <span>
-                              {isAr 
-                                ? `تنبيه: الكمية المطلوبة (${item.quantity}) تتجاوز رصيد المستودع (${available})!`
-                                : `Shortage: In stock ${available} only (Req: ${item.quantity})`}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
+                    {/* Stock Deficit Warning (dynamically validates bundles & shared cart component demand) */}
+                    {lineIssue && (
+                      <div style={{
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '6px',
+                        padding: '6px 8px',
+                        color: '#dc2626',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertCircle size={14} style={{ color: '#dc2626', flexShrink: 0 }} />
+                        <span>
+                          {item.product.isBundle && lineIssue.conflictingComponent
+                            ? t('posMessages.cartComponentConflict', isAr
+                                ? `إجمالي الكمية المطلوبة للمكون "${lineIssue.conflictingComponent}" في السلة (${lineIssue.required}) يتجاوز المتاح (${lineIssue.available})!`
+                                : `Component "${lineIssue.conflictingComponent}" stock (${lineIssue.available}) exceeded (Req: ${lineIssue.required})`)
+                                .replace('{component}', lineIssue.conflictingComponent)
+                                .replace('{available}', String(lineIssue.available))
+                                .replace('{requested}', String(lineIssue.required))
+                            : t('posMessages.cartShortageWarning', isAr
+                                ? `تنبيه: الكمية المطلوبة (${lineIssue.required}) تتجاوز الرصيد المتاح (${lineIssue.available})!`
+                                : `Shortage: available ${lineIssue.available} only (Req: ${lineIssue.required})`)
+                                .replace('{available}', String(lineIssue.available))
+                                .replace('{requested}', String(lineIssue.required))}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Floor Price Breach Alert Warning */}
                     {isBreached && (
@@ -1853,7 +1882,8 @@ export default function PosTerminalView({
                     )}
                   </div>
                 );
-              })
+              });
+              })()
             )}
           </div>
 
@@ -1890,15 +1920,14 @@ export default function PosTerminalView({
               </div>
             </div>
 
-            {/* Check if any item breached floor limit or has stock deficit */}
+            {/* Check if any item breached floor limit or has stock deficit (bundles validated dynamically via components) */}
             {(() => {
               const hasFloorBreach = cart.some(ci => 
-                !!ci.priceError || getEffectiveUnitPrice(ci) < (ci.product.minSellingPrice ?? Math.round(ci.product.sellingPrice * 0.88))
+                !!ci.priceError || getEffectiveUnitPrice(ci) < (ci.product.minSellingPrice ?? (ci.product.isBundle ? 0 : Math.round(ci.product.sellingPrice * 0.88)))
               );
-              const hasStockDeficit = cart.some(ci => {
-                const fresh = products.find(p => p.id === ci.product.id || p.sku === ci.product.sku) || ci.product;
-                return ci.quantity > (fresh.currentStock || 0);
-              });
+              const targetCheckWhId = dispenseMode === 'WAREHOUSE_DISPATCH' ? targetDispatchWarehouseId : selectedWarehouseId;
+              const cartStockCheck = validateCartStockWithBundles(cart, products, storedBundles, targetCheckWhId);
+              const hasStockDeficit = !cartStockCheck.isValid;
               const isShiftActive = !!activeShift;
               const canCheckout = cart.length > 0 && !hasFloorBreach && !hasStockDeficit && isShiftActive;
 
@@ -2002,7 +2031,7 @@ export default function PosTerminalView({
                       gap: '8px'
                     }}>
                       <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                      <span>{isAr ? 'تنبيه: الكميات المطلوبة لبعض المواد تتجاوز الرصيد الفعلي للمستودع! يرجى تصحيح الكمية لإتمام البيع.' : 'Warning: Requested quantities exceed warehouse stock!'}</span>
+                      <span>{t('posMessages.checkoutShortageBanner', isAr ? 'تنبيه: الكميات المطلوبة لبعض المواد أو مكونات الحزم تتجاوز الرصيد الفعلي للمستودع! يرجى تعديل الكمية لإتمام البيع.' : 'Warning: Requested quantities (including bundle components) exceed warehouse stock!')}</span>
                     </div>
                   )}
 

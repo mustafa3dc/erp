@@ -120,11 +120,11 @@ public class PosTerminalController : ControllerBase
         }
         catch (ApplicationException ex)
         {
-            var isWarehouseError = ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع") || ex.Message.Contains("INVALID_WAREHOUSE");
-            var isStockError = ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد");
+            var isStockError = ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد");
+            var isWarehouseError = !isStockError && (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"));
             return BadRequest(new 
             { 
-                errorCode = isWarehouseError ? "INVALID_WAREHOUSE" : (isStockError ? "ERR_INSUFFICIENT_STOCK" : "ERR_DISCOUNT_EXCEEDED_LIMIT"), 
+                errorCode = isStockError ? "ERR_INSUFFICIENT_STOCK" : (isWarehouseError ? "INVALID_WAREHOUSE" : "ERR_DISCOUNT_EXCEEDED_LIMIT"), 
                 message = ex.Message 
             });
         }

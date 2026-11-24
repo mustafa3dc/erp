@@ -1212,7 +1212,9 @@ export function executePosSaleTransaction(
   const updatedProducts = [...storedProducts];
   const storedBundles = getStoredProductBundles();
 
-  // 1. Strict Stock Availability Check (Bundles verify every physical component!)
+  // 1. Strict Aggregated Stock Availability Check (bundles + standalone items combined)
+  const aggregatedDemand = new Map<string, { name: string; sku: string; requiredQty: number }>();
+
   for (const item of req.items) {
     const prod = updatedProducts.find(p => p.id === item.product.id || p.sku === item.product.sku);
     if (!prod) {
@@ -1225,23 +1227,35 @@ export function executePosSaleTransaction(
         throw new Error(`حزمة المنتجات "${prod.nameAr}" (${prod.sku}) لا تحتوي على مكونات صالحة.`);
       }
       for (const bc of bundleComponents) {
-        const compProd = updatedProducts.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
-        const compAvail = Number(compProd?.currentStock) || 0;
-        const requiredCompQty = Math.ceil((Number(bc.quantity) || 1) * item.quantity);
-        if (!compProd || compAvail < requiredCompQty) {
-          const compLabel = compProd?.nameAr || bc.childProductName || bc.childProductSku;
-          throw new Error(
-            `رصيد مكون الحزمة "${compLabel}" داخل "${prod.nameAr}" غير كافٍ في مستودع "${effectiveWarehouseName}". المتاح: ${compAvail}، المطلوب: ${requiredCompQty}.`
-          );
+        const compProd = updatedProducts.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+        if (!compProd) {
+          throw new Error(`مكون الحزمة "${bc.childProductName || bc.childProductSku}" داخل "${prod.nameAr}" غير موجود في المخزون.`);
         }
+        const reqCompQty = Math.ceil((Number(bc.quantity) || 1) * item.quantity);
+        const existing = aggregatedDemand.get(compProd.id);
+        aggregatedDemand.set(compProd.id, {
+          name: compProd.nameAr,
+          sku: compProd.sku,
+          requiredQty: (existing?.requiredQty || 0) + reqCompQty
+        });
       }
     } else {
-      const available = Number(prod.currentStock) || 0;
-      if (available < item.quantity) {
-        throw new Error(
-          `رصيد الصنف "${prod.nameAr}" (${prod.sku}) غير كافٍ في مستودع "${effectiveWarehouseName}". الرصيد المتاح فعلياً: ${available} قطعة، بينما الكمية المطلوبة: ${item.quantity} قطعة.`
-        );
-      }
+      const existing = aggregatedDemand.get(prod.id);
+      aggregatedDemand.set(prod.id, {
+        name: prod.nameAr,
+        sku: prod.sku,
+        requiredQty: (existing?.requiredQty || 0) + item.quantity
+      });
+    }
+  }
+
+  for (const [physId, demand] of aggregatedDemand.entries()) {
+    const physProd = updatedProducts.find(p => p.id === physId);
+    const available = Number(physProd?.currentStock) || 0;
+    if (!physProd || available < demand.requiredQty) {
+      throw new Error(
+        `رصيد الصنف "${demand.name}" (${demand.sku}) غير كافٍ في مستودع "${effectiveWarehouseName}". الرصيد المتاح فعلياً: ${available} قطعة، بينما إجمالي الكمية المطلوبة: ${demand.requiredQty} قطعة.`
+      );
     }
   }
 
@@ -2998,6 +3012,208 @@ export function getEffectiveProductStock(
     return getBundleAvailableStock(product.id, allProducts, allBundles, warehouseId);
   }
   return Math.max(0, Number(product.currentStock) || 0);
+}
+
+/**
+ * Resolves a component's total available physical stock (matching ID or SKU, optionally scoped to warehouse).
+ */
+function getPhysicalComponentStock(
+  componentId: string,
+  componentSku: string | undefined,
+  products: Product[],
+  bundles: ProductBundleItem[],
+  warehouseId?: string
+): number {
+  const matching = products.filter(p =>
+    !p.isBundle &&
+    (p.id === componentId || (componentSku && p.sku === componentSku)) &&
+    (!warehouseId || warehouseId === 'ALL' || !p.warehouseId || p.warehouseId === warehouseId)
+  );
+  if (matching.length > 0) {
+    return matching.reduce((sum, p) => sum + Math.max(0, Number(p.currentStock) || 0), 0);
+  }
+  const bundleFallback = bundles.find(b => b.childProductId === componentId);
+  return typeof bundleFallback?.availableStock === 'number' ? Math.max(0, bundleFallback.availableStock) : 0;
+}
+
+/**
+ * Validates an entire cart (handling BOTH bundle component stock AND shared standalone items in the same cart).
+ */
+export function validateCartStockWithBundles(
+  cartItems: Array<{ product: Product; quantity: number }>,
+  allProducts?: Product[],
+  allBundles?: ProductBundleItem[],
+  warehouseId?: string
+): {
+  isValid: boolean;
+  lineIssues: Record<string, { available: number; required: number; conflictingComponent?: string }>;
+  shortages: Array<{ productId: string; name: string; sku: string; available: number; required: number }>;
+} {
+  const products = allProducts ?? getStoredProducts();
+  const bundles = allBundles ?? getStoredProductBundles();
+
+  const demandMap = new Map<string, {
+    key: string;
+    name: string;
+    sku: string;
+    available: number;
+    required: number;
+    cartProductIds: Set<string>;
+  }>();
+
+  for (const item of cartItems) {
+    const freshProd = products.find(p => p.id === item.product.id || p.sku === item.product.sku) || item.product;
+    const comps = bundles.filter(b => b.parentProductId === freshProd.id);
+
+    if (freshProd.isBundle || comps.length > 0) {
+      if (comps.length === 0) {
+        const k = freshProd.id;
+        demandMap.set(k, {
+          key: k,
+          name: freshProd.nameAr || freshProd.nameEn,
+          sku: freshProd.sku,
+          available: 0,
+          required: item.quantity,
+          cartProductIds: new Set([item.product.id])
+        });
+        continue;
+      }
+
+      for (const bc of comps) {
+        const compProd = products.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+        const physKey = compProd?.id || bc.childProductId;
+        const avail = getPhysicalComponentStock(bc.childProductId, bc.childProductSku, products, bundles, warehouseId);
+        const reqQty = Math.ceil((Number(bc.quantity) || 1) * item.quantity);
+
+        const prev = demandMap.get(physKey);
+        if (prev) {
+          prev.required += reqQty;
+          prev.cartProductIds.add(item.product.id);
+        } else {
+          demandMap.set(physKey, {
+            key: physKey,
+            name: compProd?.nameAr || compProd?.nameEn || bc.childProductName || bc.childProductSku,
+            sku: compProd?.sku || bc.childProductSku || '',
+            available: avail,
+            required: reqQty,
+            cartProductIds: new Set([item.product.id])
+          });
+        }
+      }
+    } else {
+      const physKey = freshProd.id;
+      const avail = Math.max(0, Number(freshProd.currentStock) || 0);
+      const prev = demandMap.get(physKey);
+      if (prev) {
+        prev.required += item.quantity;
+        prev.cartProductIds.add(item.product.id);
+      } else {
+        demandMap.set(physKey, {
+          key: physKey,
+          name: freshProd.nameAr || freshProd.nameEn,
+          sku: freshProd.sku,
+          available: avail,
+          required: item.quantity,
+          cartProductIds: new Set([item.product.id])
+        });
+      }
+    }
+  }
+
+  const lineIssues: Record<string, { available: number; required: number; conflictingComponent?: string }> = {};
+  const shortages: Array<{ productId: string; name: string; sku: string; available: number; required: number }> = [];
+
+  for (const entry of demandMap.values()) {
+    if (entry.required > entry.available) {
+      shortages.push({
+        productId: entry.key,
+        name: entry.name,
+        sku: entry.sku,
+        available: entry.available,
+        required: entry.required
+      });
+      for (const cartProdId of entry.cartProductIds) {
+        if (!lineIssues[cartProdId]) {
+          lineIssues[cartProdId] = {
+            available: entry.available,
+            required: entry.required,
+            conflictingComponent: entry.name
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    isValid: shortages.length === 0,
+    lineIssues,
+    shortages
+  };
+}
+
+/**
+ * Returns the maximum total quantity of `targetProduct` allowed in the cart, accounting for
+ * component stock already consumed by other bundles or standalone items in `currentCart`.
+ */
+export function getMaxAllowedCartQuantity(
+  targetProduct: Product,
+  currentCart: Array<{ product: Product; quantity: number }>,
+  allProducts?: Product[],
+  allBundles?: ProductBundleItem[],
+  warehouseId?: string
+): { maxQty: number; limitingComponentName?: string } {
+  const products = allProducts ?? getStoredProducts();
+  const bundles = allBundles ?? getStoredProductBundles();
+
+  // Compute component demand from all OTHER lines in cart
+  const otherItems = currentCart.filter(ci => ci.product.id !== targetProduct.id);
+  const otherDemand = new Map<string, number>();
+
+  for (const ci of otherItems) {
+    const fresh = products.find(p => p.id === ci.product.id || p.sku === ci.product.sku) || ci.product;
+    const comps = bundles.filter(b => b.parentProductId === fresh.id);
+    if (fresh.isBundle || comps.length > 0) {
+      for (const bc of comps) {
+        const compProd = products.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+        const physKey = compProd?.id || bc.childProductId;
+        otherDemand.set(physKey, (otherDemand.get(physKey) || 0) + Math.ceil((Number(bc.quantity) || 1) * ci.quantity));
+      }
+    } else {
+      otherDemand.set(fresh.id, (otherDemand.get(fresh.id) || 0) + ci.quantity);
+    }
+  }
+
+  const targetComps = bundles.filter(b => b.parentProductId === targetProduct.id);
+  if (targetProduct.isBundle || targetComps.length > 0) {
+    if (targetComps.length === 0) return { maxQty: 0 };
+    let minAllowed = Infinity;
+    let limitingName: string | undefined;
+    for (const bc of targetComps) {
+      const compProd = products.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+      const physKey = compProd?.id || bc.childProductId;
+      const totalCompAvail = getPhysicalComponentStock(bc.childProductId, bc.childProductSku, products, bundles, warehouseId);
+      const alreadyUsed = otherDemand.get(physKey) || 0;
+      const remaining = Math.max(0, totalCompAvail - alreadyUsed);
+      const reqPerBundle = Number(bc.quantity) || 1;
+      const maxForComp = Math.floor(remaining / reqPerBundle);
+      if (maxForComp < minAllowed) {
+        minAllowed = maxForComp;
+        limitingName = compProd?.nameAr || compProd?.nameEn || bc.childProductName;
+      }
+    }
+    return {
+      maxQty: Number.isFinite(minAllowed) ? Math.max(0, minAllowed) : 0,
+      limitingComponentName: limitingName
+    };
+  }
+
+  const freshTarget = products.find(p => p.id === targetProduct.id || p.sku === targetProduct.sku) || targetProduct;
+  const rawAvail = Math.max(0, Number(freshTarget.currentStock) || 0);
+  const usedByBundles = otherDemand.get(freshTarget.id) || 0;
+  return {
+    maxQty: Math.max(0, rawAvail - usedByBundles),
+    limitingComponentName: freshTarget.nameAr || freshTarget.nameEn
+  };
 }
 
 /**

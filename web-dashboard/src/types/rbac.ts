@@ -27,7 +27,12 @@ export type PermissionKey =
   | 'customers.manage'
   | 'finance.ledger'
   | 'reports.executive'
-  | 'settings.audit';
+  | 'settings.audit'
+  | 'quotations.manage'
+  | 'pricelists.manage'
+  | 'purchases.returns'
+  | 'serials.manage'
+  | 'expenses.manage';
 
 export type BusinessPreset = 
   | 'Custom' 
@@ -48,6 +53,10 @@ export interface CompanyFeatures {
   enableCreditLimits: boolean;
   enableBarcodeScales: boolean;
   enableExpiryDates: boolean;
+  enableQuotations?: boolean;
+  enablePriceLists?: boolean;
+  enablePurchaseReturns?: boolean;
+  enableExpenses?: boolean;
 }
 
 export interface UserProfile {

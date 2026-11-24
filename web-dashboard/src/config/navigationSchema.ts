@@ -81,6 +81,22 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         requiredPermission: 'invoices.manage'
       },
       {
+        id: 'Sales Quotations',
+        titleAr: 'عروض الأسعار',
+        titleEn: 'Sales Quotations',
+        path: '/sales/quotations',
+        requiredPermission: 'invoices.manage',
+        requiredFeature: 'enableQuotations'
+      },
+      {
+        id: 'Price Lists & Promotions',
+        titleAr: 'قوائم الأسعار والعروض',
+        titleEn: 'Price Lists & Bundles',
+        path: '/sales/price-lists',
+        requiredPermission: 'invoices.manage',
+        requiredFeature: 'enablePriceLists'
+      },
+      {
         id: 'Installments',
         titleAr: 'إدارة الأقساط',
         titleEn: 'Installments',
@@ -120,6 +136,14 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         requiredPermission: 'purchases.manage'
       },
       {
+        id: 'Purchase Returns',
+        titleAr: 'مرتجعات المشتريات',
+        titleEn: 'Purchase Returns',
+        path: '/purchases/returns',
+        requiredPermission: 'purchases.manage',
+        requiredFeature: 'enablePurchaseReturns'
+      },
+      {
         id: 'Purchase Orders',
         titleAr: 'أوامر الشراء',
         titleEn: 'Purchase Orders',
@@ -149,6 +173,14 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Products',
         path: '/items',
         requiredPermission: 'inventory.view'
+      },
+      {
+        id: 'Serial & Warranty Tracking',
+        titleAr: 'الأرقام التسلسلية والضمان',
+        titleEn: 'Serial & Warranty Tracking',
+        path: '/inventory/serials',
+        requiredPermission: 'inventory.view',
+        requiredFeature: 'enableSerialNumbers'
       },
       {
         id: 'Transfers & In-Transit',
@@ -197,6 +229,14 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Cash & Banks',
         path: '/finance',
         requiredPermission: 'finance.ledger'
+      },
+      {
+        id: 'Operational Expenses',
+        titleAr: 'المصروفات التشغيلية',
+        titleEn: 'Operational Expenses',
+        path: '/finance/expenses',
+        requiredPermission: 'finance.ledger',
+        requiredFeature: 'enableExpenses'
       },
       {
         id: 'Finance Vouchers',

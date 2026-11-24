@@ -30,6 +30,14 @@ public static class Permissions
         public const string InvoicesDelete = "sales.invoices.delete";
         public const string ReturnsManage = "sales.returns.manage";
         public const string CustomersManage = "sales.customers.manage";
+        public const string QuotationsView = "sales.quotations.view";
+        public const string QuotationsCreate = "sales.quotations.create";
+        public const string QuotationsEdit = "sales.quotations.edit";
+        public const string QuotationsDelete = "sales.quotations.delete";
+        public const string QuotationsApprove = "sales.quotations.approve";
+        public const string QuotationsConvert = "sales.quotations.convert";
+        public const string PriceListsView = "sales.pricelists.view";
+        public const string PriceListsManage = "sales.pricelists.manage";
     }
 
     // =========================================================================
@@ -43,6 +51,11 @@ public static class Permissions
         public const string BillsDelete = "purchases.bills.delete";
         public const string OrdersManage = "purchases.orders.manage";
         public const string SuppliersManage = "purchases.suppliers.manage";
+        public const string ReturnsView = "purchases.returns.view";
+        public const string ReturnsCreate = "purchases.returns.create";
+        public const string ReturnsEdit = "purchases.returns.edit";
+        public const string ReturnsDelete = "purchases.returns.delete";
+        public const string ReturnsApprove = "purchases.returns.approve";
     }
 
     // =========================================================================
@@ -58,6 +71,8 @@ public static class Permissions
         public const string TransfersManage = "inventory.transfers.manage";
         public const string StockCountsManage = "inventory.stock_counts.manage";
         public const string WarehousesManage = "inventory.warehouses.manage";
+        public const string SerialsView = "inventory.serials.view";
+        public const string SerialsManage = "inventory.serials.manage";
     }
 
     // =========================================================================
@@ -69,6 +84,11 @@ public static class Permissions
         public const string VouchersManage = "treasury.vouchers.manage";
         public const string CashBoxesManage = "treasury.cashboxes.manage";
         public const string DebtsView = "treasury.debts.view";
+        public const string ExpensesView = "treasury.expenses.view";
+        public const string ExpensesCreate = "treasury.expenses.create";
+        public const string ExpensesEdit = "treasury.expenses.edit";
+        public const string ExpensesDelete = "treasury.expenses.delete";
+        public const string ExpensesApprove = "treasury.expenses.approve";
     }
 
     // =========================================================================
@@ -133,6 +153,14 @@ public static class Permissions
             Sales.InvoicesDelete,
             Sales.ReturnsManage,
             Sales.CustomersManage,
+            Sales.QuotationsView,
+            Sales.QuotationsCreate,
+            Sales.QuotationsEdit,
+            Sales.QuotationsDelete,
+            Sales.QuotationsApprove,
+            Sales.QuotationsConvert,
+            Sales.PriceListsView,
+            Sales.PriceListsManage,
 
             Purchases.BillsView,
             Purchases.BillsCreate,
@@ -140,6 +168,11 @@ public static class Permissions
             Purchases.BillsDelete,
             Purchases.OrdersManage,
             Purchases.SuppliersManage,
+            Purchases.ReturnsView,
+            Purchases.ReturnsCreate,
+            Purchases.ReturnsEdit,
+            Purchases.ReturnsDelete,
+            Purchases.ReturnsApprove,
 
             Inventory.ItemsView,
             Inventory.ItemsCreate,
@@ -149,11 +182,18 @@ public static class Permissions
             Inventory.TransfersManage,
             Inventory.StockCountsManage,
             Inventory.WarehousesManage,
+            Inventory.SerialsView,
+            Inventory.SerialsManage,
 
             Treasury.AccountsView,
             Treasury.VouchersManage,
             Treasury.CashBoxesManage,
             Treasury.DebtsView,
+            Treasury.ExpensesView,
+            Treasury.ExpensesCreate,
+            Treasury.ExpensesEdit,
+            Treasury.ExpensesDelete,
+            Treasury.ExpensesApprove,
 
             Reports.ExecutiveView,
             Reports.SalesReports,

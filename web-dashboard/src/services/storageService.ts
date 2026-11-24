@@ -4,6 +4,15 @@ import { localizeCategory, localizeUnit, localizeWarehouse } from '../lib/locale
 import { parseDateSafely } from '../utils/dateFormatter';
 import { UserAccount, DEFAULT_USER_ACCOUNTS, UserProfile, UserRole } from '../types/rbac';
 import { PurchaseInvoice, PurchaseInvoiceItem, PurchaseJournalEntry } from '../types/purchases';
+import { 
+  ExpenseCategory, 
+  ExpenseVoucher, 
+  SalesQuotation, 
+  PriceList, 
+  ProductBundleItem, 
+  PurchaseReturn, 
+  ProductSerial 
+} from '../types/businessModules';
 
 export const initialProducts: Product[] = [];
 export const initialWarehouses: Warehouse[] = [];
@@ -62,6 +71,13 @@ export const KEYS = {
   get STOCK_ADJUSTMENTS() { return getScopedKey('stock_adjustments'); },
   get EMPLOYEE_TRANSACTIONS() { return getScopedKey('employee_transactions'); },
   get INSTALLMENT_CONTRACTS() { return getScopedKey('installment_contracts'); },
+  get EXPENSE_CATEGORIES() { return getScopedKey('expense_categories'); },
+  get EXPENSE_VOUCHERS() { return getScopedKey('expense_vouchers'); },
+  get SALES_QUOTATIONS() { return getScopedKey('sales_quotations'); },
+  get PRICE_LISTS() { return getScopedKey('price_lists'); },
+  get PRODUCT_BUNDLES() { return getScopedKey('product_bundles'); },
+  get PURCHASE_RETURNS() { return getScopedKey('purchase_returns'); },
+  get PRODUCT_SERIALS() { return getScopedKey('product_serials'); },
 };
 
 
@@ -2769,6 +2785,92 @@ export function getInstallmentStats(): InstallmentStats {
     totalRemainingAmount: totalRemaining
   };
 }
+
+// ----------------------------------------------------
+// Operational Expenses
+// ----------------------------------------------------
+const DEFAULT_EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  { id: 'EXP-CAT-01', tenantId: 'default', code: 'RENT', name: 'Office & Warehouse Rent', nameAr: 'إيجار المكاتب والمستودعات', description: 'Monthly rent for properties', budgetLimit: 5000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'EXP-CAT-02', tenantId: 'default', code: 'UTILITIES', name: 'Utilities & Internet', nameAr: 'الكهرباء والماء والإنترنت', description: 'Power, water, and broadband expenses', budgetLimit: 1200, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'EXP-CAT-03', tenantId: 'default', code: 'SALARIES', name: 'Staff Salaries & Wages', nameAr: 'رواتب وأجور الموظفين', description: 'Monthly compensation', budgetLimit: 15000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'EXP-CAT-04', tenantId: 'default', code: 'LOGISTICS', name: 'Logistics & Fuel', nameAr: 'مصاريف الشحن والوقود', description: 'Transportation, vehicle fuel and courier', budgetLimit: 2500, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'EXP-CAT-05', tenantId: 'default', code: 'MAINTENANCE', name: 'Maintenance & Repairs', nameAr: 'الصيانة والتشغيل', description: 'Equipment and warehouse upkeep', budgetLimit: 1000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' }
+];
+
+export function getStoredExpenseCategories(): ExpenseCategory[] {
+  return safeGet<ExpenseCategory[]>(KEYS.EXPENSE_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES);
+}
+
+export function saveStoredExpenseCategories(categories: ExpenseCategory[]): void {
+  safeSet(KEYS.EXPENSE_CATEGORIES, categories);
+}
+
+export function getStoredExpenseVouchers(): ExpenseVoucher[] {
+  return safeGet<ExpenseVoucher[]>(KEYS.EXPENSE_VOUCHERS, []);
+}
+
+export function saveStoredExpenseVouchers(vouchers: ExpenseVoucher[]): void {
+  safeSet(KEYS.EXPENSE_VOUCHERS, vouchers);
+}
+
+// ----------------------------------------------------
+// Sales Quotations
+// ----------------------------------------------------
+export function getStoredSalesQuotations(): SalesQuotation[] {
+  return safeGet<SalesQuotation[]>(KEYS.SALES_QUOTATIONS, []);
+}
+
+export function saveStoredSalesQuotations(quotations: SalesQuotation[]): void {
+  safeSet(KEYS.SALES_QUOTATIONS, quotations);
+}
+
+// ----------------------------------------------------
+// Price Lists & Bundles
+// ----------------------------------------------------
+const DEFAULT_PRICE_LISTS: PriceList[] = [
+  { id: 'PL-RETAIL', tenantId: 'default', code: 'RETAIL', name: 'Standard Retail', nameAr: 'سعر التجزئة الافتراضي', currency: 'USD', isDefault: true, isActive: true, customerTier: 'BRONZE', description: 'Base retail prices for all walking customers', createdAt: '2026-01-01T00:00:00Z', items: [] },
+  { id: 'PL-WHOLESALE', tenantId: 'default', code: 'WHOLESALE', name: 'Wholesale Tier', nameAr: 'سعر الجملة', currency: 'USD', isDefault: false, isActive: true, customerTier: 'GOLD', description: 'Wholesale discount rates for bulk partners', createdAt: '2026-01-01T00:00:00Z', items: [] },
+  { id: 'PL-VIP', tenantId: 'default', code: 'VIP', name: 'VIP Platinum Tier', nameAr: 'سعر كبار العملاء VIP', currency: 'USD', isDefault: false, isActive: true, customerTier: 'PLATINUM', description: 'Exclusive contracted prices for VIP clients', createdAt: '2026-01-01T00:00:00Z', items: [] }
+];
+
+export function getStoredPriceLists(): PriceList[] {
+  return safeGet<PriceList[]>(KEYS.PRICE_LISTS, DEFAULT_PRICE_LISTS);
+}
+
+export function saveStoredPriceLists(lists: PriceList[]): void {
+  safeSet(KEYS.PRICE_LISTS, lists);
+}
+
+export function getStoredProductBundles(): ProductBundleItem[] {
+  return safeGet<ProductBundleItem[]>(KEYS.PRODUCT_BUNDLES, []);
+}
+
+export function saveStoredProductBundles(bundles: ProductBundleItem[]): void {
+  safeSet(KEYS.PRODUCT_BUNDLES, bundles);
+}
+
+// ----------------------------------------------------
+// Purchase Returns
+// ----------------------------------------------------
+export function getStoredPurchaseReturns(): PurchaseReturn[] {
+  return safeGet<PurchaseReturn[]>(KEYS.PURCHASE_RETURNS, []);
+}
+
+export function saveStoredPurchaseReturns(returns: PurchaseReturn[]): void {
+  safeSet(KEYS.PURCHASE_RETURNS, returns);
+}
+
+// ----------------------------------------------------
+// Product Serials / IMEI & Warranty
+// ----------------------------------------------------
+export function getStoredProductSerials(): ProductSerial[] {
+  return safeGet<ProductSerial[]>(KEYS.PRODUCT_SERIALS, []);
+}
+
+export function saveStoredProductSerials(serials: ProductSerial[]): void {
+  safeSet(KEYS.PRODUCT_SERIALS, serials);
+}
+
 
 
 

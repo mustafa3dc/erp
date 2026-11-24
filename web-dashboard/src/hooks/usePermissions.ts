@@ -236,6 +236,27 @@ function checkAliases(target: string, perms: Set<string>): boolean {
     case 'system.settings.manage':
       return perms.has('system.settings.manage') || perms.has('settings.audit');
 
+    // New Core Modules
+    case 'quotations.manage':
+    case 'sales.quotations.view':
+      return perms.has('sales.quotations.view') || perms.has('quotations.manage') || perms.has('invoices.manage');
+
+    case 'pricelists.manage':
+    case 'sales.pricelists.view':
+      return perms.has('sales.pricelists.view') || perms.has('pricelists.manage') || perms.has('invoices.manage');
+
+    case 'purchases.returns':
+    case 'purchases.returns.view':
+      return perms.has('purchases.returns.view') || perms.has('purchases.returns') || perms.has('purchases.manage');
+
+    case 'serials.manage':
+    case 'inventory.serials.view':
+      return perms.has('inventory.serials.view') || perms.has('serials.manage') || perms.has('inventory.view');
+
+    case 'expenses.manage':
+    case 'treasury.expenses.view':
+      return perms.has('treasury.expenses.view') || perms.has('expenses.manage') || perms.has('finance.ledger');
+
     default:
       return false;
   }

@@ -145,6 +145,15 @@ public class Product : ITenantEntity
     [Column("max_stock_level")]
     public int MaxStockLevel { get; set; } = 500;
 
+    [Column("requires_serial_number")]
+    public bool RequiresSerialNumber { get; set; } = false;
+
+    [Column("warranty_months")]
+    public int WarrantyMonths { get; set; } = 0;
+
+    [Column("is_bundle")]
+    public bool IsBundle { get; set; } = false;
+
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
@@ -155,6 +164,7 @@ public class Product : ITenantEntity
     public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<WarehouseStock> WarehouseStocks { get; set; } = new List<WarehouseStock>();
+    public ICollection<ProductBundleItem> BundleComponents { get; set; } = new List<ProductBundleItem>();
 }
 
 [Table("warehouse_stock")]
@@ -1213,6 +1223,756 @@ public class EmployeeFinancialTransaction : ITenantEntity
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// ============================================================================
+// Customers & Price Tier Linking
+// ============================================================================
+
+[Table("customers")]
+public class Customer : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Column("code")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(255)]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("phone")]
+    public string? Phone { get; set; }
+
+    [MaxLength(150)]
+    [Column("email")]
+    public string? Email { get; set; }
+
+    [MaxLength(100)]
+    [Column("tax_number")]
+    public string? TaxNumber { get; set; }
+
+    [Column("credit_limit")]
+    public decimal CreditLimit { get; set; } = 0.0000m;
+
+    [Column("current_balance")]
+    public decimal CurrentBalance { get; set; } = 0.0000m;
+
+    [Column("price_list_id")]
+    public Guid? PriceListId { get; set; }
+    public PriceList? PriceList { get; set; }
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// ============================================================================
+// 1. Operational Expenses (Expense Categories & Vouchers)
+// ============================================================================
+
+[Table("expense_categories")]
+public class ExpenseCategory : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Column("code")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(150)]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [Column("description")]
+    public string? Description { get; set; }
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<ExpenseVoucher> Vouchers { get; set; } = new List<ExpenseVoucher>();
+}
+
+[Table("expense_vouchers")]
+public class ExpenseVoucher : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Column("voucher_number")]
+    public string VoucherNumber { get; set; } = string.Empty;
+
+    [Column("voucher_date")]
+    public DateTime VoucherDate { get; set; } = DateTime.UtcNow;
+
+    [Column("expense_category_id")]
+    public Guid ExpenseCategoryId { get; set; }
+    public ExpenseCategory? ExpenseCategory { get; set; }
+
+    [Column("cash_box_id")]
+    public Guid? CashBoxId { get; set; }
+    public CashBox? CashBox { get; set; }
+
+    [Column("amount")]
+    public decimal Amount { get; set; }
+
+    [MaxLength(10)]
+    [Column("currency")]
+    public string Currency { get; set; } = "IQD";
+
+    [Column("exchange_rate")]
+    public decimal ExchangeRate { get; set; } = 1.0000m;
+
+    [Column("base_currency_amount")]
+    public decimal BaseCurrencyAmount { get; set; }
+
+    [MaxLength(50)]
+    [Column("payment_method")]
+    public string PaymentMethod { get; set; } = "CASH"; // CASH, BANK_TRANSFER, CHECK
+
+    [MaxLength(150)]
+    [Column("beneficiary_name")]
+    public string? BeneficiaryName { get; set; }
+
+    [MaxLength(20)]
+    [Column("status")]
+    public string Status { get; set; } = "DRAFT"; // DRAFT, APPROVED, REJECTED, CANCELLED
+
+    [MaxLength(150)]
+    [Column("approved_by")]
+    public string? ApprovedBy { get; set; }
+
+    [Column("approved_at")]
+    public DateTime? ApprovedAt { get; set; }
+
+    [MaxLength(500)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [MaxLength(100)]
+    [Column("receipt_reference")]
+    public string? ReceiptReference { get; set; }
+
+    [MaxLength(100)]
+    [Column("created_by")]
+    public string? CreatedBy { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// ============================================================================
+// 2. Sales Quotations & Line Items
+// ============================================================================
+
+[Table("sales_quotations")]
+public class SalesQuotation : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("quotation_number")]
+    public string QuotationNumber { get; set; } = string.Empty;
+
+    [Column("quotation_date")]
+    public DateTime QuotationDate { get; set; } = DateTime.UtcNow;
+
+    [Column("expiry_date")]
+    public DateTime ExpiryDate { get; set; } = DateTime.UtcNow.AddDays(15);
+
+    [Column("customer_id")]
+    public Guid? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [MaxLength(150)]
+    [Column("customer_name")]
+    public string CustomerName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("customer_phone")]
+    public string? CustomerPhone { get; set; }
+
+    [MaxLength(255)]
+    [Column("customer_address")]
+    public string? CustomerAddress { get; set; }
+
+    [MaxLength(100)]
+    [Column("customer_tax_no")]
+    public string? CustomerTaxNo { get; set; }
+
+    [Column("warehouse_id")]
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
+    [Column("subtotal")]
+    public decimal Subtotal { get; set; }
+
+    [Column("discount_amount")]
+    public decimal DiscountAmount { get; set; }
+
+    [Column("tax_amount")]
+    public decimal TaxAmount { get; set; }
+
+    [Column("total_amount")]
+    public decimal TotalAmount { get; set; }
+
+    [MaxLength(10)]
+    [Column("currency")]
+    public string Currency { get; set; } = "IQD";
+
+    [Column("exchange_rate")]
+    public decimal ExchangeRate { get; set; } = 1.0000m;
+
+    [MaxLength(20)]
+    [Column("status")]
+    public string Status { get; set; } = "Draft"; // Draft, Sent, Accepted, Expired, Converted, Cancelled
+
+    [Column("converted_invoice_id")]
+    public Guid? ConvertedInvoiceId { get; set; }
+    public SalesInvoice? ConvertedInvoice { get; set; }
+
+    [Column("converted_at")]
+    public DateTime? ConvertedAt { get; set; }
+
+    [MaxLength(100)]
+    [Column("salesperson_id")]
+    public string? SalespersonId { get; set; }
+
+    [MaxLength(150)]
+    [Column("salesperson_name")]
+    public string? SalespersonName { get; set; }
+
+    [Column("terms_and_conditions")]
+    public string? TermsAndConditions { get; set; }
+
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<SalesQuotationItem> Items { get; set; } = new List<SalesQuotationItem>();
+}
+
+[Table("sales_quotation_items")]
+public class SalesQuotationItem : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("quotation_id")]
+    public Guid QuotationId { get; set; }
+    public SalesQuotation? Quotation { get; set; }
+
+    [Column("product_id")]
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("product_sku")]
+    public string ProductSku { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(255)]
+    [Column("product_name")]
+    public string ProductName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("unit_of_measure")]
+    public string UnitOfMeasure { get; set; } = "قطعة";
+
+    [Column("quantity")]
+    public decimal Quantity { get; set; }
+
+    [Column("unit_price")]
+    public decimal UnitPrice { get; set; }
+
+    [Column("discount_percent")]
+    public decimal DiscountPercent { get; set; }
+
+    [Column("discount_amount")]
+    public decimal DiscountAmount { get; set; }
+
+    [Column("tax_percent")]
+    public decimal TaxPercent { get; set; }
+
+    [Column("tax_amount")]
+    public decimal TaxAmount { get; set; }
+
+    [Column("line_total")]
+    public decimal LineTotal { get; set; }
+
+    [MaxLength(255)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+}
+
+// ============================================================================
+// 3. Price Lists, Tiers & Product Bundles
+// ============================================================================
+
+[Table("price_lists")]
+public class PriceList : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    [Column("code")]
+    public string Code { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(150)]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(10)]
+    [Column("currency")]
+    public string Currency { get; set; } = "IQD";
+
+    [Column("is_default")]
+    public bool IsDefault { get; set; } = false;
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("start_date")]
+    public DateTime? StartDate { get; set; }
+
+    [Column("end_date")]
+    public DateTime? EndDate { get; set; }
+
+    [Column("description")]
+    public string? Description { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<PriceListItem> Items { get; set; } = new List<PriceListItem>();
+}
+
+[Table("price_list_items")]
+public class PriceListItem : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("price_list_id")]
+    public Guid PriceListId { get; set; }
+    public PriceList? PriceList { get; set; }
+
+    [Column("product_id")]
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Column("min_quantity")]
+    public decimal MinQuantity { get; set; } = 1.0m;
+
+    [Column("unit_price")]
+    public decimal UnitPrice { get; set; }
+
+    [Column("discount_percent")]
+    public decimal DiscountPercent { get; set; } = 0.0m;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("product_bundle_items")]
+public class ProductBundleItem : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("parent_product_id")]
+    public Guid ParentProductId { get; set; }
+    public Product? ParentProduct { get; set; }
+
+    [Column("component_product_id")]
+    public Guid ComponentProductId { get; set; }
+    public Product? ComponentProduct { get; set; }
+
+    [Column("quantity")]
+    public decimal Quantity { get; set; } = 1.0m;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// ============================================================================
+// 4. Purchase Returns & Return Line Items
+// ============================================================================
+
+[Table("purchase_returns")]
+public class PurchaseReturn : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("return_number")]
+    public string ReturnNumber { get; set; } = string.Empty;
+
+    [Column("original_bill_id")]
+    public Guid OriginalBillId { get; set; }
+    public PurchaseBill? OriginalBill { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("original_bill_number")]
+    public string OriginalBillNumber { get; set; } = string.Empty;
+
+    [Column("supplier_id")]
+    public Guid SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
+    [Column("warehouse_id")]
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
+    [Column("return_date")]
+    public DateTime ReturnDate { get; set; } = DateTime.UtcNow;
+
+    [MaxLength(20)]
+    [Column("status")]
+    public string Status { get; set; } = "DRAFT"; // DRAFT, APPROVED, COMPLETED, CANCELLED
+
+    [Column("subtotal")]
+    public decimal Subtotal { get; set; }
+
+    [Column("tax_amount")]
+    public decimal TaxAmount { get; set; }
+
+    [Column("total_amount")]
+    public decimal TotalAmount { get; set; }
+
+    [MaxLength(10)]
+    [Column("currency")]
+    public string Currency { get; set; } = "IQD";
+
+    [Column("exchange_rate")]
+    public decimal ExchangeRate { get; set; } = 1.0000m;
+
+    [MaxLength(50)]
+    [Column("refund_method")]
+    public string RefundMethod { get; set; } = "SUPPLIER_CREDIT"; // SUPPLIER_CREDIT, CASH_REFUND, BANK_REFUND
+
+    [Column("cash_box_id")]
+    public Guid? CashBoxId { get; set; }
+    public CashBox? CashBox { get; set; }
+
+    [Column("return_reason")]
+    public string? ReturnReason { get; set; }
+
+    [MaxLength(150)]
+    [Column("approved_by")]
+    public string? ApprovedBy { get; set; }
+
+    [Column("approved_at")]
+    public DateTime? ApprovedAt { get; set; }
+
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [MaxLength(100)]
+    [Column("created_by")]
+    public string? CreatedBy { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<PurchaseReturnItem> Items { get; set; } = new List<PurchaseReturnItem>();
+}
+
+[Table("purchase_return_items")]
+public class PurchaseReturnItem : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("return_id")]
+    public Guid ReturnId { get; set; }
+    public PurchaseReturn? Return { get; set; }
+
+    [Column("purchase_bill_item_id")]
+    public Guid PurchaseBillItemId { get; set; }
+    public PurchaseBillItem? PurchaseBillItem { get; set; }
+
+    [Column("product_id")]
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("product_sku")]
+    public string ProductSku { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(255)]
+    [Column("product_name")]
+    public string ProductName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("unit_of_measure")]
+    public string UnitOfMeasure { get; set; } = "قطعة";
+
+    [Column("purchased_quantity")]
+    public decimal PurchasedQuantity { get; set; }
+
+    [Column("previously_returned_quantity")]
+    public decimal PreviouslyReturnedQuantity { get; set; } = 0.0m;
+
+    [Column("return_quantity")]
+    public decimal ReturnQuantity { get; set; }
+
+    [Column("unit_cost")]
+    public decimal UnitCost { get; set; }
+
+    [Column("line_total")]
+    public decimal LineTotal { get; set; }
+
+    [MaxLength(255)]
+    [Column("reason")]
+    public string? Reason { get; set; }
+
+    [MaxLength(100)]
+    [Column("serial_number")]
+    public string? SerialNumber { get; set; }
+}
+
+// ============================================================================
+// 5. Serial / IMEI & Warranty Tracking
+// ============================================================================
+
+[Table("product_serials")]
+public class ProductSerial : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(100)]
+    [Column("serial_number")]
+    public string SerialNumber { get; set; } = string.Empty;
+
+    [Column("product_id")]
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Column("warehouse_id")]
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
+    [Required]
+    [MaxLength(20)]
+    [Column("status")]
+    public string Status { get; set; } = "InStock"; // InStock, Sold, Returned, Defective, Transferred
+
+    // Inbound Purchase Attribution
+    [Column("purchase_bill_id")]
+    public Guid? PurchaseBillId { get; set; }
+    public PurchaseBill? PurchaseBill { get; set; }
+
+    [Column("purchase_bill_item_id")]
+    public Guid? PurchaseBillItemId { get; set; }
+
+    [Column("supplier_id")]
+    public Guid? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
+    [MaxLength(150)]
+    [Column("supplier_name")]
+    public string? SupplierName { get; set; }
+
+    [Column("purchase_date")]
+    public DateTime? PurchaseDate { get; set; }
+
+    [Column("unit_cost")]
+    public decimal? UnitCost { get; set; }
+
+    // Outbound Sales Attribution
+    [Column("sales_invoice_id")]
+    public Guid? SalesInvoiceId { get; set; }
+    public SalesInvoice? SalesInvoice { get; set; }
+
+    [Column("sales_invoice_item_id")]
+    public Guid? SalesInvoiceItemId { get; set; }
+
+    [Column("customer_id")]
+    public Guid? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [MaxLength(150)]
+    [Column("customer_name")]
+    public string? CustomerName { get; set; }
+
+    [MaxLength(50)]
+    [Column("customer_phone")]
+    public string? CustomerPhone { get; set; }
+
+    [Column("sold_date")]
+    public DateTime? SoldDate { get; set; }
+
+    [Column("selling_price")]
+    public decimal? SellingPrice { get; set; }
+
+    // Warranty Lifecycle
+    [Column("warranty_months")]
+    public int WarrantyMonths { get; set; } = 12;
+
+    [Column("warranty_start_date")]
+    public DateTime? WarrantyStartDate { get; set; }
+
+    [Column("warranty_end_date")]
+    public DateTime? WarrantyEndDate { get; set; }
+
+    [NotMapped]
+    public bool IsWarrantyActive => WarrantyEndDate.HasValue && WarrantyEndDate.Value >= DateTime.UtcNow;
+
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// ============================================================================
+// Immutable Audit Log Ledger
+// ============================================================================
+
+[Table("audit_logs")]
+public class AuditLog : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [MaxLength(100)]
+    [Column("user_id")]
+    public string UserId { get; set; } = string.Empty;
+
+    [MaxLength(150)]
+    [Column("username")]
+    public string? Username { get; set; }
+
+    [Required]
+    [MaxLength(20)]
+    [Column("action")]
+    public string Action { get; set; } = string.Empty; // INSERT, UPDATE, DELETE, APPROVE, REJECT, CONVERT
+
+    [Required]
+    [MaxLength(100)]
+    [Column("entity_name")]
+    public string EntityName { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(100)]
+    [Column("entity_id")]
+    public string EntityId { get; set; } = string.Empty;
+
+    [Column("old_values", TypeName = "jsonb")]
+    public string? OldValues { get; set; }
+
+    [Column("new_values", TypeName = "jsonb")]
+    public string? NewValues { get; set; }
+
+    [MaxLength(45)]
+    [Column("ip_address")]
+    public string? IpAddress { get; set; }
+
+    [Column("timestamp")]
+    public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
 }
 
 

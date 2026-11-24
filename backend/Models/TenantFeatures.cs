@@ -51,6 +51,18 @@ public class CompanyFeatures
     [JsonPropertyName("enableExpiryDates")]
     public bool EnableExpiryDates { get; set; } = false;
 
+    [JsonPropertyName("enableQuotations")]
+    public bool EnableQuotations { get; set; } = true;
+
+    [JsonPropertyName("enablePriceLists")]
+    public bool EnablePriceLists { get; set; } = true;
+
+    [JsonPropertyName("enablePurchaseReturns")]
+    public bool EnablePurchaseReturns { get; set; } = true;
+
+    [JsonPropertyName("enableExpenses")]
+    public bool EnableExpenses { get; set; } = true;
+
     public CompanyFeatures Clone()
     {
         return new CompanyFeatures
@@ -64,7 +76,11 @@ public class CompanyFeatures
             EnableMultiCurrency = this.EnableMultiCurrency,
             EnableCreditLimits = this.EnableCreditLimits,
             EnableBarcodeScales = this.EnableBarcodeScales,
-            EnableExpiryDates = this.EnableExpiryDates
+            EnableExpiryDates = this.EnableExpiryDates,
+            EnableQuotations = this.EnableQuotations,
+            EnablePriceLists = this.EnablePriceLists,
+            EnablePurchaseReturns = this.EnablePurchaseReturns,
+            EnableExpenses = this.EnableExpenses
         };
     }
 }

@@ -135,7 +135,76 @@ public class FinanceController : ControllerBase
             new { id = "OTHER", nameAr = "أخرى", nameEn = "Other" }
         };
 
-        return Ok(categories);
+    /// <summary>
+    /// GET /api/finance/kpis
+    /// Computes true financial KPIs factoring Operational Expenses into Net Profit.
+    /// Net Profit = Gross Profit (Total Sales Revenue - COGS) - Operational Expenses.
+    /// </summary>
+    [HttpGet("kpis")]
+    public async Task<ActionResult<ApiResponse<object>>> GetFinancialKpis([FromQuery] DateTime? fromDate, [FromQuery] DateTime? toDate)
+    {
+        var start = fromDate?.ToUniversalTime() ?? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = toDate?.ToUniversalTime() ?? DateTime.UtcNow;
+
+        // 1. Sales Revenue
+        var invoices = await _context.SalesInvoices
+            .Include(i => i.Items)
+            .ThenInclude(it => it.Product)
+            .Where(i => i.CreatedAt >= start && i.CreatedAt <= end && i.PaymentStatus == "PAID")
+            .ToListAsync();
+
+        var totalRevenue = invoices.Sum(i => i.TotalAmount);
+        
+        // 2. Cost of Goods Sold (COGS)
+        decimal totalCogs = 0;
+        foreach (var inv in invoices)
+        {
+            foreach (var item in inv.Items)
+            {
+                var unitCost = item.Product?.CostPrice ?? 0;
+                totalCogs += unitCost * item.Quantity;
+            }
+        }
+
+        // 3. Gross Profit
+        var grossProfit = totalRevenue - totalCogs;
+
+        // 4. Operational Expenses (Vouchers Approved + Quick Cash Expenses)
+        var approvedVouchersAmount = await _context.ExpenseVouchers
+            .Where(ev => ev.Status == "APPROVED" && ev.VoucherDate >= start && ev.VoucherDate <= end)
+            .SumAsync(ev => ev.BaseCurrencyAmount);
+
+        var quickExpensesAmount = await _context.CashExpenses
+            .Where(ce => ce.CreatedAt >= start && ce.CreatedAt <= end)
+            .SumAsync(ce => ce.Amount);
+
+        var totalOperationalExpenses = approvedVouchersAmount + quickExpensesAmount;
+
+        // 5. True Net Profit
+        var netProfit = grossProfit - totalOperationalExpenses;
+        var profitMargin = totalRevenue > 0 ? Math.Round((netProfit / totalRevenue) * 100.0m, 2) : 0.0m;
+
+        // 6. Treasury Safes & Bank Balances
+        var totalTreasuryLiquidity = await _context.CashBoxes
+            .Where(cb => cb.IsActive)
+            .SumAsync(cb => cb.CurrentBalance);
+
+        var kpiResult = new
+        {
+            totalRevenue,
+            totalCogs,
+            grossProfit,
+            totalOperationalExpenses,
+            approvedVouchersAmount,
+            quickExpensesAmount,
+            netProfit,
+            profitMargin,
+            totalTreasuryLiquidity,
+            periodStart = start,
+            periodEnd = end
+        };
+
+        return Ok(ApiResponse<object>.Ok(kpiResult));
     }
 }
 

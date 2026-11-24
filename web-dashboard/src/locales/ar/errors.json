@@ -4,7 +4,12 @@
       "INSUFFICIENT_STOCK": "الكمية المتوفرة في المخزن غير كافية لإتمام عملية الصرف",
       "INVALID_INITIAL_STOCK": "قيمة الرصيد الأولي غير صالحة، يجب أن تكون أكبر من أو تساوي صفراً",
       "INVALID_DISPATCH_QUANTITY": "كمية الصرف غير صالحة، يجب أن تكون أكبر من صفر",
-      "INVALID_INCOMING_QUANTITY": "كمية التوريد غير صالحة، يجب أن تكون أكبر من صفر"
+      "INVALID_INCOMING_QUANTITY": "كمية التوريد غير صالحة، يجب أن تكون أكبر من صفر",
+      "SERIAL_ALREADY_EXISTS": "الرقم التسلسلي أو IMEI مسجل مسبقاً في النظام",
+      "SERIAL_NOT_FOUND": "الرقم التسلسلي غير موجود في النظام",
+      "SERIAL_ALREADY_SOLD": "هذا الجهاز مباع بالفعل ومسجل في فاتورة بيع سابقة",
+      "SERIAL_NOT_AVAILABLE_FOR_SALE": "حالة الرقم التسلسلي لا تسمح بالبيع (غير متوفر بالمخزن)",
+      "INSUFFICIENT_STOCK_FOR_RETURN": "الرصيد الفعلي للمادة في المستودع أقل من الكمية المطلوبة للإرجاع"
     },
     "CONCURRENCY": {
       "RESOURCE_BUSY": "هذه المادة قيد التعديل بواسطة معاملة أخرى حالياً، يرجى إعادة المحاولة",
@@ -17,6 +22,27 @@
     },
     "CUSTOMER": {
       "CREDIT_LIMIT_EXCEEDED": "تجاوزت هذه الفاتورة الحد الائتماني المسموح به للزبون"
+    },
+    "SALES": {
+      "QUOTATION_NOT_FOUND": "عرض السعر المطلوب غير موجود",
+      "QUOTATION_ALREADY_CONVERTED": "تم تحويل عرض السعر هذا مسبقاً إلى فاتورة بيع",
+      "QUOTATION_EXPIRED": "عرض السعر منتهي الصلاحية ولا يمكن تحويله إلى فاتورة",
+      "PRICE_LIST_NOT_FOUND": "قائمة الأسعار المحددة غير موجودة",
+      "PRICE_LIST_CODE_EXISTS": "رمز قائمة الأسعار مسجل مسبقاً"
+    },
+    "PURCHASES": {
+      "PURCHASE_BILL_NOT_FOUND": "فاتورة الشراء الأصلية غير موجودة",
+      "PURCHASE_RETURN_NOT_FOUND": "سند مرتجع المشتريات غير موجود",
+      "INVALID_RETURN_QTY": "الكمية المرتجعة يجب أن تكون أكبر من صفر",
+      "RETURN_QTY_EXCEEDS_PURCHASED": "الكمية المرتجعة تتجاوز الكمية المتبقية من الفاتورة الأصلية",
+      "RETURN_ALREADY_APPROVED": "تم اعتماد وترحيل هذا المرتجع مسبقاً"
+    },
+    "EXPENSES": {
+      "EXPENSE_ACCOUNT_NOT_FOUND": "الصندوق أو الحساب البنكي المحدد للصرف غير موجود أو غير نشط",
+      "INVALID_EXPENSE_AMOUNT": "مبلغ المصروف غير صالح، يجب أن يكون أكبر من صفر",
+      "VOUCHER_NOT_FOUND": "سند المصروف المطلوب غير موجود",
+      "VOUCHER_ALREADY_APPROVED": "تم اعتماد وصرف هذا السند مسبقاً",
+      "CATEGORY_CODE_EXISTS": "رمز تصنيف المصروف مسجل مسبقاً"
     },
     "LEDGER": {
       "IMMUTABLE": "سجل القيود غير قابل للتعديل أو الحذف إطلاقاً",

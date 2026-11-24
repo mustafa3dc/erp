@@ -1,0 +1,962 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  DollarSign, 
+  Plus, 
+  Search, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  Tag, 
+  TrendingUp, 
+  Building2, 
+  Wallet, 
+  FileText, 
+  Filter, 
+  AlertTriangle,
+  X
+} from 'lucide-react';
+import { useSettings } from '../../context/settings-context';
+import { getTranslation } from '../../lib/i18n';
+import { apiClient } from '../../lib/api-client';
+import { 
+  getStoredExpenseCategories, 
+  saveStoredExpenseCategories, 
+  getStoredExpenseVouchers, 
+  saveStoredExpenseVouchers,
+  getStoredTreasuryAccounts
+} from '../../services/storageService';
+import { 
+  ExpenseCategory, 
+  ExpenseVoucher, 
+  ExpenseStatus, 
+  ExpensePaymentMethod 
+} from '../../types/businessModules';
+
+interface ExpensesViewProps {
+  lang: 'en' | 'ar';
+}
+
+export default function ExpensesView({ lang }: ExpensesViewProps) {
+  const isAr = lang === 'ar';
+  const { formatMoney } = useSettings();
+
+  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'CATEGORIES'>('VOUCHERS');
+  const [categories, setCategories] = useState<ExpenseCategory[]>(() => getStoredExpenseCategories());
+  const [vouchers, setVouchers] = useState<ExpenseVoucher[]>(() => getStoredExpenseVouchers());
+  const [treasuryAccounts] = useState(() => getStoredTreasuryAccounts());
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Draft' | 'Approved' | 'Rejected'>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+
+  const [toastMsg, setToastMsg] = useState('');
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 3500);
+  };
+
+  // Modals state
+  const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [voucherToApprove, setVoucherToApprove] = useState<ExpenseVoucher | null>(null);
+
+  // Form state - Voucher
+  const [vCategory, setVCategory] = useState('');
+  const [vAccount, setVAccount] = useState('');
+  const [vAmount, setVAmount] = useState<number | ''>('');
+  const [vRecipient, setVRecipient] = useState('');
+  const [vPaymentMethod, setVPaymentMethod] = useState<ExpensePaymentMethod>('Cash');
+  const [vNotes, setVNotes] = useState('');
+  const [vDate, setVDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Form state - Category
+  const [cCode, setCCode] = useState('');
+  const [cName, setCName] = useState('');
+  const [cNameAr, setCNameAr] = useState('');
+  const [cBudget, setCBudget] = useState<number | ''>('');
+  const [cDesc, setCDesc] = useState('');
+
+  // Fetch real data from API with fallback
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const catRes = await apiClient.get('/api/expenses/categories');
+        if (catRes && catRes.success && Array.isArray(catRes.data)) {
+          setCategories(catRes.data);
+          saveStoredExpenseCategories(catRes.data);
+        }
+      } catch {
+        // use local storage fallback
+      }
+
+      try {
+        const vouchRes = await apiClient.get('/api/expenses/vouchers');
+        if (vouchRes && vouchRes.success && Array.isArray(vouchRes.data)) {
+          setVouchers(vouchRes.data);
+          saveStoredExpenseVouchers(vouchRes.data);
+        }
+      } catch {
+        // use local storage fallback
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Set default account and category when modal opens
+  useEffect(() => {
+    if (isVoucherModalOpen) {
+      if (categories.length > 0 && !vCategory) setVCategory(categories[0].id);
+      if (treasuryAccounts.length > 0 && !vAccount) setVAccount(treasuryAccounts[0].id);
+    }
+  }, [isVoucherModalOpen, categories, treasuryAccounts, vCategory, vAccount]);
+
+  // KPI Calculations
+  const totalApproved = vouchers
+    .filter(v => v.status === 'Approved')
+    .reduce((sum, v) => sum + (v.amount || 0), 0);
+
+  const pendingVouchers = vouchers.filter(v => v.status === 'Draft' || v.status === 'Pending');
+  const pendingCount = pendingVouchers.length;
+  const pendingAmount = pendingVouchers.reduce((sum, v) => sum + (v.amount || 0), 0);
+
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const monthlyApproved = vouchers
+    .filter(v => v.status === 'Approved' && (v.createdAt || v.approvedAt || '').startsWith(currentMonthStr))
+    .reduce((sum, v) => sum + (v.amount || 0), 0);
+
+  // Filtered Vouchers
+  const filteredVouchers = vouchers.filter(v => {
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q || 
+      v.voucherNo.toLowerCase().includes(q) || 
+      v.recipient.toLowerCase().includes(q) || 
+      (v.notes && v.notes.toLowerCase().includes(q));
+
+    let matchesStatus = true;
+    if (statusFilter !== 'ALL') {
+      matchesStatus = v.status === statusFilter;
+    }
+
+    let matchesCat = true;
+    if (categoryFilter !== 'ALL') {
+      matchesCat = v.categoryId === categoryFilter;
+    }
+
+    return matchesSearch && matchesStatus && matchesCat;
+  });
+
+  // Handle Create Voucher
+  const handleCreateVoucher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vCategory || !vAccount || !vAmount || Number(vAmount) <= 0 || !vRecipient.trim()) {
+      return;
+    }
+
+    const selectedCat = categories.find(c => c.id === vCategory);
+    const selectedAcc = treasuryAccounts.find(a => a.id === vAccount);
+
+    const payload = {
+      categoryId: vCategory,
+      treasuryAccountId: vAccount,
+      amount: Number(vAmount),
+      recipient: vRecipient.trim(),
+      paymentMethod: vPaymentMethod,
+      notes: vNotes.trim()
+    };
+
+    let newVoucher: ExpenseVoucher = {
+      id: `EXP-VOUCH-${Date.now()}`,
+      tenantId: 'default',
+      voucherNo: `EV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      categoryId: vCategory,
+      categoryName: isAr && selectedCat?.nameAr ? selectedCat.nameAr : selectedCat?.name || '',
+      treasuryAccountId: vAccount,
+      treasuryAccountName: selectedAcc?.name || '',
+      amount: Number(vAmount),
+      currency: 'USD',
+      exchangeRate: 1,
+      recipient: vRecipient.trim(),
+      paymentMethod: vPaymentMethod,
+      notes: vNotes.trim(),
+      status: 'Draft',
+      createdAt: vDate || new Date().toISOString()
+    };
+
+    try {
+      const res = await apiClient.post('/api/expenses/vouchers', payload);
+      if (res && res.success && res.data) {
+        newVoucher = {
+          ...newVoucher,
+          id: res.data.id || newVoucher.id,
+          voucherNo: res.data.voucherNo || newVoucher.voucherNo
+        };
+      }
+    } catch {
+      // local fallback
+    }
+
+    const next = [newVoucher, ...vouchers];
+    setVouchers(next);
+    saveStoredExpenseVouchers(next);
+
+    setIsVoucherModalOpen(false);
+    setVAmount('');
+    setVRecipient('');
+    setVNotes('');
+    showToast(getTranslation(lang, 'expenses.createSuccess'));
+  };
+
+  // Handle Approve Voucher
+  const handleConfirmApprove = async () => {
+    if (!voucherToApprove) return;
+
+    try {
+      await apiClient.post(`/api/expenses/vouchers/${voucherToApprove.id}/approve`, {});
+    } catch {
+      // local fallback
+    }
+
+    const updated = vouchers.map(v => {
+      if (v.id === voucherToApprove.id) {
+        return {
+          ...v,
+          status: 'Approved' as ExpenseStatus,
+          approvedAt: new Date().toISOString(),
+          approvedBy: 'Admin'
+        };
+      }
+      return v;
+    });
+
+    setVouchers(updated);
+    saveStoredExpenseVouchers(updated);
+    setVoucherToApprove(null);
+    showToast(getTranslation(lang, 'expenses.approveSuccess'));
+  };
+
+  // Handle Reject Voucher
+  const handleRejectVoucher = async (v: ExpenseVoucher) => {
+    try {
+      await apiClient.post(`/api/expenses/vouchers/${v.id}/reject`, {});
+    } catch {
+      // local fallback
+    }
+
+    const updated = vouchers.map(item => {
+      if (item.id === v.id) {
+        return { ...item, status: 'Rejected' as ExpenseStatus };
+      }
+      return item;
+    });
+
+    setVouchers(updated);
+    saveStoredExpenseVouchers(updated);
+    showToast(getTranslation(lang, 'expenses.rejectSuccess'));
+  };
+
+  // Handle Create Category
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cCode.trim() || !cName.trim()) return;
+
+    const payload = {
+      code: cCode.trim().toUpperCase(),
+      name: cName.trim(),
+      nameAr: cNameAr.trim() || undefined,
+      budgetLimit: cBudget ? Number(cBudget) : undefined,
+      description: cDesc.trim() || undefined
+    };
+
+    let newCat: ExpenseCategory = {
+      id: `CAT-${Date.now()}`,
+      tenantId: 'default',
+      code: payload.code,
+      name: payload.name,
+      nameAr: payload.nameAr,
+      budgetLimit: payload.budgetLimit,
+      totalSpent: 0,
+      description: payload.description,
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const res = await apiClient.post('/api/expenses/categories', payload);
+      if (res && res.success && res.data) {
+        newCat = { ...newCat, id: res.data.id || newCat.id };
+      }
+    } catch {
+      // local fallback
+    }
+
+    const next = [...categories, newCat];
+    setCategories(next);
+    saveStoredExpenseCategories(next);
+
+    setIsCategoryModalOpen(false);
+    setCCode('');
+    setCName('');
+    setCNameAr('');
+    setCBudget('');
+    setCDesc('');
+    showToast(getTranslation(lang, 'expenses.categoryCreated'));
+  };
+
+  return (
+    <div className="view-content-wrapper fade-in" dir={isAr ? 'rtl' : 'ltr'}>
+      {toastMsg && (
+        <div className="toast-banner glass-panel" style={{ position: 'fixed', bottom: '24px', left: isAr ? 'auto' : '24px', right: isAr ? '24px' : 'auto', zIndex: 9999 }}>
+          <CheckCircle2 size={16} className="green-text" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
+      {/* Module Header */}
+      <div className="module-header-clean">
+        <div className="module-context-box">
+          <p className="module-context-subtitle">
+            <DollarSign size={16} style={{ color: 'var(--primary)' }} />
+            <span>{getTranslation(lang, 'expenses.subtitle')}</span>
+          </p>
+        </div>
+
+        <div className="module-actions-wrap">
+          <button 
+            type="button" 
+            className="btn-clean-secondary"
+            onClick={() => setIsCategoryModalOpen(true)}
+          >
+            <Tag size={15} />
+            <span>{getTranslation(lang, 'expenses.newCategory')}</span>
+          </button>
+          <button 
+            type="button" 
+            className="btn-clean-primary"
+            onClick={() => setIsVoucherModalOpen(true)}
+          >
+            <Plus size={15} />
+            <span>{getTranslation(lang, 'expenses.newVoucher')}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4 KPI Cards */}
+      <div className="module-kpi-grid">
+        <div className="module-kpi-card">
+          <div className="module-kpi-info">
+            <span className="module-kpi-label">{getTranslation(lang, 'expenses.totalOperationalExpenses')}</span>
+            <div className="module-kpi-value font-mono" style={{ color: '#ef4444' }}>
+              {formatMoney(totalApproved)}
+            </div>
+          </div>
+          <div className="module-kpi-icon rose">
+            <TrendingUp size={20} />
+          </div>
+        </div>
+
+        <div className="module-kpi-card">
+          <div className="module-kpi-info">
+            <span className="module-kpi-label">{getTranslation(lang, 'expenses.approvedExpensesMonth')}</span>
+            <div className="module-kpi-value font-mono" style={{ color: '#f59e0b' }}>
+              {formatMoney(monthlyApproved)}
+            </div>
+          </div>
+          <div className="module-kpi-icon amber">
+            <DollarSign size={20} />
+          </div>
+        </div>
+
+        <div className="module-kpi-card">
+          <div className="module-kpi-info">
+            <span className="module-kpi-label">{getTranslation(lang, 'expenses.pendingCount')}</span>
+            <div className="module-kpi-value">
+              {pendingCount} <span className="kpi-sub-unit">({formatMoney(pendingAmount)})</span>
+            </div>
+          </div>
+          <div className="module-kpi-icon indigo">
+            <Clock size={20} />
+          </div>
+        </div>
+
+        <div className="module-kpi-card">
+          <div className="module-kpi-info">
+            <span className="module-kpi-label">{getTranslation(lang, 'expenses.tabCategories')}</span>
+            <div className="module-kpi-value">
+              {categories.length} <span className="kpi-sub-unit">{getTranslation(lang, 'expenses.active')}</span>
+            </div>
+          </div>
+          <div className="module-kpi-icon purple">
+            <Tag size={20} />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="module-filter-pills" style={{ marginBottom: '16px' }}>
+        <button 
+          type="button"
+          className={`module-filter-pill ${activeTab === 'VOUCHERS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('VOUCHERS')}
+        >
+          <FileText size={14} />
+          <span>{getTranslation(lang, 'expenses.tabVouchers')}</span>
+        </button>
+        <button 
+          type="button"
+          className={`module-filter-pill ${activeTab === 'CATEGORIES' ? 'active' : ''}`}
+          onClick={() => setActiveTab('CATEGORIES')}
+        >
+          <Tag size={14} />
+          <span>{getTranslation(lang, 'expenses.tabCategories')}</span>
+        </button>
+      </div>
+
+      {/* Tab 1: VOUCHERS */}
+      {activeTab === 'VOUCHERS' && (
+        <>
+          {/* Toolbar */}
+          <div className="module-toolbar">
+            <div className="module-search-box">
+              <Search size={16} />
+              <input 
+                type="text" 
+                placeholder={getTranslation(lang, 'expenses.searchPlaceholder')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="module-filter-pills">
+              {[
+                { id: 'ALL', label: getTranslation(lang, 'expenses.filterAll') },
+                { id: 'Draft', label: getTranslation(lang, 'expenses.filterPending') },
+                { id: 'Approved', label: getTranslation(lang, 'expenses.filterApproved') },
+                { id: 'Rejected', label: getTranslation(lang, 'expenses.filterRejected') }
+              ].map(pill => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  className={`module-filter-pill ${statusFilter === pill.id ? 'active' : ''}`}
+                  onClick={() => setStatusFilter(pill.id as any)}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+
+            {categories.length > 0 && (
+              <select 
+                className="select-clean"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                style={{ padding: '6px 12px', fontSize: '13px', borderRadius: '8px' }}
+              >
+                <option value="ALL">{getTranslation(lang, 'expenses.allCategories')}</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {isAr && c.nameAr ? c.nameAr : c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Vouchers Table */}
+          <div className="panel-clean">
+            <div className="table-responsive">
+              <table className="table-clean">
+                <thead>
+                  <tr>
+                    <th>{getTranslation(lang, 'expenses.voucherNumber')}</th>
+                    <th>{getTranslation(lang, 'expenses.category')}</th>
+                    <th>{getTranslation(lang, 'expenses.cashBox')}</th>
+                    <th>{getTranslation(lang, 'expenses.beneficiary')}</th>
+                    <th>{getTranslation(lang, 'expenses.amount')}</th>
+                    <th>{getTranslation(lang, 'expenses.voucherDate')}</th>
+                    <th>{getTranslation(lang, 'expenses.status')}</th>
+                    <th style={{ textAlign: 'center' }}>{getTranslation(lang, 'expenses.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVouchers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                        {getTranslation(lang, 'expenses.noVouchersFound')}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredVouchers.map(v => (
+                      <tr key={v.id}>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                          {v.voucherNo}
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                            {v.categoryName || categories.find(c => c.id === v.categoryId)?.name || v.categoryId}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569' }}>
+                            <Wallet size={13} />
+                            <span>{v.treasuryAccountName || treasuryAccounts.find(a => a.id === v.treasuryAccountId)?.name || v.treasuryAccountId}</span>
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600 }}>{v.recipient}</span>
+                          {v.notes && (
+                            <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8' }}>{v.notes}</span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+                          {formatMoney(v.amount)}
+                        </td>
+                        <td style={{ fontSize: '13px', color: '#64748b' }}>
+                          {(v.createdAt || '').slice(0, 10)}
+                        </td>
+                        <td>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            background: v.status === 'Approved' ? 'rgba(34, 197, 94, 0.12)' :
+                                        v.status === 'Rejected' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                            color: v.status === 'Approved' ? '#16a34a' :
+                                   v.status === 'Rejected' ? '#dc2626' : '#d97706',
+                            border: `1px solid ${v.status === 'Approved' ? 'rgba(34, 197, 94, 0.3)' :
+                                                 v.status === 'Rejected' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                          }}>
+                            {v.status === 'Approved' ? getTranslation(lang, 'expenses.approved') :
+                             v.status === 'Rejected' ? getTranslation(lang, 'expenses.rejected') :
+                             getTranslation(lang, 'expenses.draft')}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {v.status !== 'Approved' && v.status !== 'Rejected' ? (
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                className="btn-clean-primary"
+                                style={{ padding: '3px 8px', fontSize: '11px' }}
+                                onClick={() => setVoucherToApprove(v)}
+                              >
+                                <CheckCircle2 size={12} />
+                                <span>{getTranslation(lang, 'expenses.approve')}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-clean-secondary"
+                                style={{ padding: '3px 8px', fontSize: '11px', color: '#dc2626' }}
+                                onClick={() => handleRejectVoucher(v)}
+                              >
+                                <XCircle size={12} />
+                                <span>{getTranslation(lang, 'expenses.reject')}</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Tab 2: CATEGORIES */}
+      {activeTab === 'CATEGORIES' && (
+        <div className="panel-clean">
+          <div className="table-responsive">
+            <table className="table-clean">
+              <thead>
+                <tr>
+                  <th>{getTranslation(lang, 'expenses.categoryCode')}</th>
+                  <th>{getTranslation(lang, 'expenses.categoryName')}</th>
+                  <th>{getTranslation(lang, 'expenses.categoryNameAr')}</th>
+                  <th>{getTranslation(lang, 'expenses.budgetLimit')}</th>
+                  <th>{getTranslation(lang, 'expenses.notes')}</th>
+                  <th>{getTranslation(lang, 'expenses.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                      {getTranslation(lang, 'expenses.noCategoriesFound')}
+                    </td>
+                  </tr>
+                ) : (
+                  categories.map(c => (
+                    <tr key={c.id}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                        {c.code}
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{c.name}</td>
+                      <td style={{ fontWeight: 600 }}>{c.nameAr || '—'}</td>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                        {c.budgetLimit ? formatMoney(c.budgetLimit) : '—'}
+                      </td>
+                      <td style={{ fontSize: '13px', color: '#64748b' }}>{c.description || '—'}</td>
+                      <td>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          background: c.isActive ? 'rgba(34, 197, 94, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+                          color: c.isActive ? '#16a34a' : '#64748b'
+                        }}>
+                          {c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: New Expense Voucher */}
+      {isVoucherModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsVoucherModalOpen(false)}>
+          <div 
+            className="modal-content glass-panel" 
+            style={{ maxWidth: '580px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+            onClick={e => e.stopPropagation()}
+            dir={isAr ? 'rtl' : 'ltr'}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DollarSign size={20} />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{getTranslation(lang, 'expenses.newVoucher')}</h3>
+              </div>
+              <button type="button" onClick={() => setIsVoucherModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateVoucher} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.category')}
+                  </label>
+                  <select 
+                    className="select-clean" 
+                    value={vCategory} 
+                    onChange={e => setVCategory(e.target.value)} 
+                    required
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  >
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {isAr && c.nameAr ? c.nameAr : c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.cashBox')}
+                  </label>
+                  <select 
+                    className="select-clean" 
+                    value={vAccount} 
+                    onChange={e => setVAccount(e.target.value)} 
+                    required
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  >
+                    {treasuryAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.amount')}
+                  </label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    min="0.01"
+                    placeholder="0.00" 
+                    value={vAmount} 
+                    onChange={e => setVAmount(e.target.value ? Number(e.target.value) : '')} 
+                    required
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', fontFamily: 'monospace', fontWeight: 700 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.paymentMethod')}
+                  </label>
+                  <select 
+                    className="select-clean" 
+                    value={vPaymentMethod} 
+                    onChange={e => setVPaymentMethod(e.target.value as any)} 
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  >
+                    <option value="Cash">{getTranslation(lang, 'expenses.cash')}</option>
+                    <option value="BankTransfer">{getTranslation(lang, 'expenses.bankTransfer')}</option>
+                    <option value="Check">{getTranslation(lang, 'expenses.check')}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.beneficiary')}
+                  </label>
+                  <input 
+                    type="text" 
+                    value={vRecipient} 
+                    onChange={e => setVRecipient(e.target.value)} 
+                    required
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.voucherDate')}
+                  </label>
+                  <input 
+                    type="date" 
+                    value={vDate} 
+                    onChange={e => setVDate(e.target.value)} 
+                    required
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  {getTranslation(lang, 'expenses.notes')}
+                </label>
+                <textarea 
+                  rows={2} 
+                  value={vNotes} 
+                  onChange={e => setVNotes(e.target.value)}
+                  className="input-clean"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', resize: 'none' }}
+                />
+              </div>
+
+              <p style={{ margin: '4px 0', fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <span>{getTranslation(lang, 'expenses.deductNotice')}</span>
+              </p>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button 
+                  type="button" 
+                  className="btn-clean-secondary"
+                  onClick={() => setIsVoucherModalOpen(false)}
+                >
+                  {getTranslation(lang, 'expenses.cancel')}
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-clean-primary"
+                >
+                  {getTranslation(lang, 'expenses.save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: New Expense Category */}
+      {isCategoryModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsCategoryModalOpen(false)}>
+          <div 
+            className="modal-content glass-panel" 
+            style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+            onClick={e => e.stopPropagation()}
+            dir={isAr ? 'rtl' : 'ltr'}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Tag size={20} />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{getTranslation(lang, 'expenses.newCategory')}</h3>
+              </div>
+              <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.categoryCode')}
+                  </label>
+                  <input 
+                    type="text" 
+                    value={cCode} 
+                    onChange={e => setCCode(e.target.value)} 
+                    placeholder="E.g. ADVERTISING"
+                    required
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', textTransform: 'uppercase' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                    {getTranslation(lang, 'expenses.budgetLimit')}
+                  </label>
+                  <input 
+                    type="number" 
+                    step="1"
+                    min="0"
+                    placeholder="0"
+                    value={cBudget} 
+                    onChange={e => setCBudget(e.target.value ? Number(e.target.value) : '')} 
+                    className="input-clean"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  {getTranslation(lang, 'expenses.categoryName')}
+                </label>
+                <input 
+                  type="text" 
+                  value={cName} 
+                  onChange={e => setCName(e.target.value)} 
+                  required
+                  className="input-clean"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  {getTranslation(lang, 'expenses.categoryNameAr')}
+                </label>
+                <input 
+                  type="text" 
+                  value={cNameAr} 
+                  onChange={e => setCNameAr(e.target.value)} 
+                  className="input-clean"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                  {getTranslation(lang, 'expenses.notes')}
+                </label>
+                <textarea 
+                  rows={2} 
+                  value={cDesc} 
+                  onChange={e => setCDesc(e.target.value)} 
+                  className="input-clean"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', resize: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button 
+                  type="button" 
+                  className="btn-clean-secondary"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                >
+                  {getTranslation(lang, 'expenses.cancel')}
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-clean-primary"
+                >
+                  {getTranslation(lang, 'expenses.saveCategory')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog: Approve & Deduct Voucher */}
+      {voucherToApprove && (
+        <div className="modal-backdrop" onClick={() => setVoucherToApprove(null)}>
+          <div 
+            className="modal-content glass-panel" 
+            style={{ maxWidth: '440px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+            onClick={e => e.stopPropagation()}
+            dir={isAr ? 'rtl' : 'ltr'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={24} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{getTranslation(lang, 'expenses.confirmApprove')}</h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>{voucherToApprove.voucherNo}</span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+              {getTranslation(lang, 'expenses.confirmApproveMsg')}
+            </p>
+
+            <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '10px', padding: '12px', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'expenses.amount')}:</span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444', fontFamily: 'monospace' }}>
+                  {formatMoney(voucherToApprove.amount)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>{getTranslation(lang, 'expenses.cashBox')}:</span>
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>{voucherToApprove.treasuryAccountName || voucherToApprove.treasuryAccountId}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                type="button" 
+                className="btn-clean-secondary"
+                onClick={() => setVoucherToApprove(null)}
+              >
+                {getTranslation(lang, 'expenses.cancel')}
+              </button>
+              <button 
+                type="button" 
+                className="btn-clean-primary"
+                style={{ background: '#16a34a', borderColor: '#16a34a' }}
+                onClick={handleConfirmApprove}
+              >
+                {getTranslation(lang, 'expenses.approve')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

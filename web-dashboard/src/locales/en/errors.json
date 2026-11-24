@@ -4,7 +4,12 @@
       "INSUFFICIENT_STOCK": "Available warehouse stock is insufficient to complete the dispatch operation",
       "INVALID_INITIAL_STOCK": "Initial stock value is invalid, must be greater than or equal to zero",
       "INVALID_DISPATCH_QUANTITY": "Dispatch quantity is invalid, must be greater than zero",
-      "INVALID_INCOMING_QUANTITY": "Inbound quantity is invalid, must be greater than zero"
+      "INVALID_INCOMING_QUANTITY": "Inbound quantity is invalid, must be greater than zero",
+      "SERIAL_ALREADY_EXISTS": "Serial number or IMEI is already registered in the system",
+      "SERIAL_NOT_FOUND": "Serial number not found in system records",
+      "SERIAL_ALREADY_SOLD": "This serialized item has already been sold on a previous sales invoice",
+      "SERIAL_NOT_AVAILABLE_FOR_SALE": "Serial status is not available for sale (not in stock)",
+      "INSUFFICIENT_STOCK_FOR_RETURN": "Available stock in warehouse is lower than the requested return quantity"
     },
     "CONCURRENCY": {
       "RESOURCE_BUSY": "This item is currently being modified by another transaction, please retry",
@@ -17,6 +22,27 @@
     },
     "CUSTOMER": {
       "CREDIT_LIMIT_EXCEEDED": "This invoice exceeds the customer credit limit"
+    },
+    "SALES": {
+      "QUOTATION_NOT_FOUND": "Requested quotation was not found",
+      "QUOTATION_ALREADY_CONVERTED": "This quotation has already been converted to a sales invoice",
+      "QUOTATION_EXPIRED": "This quotation has expired and cannot be converted to an invoice",
+      "PRICE_LIST_NOT_FOUND": "The specified price list was not found",
+      "PRICE_LIST_CODE_EXISTS": "A price list with this code already exists"
+    },
+    "PURCHASES": {
+      "PURCHASE_BILL_NOT_FOUND": "Original purchase bill was not found",
+      "PURCHASE_RETURN_NOT_FOUND": "Purchase return record was not found",
+      "INVALID_RETURN_QTY": "Return quantity must be greater than zero",
+      "RETURN_QTY_EXCEEDS_PURCHASED": "Return quantity exceeds eligible purchased quantity on original bill",
+      "RETURN_ALREADY_APPROVED": "This purchase return has already been approved and posted"
+    },
+    "EXPENSES": {
+      "EXPENSE_ACCOUNT_NOT_FOUND": "Target safe or bank account not found or inactive",
+      "INVALID_EXPENSE_AMOUNT": "Expense amount is invalid, must be greater than zero",
+      "VOUCHER_NOT_FOUND": "Expense voucher not found",
+      "VOUCHER_ALREADY_APPROVED": "This expense voucher has already been approved and disbursed",
+      "CATEGORY_CODE_EXISTS": "An expense category with this code already exists"
     },
     "LEDGER": {
       "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",

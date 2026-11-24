@@ -98,6 +98,11 @@ import IncomingPurchasesView from './components/views/IncomingPurchasesView';
 import PurchaseOrdersView from './components/views/PurchaseOrdersView';
 import CustomersLoyaltyView from './components/views/CustomersLoyaltyView';
 import FinanceTreasuryView from './components/views/FinanceTreasuryView';
+import ExpensesView from './components/views/ExpensesView';
+import QuotationsView from './components/views/QuotationsView';
+import PriceListsView from './components/views/PriceListsView';
+import PurchaseReturnsView from './components/views/PurchaseReturnsView';
+import SerialTrackingView from './components/views/SerialTrackingView';
 import SaasAdminLayout, { SaasAdminTab } from './layouts/SaasAdminLayout';
 import TenantsManagementView from './components/views/superadmin/TenantsManagementView';
 import PlatformUsersView from './components/views/superadmin/PlatformUsersView';
@@ -149,19 +154,24 @@ const NAV_TITLES: Record<string, { ar: string; en: string }> = {
   'Cloud POS': { ar: 'شاشة البيع', en: 'POS Screen' },
   'Shifts & Cash Drawer': { ar: 'الورديات', en: 'Shifts' },
   'Sales Invoices': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
+  'Sales Quotations': { ar: 'عروض الأسعار', en: 'Sales Quotations' },
+  'Price Lists & Promotions': { ar: 'قوائم الأسعار والعروض', en: 'Price Lists & Bundles' },
   'Create Invoice': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
   'Invoices & Billing': { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
   'Installments': { ar: 'إدارة الأقساط', en: 'Installments' },
   'Returns & Warranty': { ar: 'المرتجعات', en: 'Returns' },
   'Customers & Loyalty': { ar: 'العملاء', en: 'Customers' },
   'Purchases & POs': { ar: 'فواتير المشتريات', en: 'Purchase Bills' },
+  'Purchase Returns': { ar: 'مرتجعات المشتريات', en: 'Purchase Returns' },
   'Purchase Orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
   'Suppliers': { ar: 'الموردون', en: 'Suppliers' },
   'Inventory & Items': { ar: 'المنتجات', en: 'Products' },
+  'Serial & Warranty Tracking': { ar: 'الأرقام التسلسلية والضمان', en: 'Serial & Warranty Tracking' },
   'Transfers & In-Transit': { ar: 'المناقلات المخزنية', en: 'Stock Transfers' },
   'Stock Counts': { ar: 'الجرد والتسويات', en: 'Audits & Adjustments' },
   'Warehouses & Racks': { ar: 'المستودعات والرفوف', en: 'Warehouses & Racks' },
   'Finance & Treasury': { ar: 'الصناديق والبنوك', en: 'Cash & Banks' },
+  'Operational Expenses': { ar: 'المصروفات التشغيلية', en: 'Operational Expenses' },
   'Finance Vouchers': { ar: 'سندات القبض والصرف', en: 'Receipt & Payment Vouchers' },
   'Reports': { ar: 'التقارير', en: 'Reports' },
   'Users & Staff': { ar: 'المستخدمون والصلاحيات', en: 'Users & Permissions' },
@@ -496,13 +506,13 @@ function DashboardApp() {
   useEffect(() => {
     if (['Cloud POS', 'Shifts & Cash Drawer'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, pos: true }));
-    } else if (['Invoices & Billing', 'Sales Invoices', 'Create Invoice', 'Installments', 'Returns & Warranty', 'Customers & Loyalty'].includes(activeNav)) {
+    } else if (['Invoices & Billing', 'Sales Invoices', 'Create Invoice', 'Installments', 'Returns & Warranty', 'Customers & Loyalty', 'Sales Quotations', 'Price Lists & Promotions'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, sales: true }));
-    } else if (['Purchases & POs', 'Purchase Orders', 'Suppliers'].includes(activeNav)) {
+    } else if (['Purchases & POs', 'Purchase Orders', 'Suppliers', 'Purchase Returns'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, purchases: true }));
-    } else if (['Inventory & Items', 'Transfers & In-Transit', 'Stock Counts', 'Warehouses & Racks', 'Dispatch Queue'].includes(activeNav)) {
+    } else if (['Inventory & Items', 'Transfers & In-Transit', 'Stock Counts', 'Warehouses & Racks', 'Dispatch Queue', 'Serial & Warranty Tracking'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, warehouse: true }));
-    } else if (['Finance & Treasury', 'Finance Vouchers'].includes(activeNav)) {
+    } else if (['Finance & Treasury', 'Finance Vouchers', 'Operational Expenses'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, finance: true }));
     } else if (['Reports', 'Users & Staff', 'Settings'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, system: true }));
@@ -1862,6 +1872,34 @@ function DashboardApp() {
             lang={lang} 
             initialTab={activeNav === 'Finance Vouchers' ? 'VOUCHERS' : 'ACCOUNTS'}
           />
+        )}
+
+        {/* View: Operational Expenses */}
+        {activeNav === 'Operational Expenses' && (
+          <ExpensesView lang={lang} />
+        )}
+
+        {/* View: Sales Quotations */}
+        {activeNav === 'Sales Quotations' && (
+          <QuotationsView 
+            lang={lang} 
+            onNavigateToInvoices={() => setActiveNav('Sales Invoices')}
+          />
+        )}
+
+        {/* View: Price Lists & Promotions */}
+        {activeNav === 'Price Lists & Promotions' && (
+          <PriceListsView lang={lang} />
+        )}
+
+        {/* View: Purchase Returns */}
+        {activeNav === 'Purchase Returns' && (
+          <PurchaseReturnsView lang={lang} />
+        )}
+
+        {/* View: Serial & Warranty Tracking */}
+        {activeNav === 'Serial & Warranty Tracking' && (
+          <SerialTrackingView lang={lang} />
         )}
 
         {/* View: Warehouses & Racks */}

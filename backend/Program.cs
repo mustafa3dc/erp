@@ -58,6 +58,11 @@ catch
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IDiscountEngineService, DiscountEngineService>();
 builder.Services.AddScoped<ITenantFeatureService, TenantFeatureService>();
+builder.Services.AddScoped<IExpenseService, ExpenseService>();
+builder.Services.AddScoped<IQuotationService, QuotationService>();
+builder.Services.AddScoped<IPriceListService, PriceListService>();
+builder.Services.AddScoped<IPurchaseReturnService, PurchaseReturnService>();
+builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
 
 // JWT Authentication Configuration
 var jwtSecret = "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";

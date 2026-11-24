@@ -590,21 +590,31 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {activeTab === 'TIERS' && (
         <div className="data-table-container clean-card" style={{ borderRadius: '14px', overflow: 'hidden' }}>
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-xs" style={{ tableLayout: 'fixed' }}>
+            <table className="enterprise-table w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0 }}>
               <colgroup>
-                <col style={{ width: '30%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '17%' }} />
                 <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
+                <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th>{getTranslation(lang, 'quantityPricing.colProduct')}</th>
-                  <th className="text-center">{getTranslation(lang, 'quantityPricing.colBasePrice')}</th>
-                  <th className="text-center">{getTranslation(lang, 'quantityPricing.colQtyRange')}</th>
-                  <th className="text-center">{getTranslation(lang, 'quantityPricing.colTierPrice')}</th>
-                  <th className="text-center">{getTranslation(lang, 'quantityPricing.colActions')}</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', letterSpacing: '0.03em', textAlign: isAr ? 'right' : 'left' }}>
+                    {getTranslation(lang, 'quantityPricing.colProduct')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'quantityPricing.colBasePrice')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'quantityPricing.colQtyRange')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'quantityPricing.colTierPrice')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'quantityPricing.colActions')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -635,47 +645,117 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       ? Math.round(((basePrice - tier.unitPrice) / basePrice) * 100)
                       : 0;
                     return (
-                      <tr key={tier.id} className="hover:bg-muted/30 transition-colors">
-                        <td style={{ overflow: 'hidden' }}>
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-foreground truncate">{productName}</span>
+                      <tr key={tier.id} className="hover:bg-muted/30 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
+                        {/* Product Name + SKU */}
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)', lineHeight: 1.3 }}>
+                              {productName}
+                            </span>
                             {productSku && (
-                              <span className="text-[11px] font-mono text-muted-foreground truncate" dir="ltr">
+                              <span
+                                dir="ltr"
+                                style={{
+                                  fontSize: '11px',
+                                  fontFamily: 'monospace',
+                                  color: 'var(--muted-foreground)',
+                                  background: 'var(--muted)',
+                                  borderRadius: '4px',
+                                  padding: '1px 5px',
+                                  display: 'inline-block',
+                                  alignSelf: isAr ? 'flex-end' : 'flex-start',
+                                  letterSpacing: '0.03em'
+                                }}
+                              >
                                 {productSku}
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="text-center font-mono tabular-nums text-muted-foreground">
-                          {formatMoney(basePrice)}
-                        </td>
-                        <td className="text-center">
-                          <span
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold font-mono tabular-nums bg-primary/10 text-primary border border-primary/20"
-                            dir="ltr"
-                          >
-                            {tier.maxQty != null
-                              ? `${tier.minQty} - ${tier.maxQty}`
-                              : `${tier.minQty} ${getTranslation(lang, 'quantityPricing.andAbove')}`}
+
+                        {/* Base Price */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--muted-foreground)', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatMoney(basePrice)}
                           </span>
                         </td>
-                        <td className="text-center">
-                          <div className="inline-flex items-center gap-2">
-                            <span className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+
+                        {/* Qty Range */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <span
+                            dir="ltr"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 12px',
+                              borderRadius: '999px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                              fontVariantNumeric: 'tabular-nums',
+                              background: 'color-mix(in srgb, var(--primary) 10%, transparent)',
+                              color: 'var(--primary)',
+                              border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)',
+                              letterSpacing: '0.02em'
+                            }}
+                          >
+                            {tier.maxQty != null
+                              ? `${tier.minQty} – ${tier.maxQty}`
+                              : `${tier.minQty}+`}
+                          </span>
+                        </td>
+
+                        {/* Tier Price + Savings Badge */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '14px',
+                              fontVariantNumeric: 'tabular-nums',
+                              color: 'var(--color-emerald-600, #059669)'
+                            }}>
                               {formatMoney(tier.unitPrice)}
                             </span>
                             {savingsPct > 0 && (
-                              <StatusBadge tone="emerald" label={`-${savingsPct}%`} />
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '2px 7px',
+                                borderRadius: '999px',
+                                background: 'color-mix(in srgb, #10b981 15%, transparent)',
+                                color: '#059669',
+                                border: '1px solid color-mix(in srgb, #10b981 30%, transparent)',
+                                letterSpacing: '0.02em'
+                              }}>
+                                -{savingsPct}%
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className="text-center">
-                          <div className="inline-flex items-center gap-1.5">
+
+                        {/* Actions */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             <button
                               type="button"
                               onClick={() => openTierModal(tier.productId)}
                               title={getTranslation(lang, 'quantityPricing.editTooltip')}
-                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer transition-colors"
+                              style={{
+                                padding: '6px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border)',
+                                background: 'var(--card)',
+                                color: 'var(--foreground)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
                             >
                               <Edit2 size={13} />
                             </button>
@@ -683,7 +763,20 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               type="button"
                               onClick={() => handleDeleteTier(tier.id)}
                               title={getTranslation(lang, 'quantityPricing.deleteTooltip')}
-                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
+                              style={{
+                                padding: '6px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border)',
+                                background: 'var(--card)',
+                                color: 'var(--destructive)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
                             >
                               <Trash2 size={13} />
                             </button>

@@ -47,8 +47,12 @@ public record ResolvedQuantityPriceDto(
 public record ProductBundleDto(
     Guid ParentProductId,
     string BundleSku,
+    string? Barcode,
     string BundleName,
     decimal BundleSellingPrice,
+    decimal TotalComponentsCost,
+    decimal TotalComponentsRetailPrice,
+    int AvailableQuantity,
     int ComponentsCount,
     List<BundleComponentDto> Components
 );
@@ -60,11 +64,16 @@ public record BundleComponentDto(
     string UnitOfMeasure,
     decimal Quantity,
     decimal ComponentCostPrice,
-    decimal ComponentSellingPrice
+    decimal ComponentSellingPrice,
+    int AvailableStock
 );
 
 public record SaveProductBundleRequest(
-    [Required] Guid ParentProductId,
+    Guid? BundleId,
+    [Required, MaxLength(255)] string BundleName,
+    [MaxLength(100)] string? BundleSku,
+    [MaxLength(100)] string? Barcode,
+    [Range(0, double.MaxValue)] decimal BundleSellingPrice,
     [Required] List<BundleComponentInputDto> Components = null!
 );
 

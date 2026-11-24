@@ -62,7 +62,8 @@ export default function StockCountsView({
   }, [propWarehouses]);
 
   const allProducts = useMemo(() => {
-    return (propProducts && propProducts.length > 0) ? propProducts : getStoredProducts();
+    const raw = (propProducts && propProducts.length > 0) ? propProducts : getStoredProducts();
+    return raw.filter(p => !p.isBundle);
   }, [propProducts]);
 
   // Selected warehouse filter tab (Default to first warehouse or ALL)

@@ -54,7 +54,9 @@ import {
   saveStoredSelectedWarehouseId,
   clearStoredSelectedWarehouseId,
   validateAndResolveActiveWarehouse,
-  resolveQuantityUnitPrice
+  resolveQuantityUnitPrice,
+  getStoredProductBundles,
+  getEffectiveProductStock
 } from '../../services/storageService';
 import { getTranslation } from '../../lib/i18n';
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
@@ -164,11 +166,13 @@ export default function PosTerminalView({
   const { tenantCountryCode, isMethodAllowed, formatMoney, currencySymbol, exchangeRate, settings, t } = useSettings();
   const isIraqTenant = tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ';
 
-  // Real-time synchronization: sync products with storage
+  // Real-time synchronization: sync products & bundles with storage
   const products = useMemo(() => {
     if (propProducts && propProducts.length > 0) return propProducts;
     return getStoredProducts();
   }, [propProducts]);
+
+  const storedBundles = useMemo(() => getStoredProductBundles(), [products]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -432,8 +436,8 @@ export default function PosTerminalView({
   });
 
   const addToCart = (product: Product, quantityToAdd: number = 1) => {
-    // 1. Strict Stock Check against current available inventory
-    const currentAvailable = Number(product.currentStock) || 0;
+    // 1. Strict Stock Check against current available inventory (dynamic for bundles)
+    const currentAvailable = getEffectiveProductStock(product, products, storedBundles, selectedWarehouseId);
     if (currentAvailable <= 0) {
       setStockError(
         isAr 
@@ -480,7 +484,7 @@ export default function PosTerminalView({
     setCart(prev => prev.map(item => {
       if (item.product.id === productId) {
         const freshProd = products.find(p => p.id === productId) || item.product;
-        const currentAvailable = Number(freshProd.currentStock) || 0;
+        const currentAvailable = getEffectiveProductStock(freshProd, products, storedBundles, selectedWarehouseId);
         const newQty = item.quantity + delta;
 
         if (delta > 0 && newQty > currentAvailable) {
@@ -707,11 +711,11 @@ export default function PosTerminalView({
       : selectedWarehouse;
     const targetWhLabel = isAr ? targetWh.nameAr : (targetWh.nameEn || targetWh.nameAr);
 
-    // 1. Strict Stock Availability Check across ALL cart items for the designated warehouse
+    // 1. Strict Stock Availability Check across ALL cart items for the designated warehouse (bundles dynamically resolved)
     const stockShortages: string[] = [];
     for (const item of cart) {
       const freshProd = products.find(p => p.id === item.product.id || p.sku === item.product.sku) || item.product;
-      const currentAvailable = Number(freshProd.currentStock) || 0;
+      const currentAvailable = getEffectiveProductStock(freshProd, products, storedBundles, targetWh.id);
       if (item.quantity > currentAvailable) {
         stockShortages.push(
           isAr
@@ -1362,7 +1366,7 @@ export default function PosTerminalView({
               </div>
             ) : (
               filteredProducts.map(p => {
-                const currentAvailable = Number(p.currentStock) || 0;
+                const currentAvailable = getEffectiveProductStock(p, products, storedBundles, selectedWarehouseId);
                 const isOutOfStock = currentAvailable <= 0;
 
                 return (
@@ -1373,7 +1377,7 @@ export default function PosTerminalView({
                     style={{
                       padding: '12px 14px',
                       borderRadius: '12px',
-                      border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.4)' : '1px solid var(--border)',
+                      border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.4)' : (p.isBundle ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid var(--border)'),
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
@@ -1386,11 +1390,17 @@ export default function PosTerminalView({
                     }}
                   >
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
                         <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontFamily: 'monospace' }}>{p.sku}</span>
-                        <span style={{ fontSize: '10px', color: 'var(--primary)', background: 'var(--primary-light)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                          {isAr ? 'سقف: 5%' : 'Max: 5%'}
-                        </span>
+                        {p.isBundle ? (
+                          <span style={{ fontSize: '10px', color: '#7c3aed', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.25)', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            {getTranslation(lang, 'bundles.bundleBadge')}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', color: 'var(--primary)', background: 'var(--primary-light)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                            {isAr ? 'سقف: 5%' : 'Max: 5%'}
+                          </span>
+                        )}
                       </div>
                       <h4 style={{ fontSize: '13px', margin: '6px 0 4px 0', fontWeight: 700, color: 'var(--foreground)', lineHeight: '1.4' }}>{getProductName(p)}</h4>
                       

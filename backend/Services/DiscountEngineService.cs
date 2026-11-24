@@ -32,6 +32,9 @@ public class DiscountEngineService : IDiscountEngineService
             .Include(p => p.Category)
             .Include(p => p.WarehouseStocks)
             .Include(p => p.QuantityTiers)
+            .Include(p => p.BundleComponents)
+                .ThenInclude(bc => bc.ComponentProduct)
+                .ThenInclude(cp => cp!.WarehouseStocks)
             .Where(p => p.IsActive)
             .AsQueryable();
 
@@ -49,24 +52,39 @@ public class DiscountEngineService : IDiscountEngineService
             query = query.Where(p => p.CategoryId == categoryId.Value);
         }
 
-        return await query.Select(p => new PosProductDto
+        var items = await query.ToListAsync();
+
+        return items.Select(p =>
         {
-            Id = p.Id,
-            Sku = p.Sku,
-            Barcode = p.Barcode,
-            Name = p.Name,
-            CategoryName = p.Category != null ? p.Category.Name : "عام",
-            RetailPrice = p.SellingPrice, // Strict Cost Masking: Only selling price
-            UnitOfMeasure = p.UnitOfMeasure,
-            AvailableStock = p.WarehouseStocks.Sum(ws => ws.Quantity),
-            MaxCashierDiscountPercent = p.MaxCashierDiscountPercent > 0 ? p.MaxCashierDiscountPercent : 5.0m,
-            IsActive = p.IsActive,
-            IsBundle = p.IsBundle,
-            QuantityTiers = p.QuantityTiers
-                .OrderBy(t => t.MinQty)
-                .Select(t => new PosQuantityTierDto(t.Id, t.MinQty, t.MaxQty, t.UnitPrice))
-                .ToList()
-        }).ToListAsync();
+            var availableStock = p.IsBundle
+                ? (p.BundleComponents.Count == 0
+                    ? 0
+                    : p.BundleComponents.Min(bc =>
+                    {
+                        var compAvail = bc.ComponentProduct?.WarehouseStocks.Sum(ws => Math.Max(0, ws.Quantity - ws.ReservedQuantity)) ?? 0;
+                        return bc.Quantity > 0 ? (int)Math.Floor((decimal)compAvail / bc.Quantity) : 0;
+                    }))
+                : p.WarehouseStocks.Sum(ws => Math.Max(0, ws.Quantity - ws.ReservedQuantity));
+
+            return new PosProductDto
+            {
+                Id = p.Id,
+                Sku = p.Sku,
+                Barcode = p.Barcode,
+                Name = p.Name,
+                CategoryName = p.Category != null ? p.Category.Name : (p.IsBundle ? "حزم المنتجات" : "عام"),
+                RetailPrice = p.SellingPrice, // Strict Cost Masking: Only selling price
+                UnitOfMeasure = p.IsBundle ? "حزمة" : p.UnitOfMeasure,
+                AvailableStock = Math.Max(0, availableStock),
+                MaxCashierDiscountPercent = p.MaxCashierDiscountPercent > 0 ? p.MaxCashierDiscountPercent : 5.0m,
+                IsActive = p.IsActive,
+                IsBundle = p.IsBundle,
+                QuantityTiers = p.QuantityTiers
+                    .OrderBy(t => t.MinQty)
+                    .Select(t => new PosQuantityTierDto(t.Id, t.MinQty, t.MaxQty, t.UnitPrice))
+                    .ToList()
+            };
+        }).ToList();
     }
 
     /// <summary>
@@ -248,8 +266,13 @@ public class DiscountEngineService : IDiscountEngineService
                     throw new ApplicationException($"المنتج برقم ({itemReq.ProductId}) غير متوفر في الدليل.");
                 }
 
-                if (product.IsBundle && product.BundleComponents.Count > 0)
+                if (product.IsBundle)
                 {
+                    if (product.BundleComponents.Count == 0)
+                    {
+                        throw new ApplicationException($"حزمة المنتجات ({product.Name}) لا تحتوي على مكونات صالحة.");
+                    }
+
                     foreach (var comp in product.BundleComponents)
                     {
                         var requiredCompQty = (int)Math.Ceiling(comp.Quantity * itemReq.Quantity);

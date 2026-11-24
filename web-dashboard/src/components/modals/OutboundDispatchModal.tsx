@@ -110,7 +110,7 @@ export default function OutboundDispatchModal({
               onChange={e => setSelectedProductId(e.target.value)}
               className="form-input"
             >
-              {products.map(p => (
+              {products.filter(p => !p.isBundle).map(p => (
                 <option key={p.id} value={p.id}>
                   {p.sku} - {p.nameAr} ({isAr ? 'المتاح' : 'Available'}: {p.currentStock})
                 </option>

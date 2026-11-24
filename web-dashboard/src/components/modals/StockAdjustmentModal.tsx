@@ -30,7 +30,7 @@ export default function StockAdjustmentModal({
   lang = 'ar',
   onAdjustmentSuccess
 }: StockAdjustmentModalProps) {
-  if (!isOpen || !product) return null;
+  if (!isOpen || !product || product.isBundle) return null;
 
   const isAr = lang === 'ar';
   const currentUser = getStoredAuthSession();

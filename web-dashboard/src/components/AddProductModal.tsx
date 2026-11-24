@@ -162,11 +162,12 @@ export default function AddProductModal({
     return (((sellingPrice - costPrice) / costPrice) * 100).toFixed(1);
   }, [costPrice, sellingPrice]);
 
-  // Filtered products for restock search
+  // Filtered physical products for restock search (exclude virtual bundles)
   const filteredProductsForRestock = useMemo(() => {
-    if (!restockSearch.trim()) return products;
+    const physical = products.filter(p => !p.isBundle);
+    if (!restockSearch.trim()) return physical;
     const term = restockSearch.toLowerCase();
-    return products.filter(p => 
+    return physical.filter(p => 
       p.nameAr.toLowerCase().includes(term) ||
       p.nameEn.toLowerCase().includes(term) ||
       p.sku.toLowerCase().includes(term) ||
@@ -175,7 +176,7 @@ export default function AddProductModal({
   }, [products, restockSearch]);
 
   const selectedRestockProduct = useMemo(() => {
-    return products.find(p => p.id === restockProductId) || products[0];
+    return products.find(p => p.id === restockProductId && !p.isBundle) || products.find(p => !p.isBundle);
   }, [products, restockProductId]);
 
   // Quick suppliers presets

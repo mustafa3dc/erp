@@ -143,7 +143,8 @@ import {
   getStoredUsers,
   getAllStoredUsersMaster,
   saveStoredUsers,
-  recordShiftSale
+  recordShiftSale,
+  getStoredProductBundles
 } from './services/storageService';
 import './App.css';
 
@@ -283,10 +284,15 @@ function DashboardApp() {
     window.addEventListener('storage', syncSession);
     window.addEventListener('zilox_query_invalidate', syncSession);
     window.addEventListener('zilox_features_updated', syncSession);
+    const syncProducts = () => {
+      setProducts(getStoredProducts());
+    };
+    window.addEventListener('zilox_products_updated', syncProducts);
     return () => {
       window.removeEventListener('storage', syncSession);
       window.removeEventListener('zilox_query_invalidate', syncSession);
       window.removeEventListener('zilox_features_updated', syncSession);
+      window.removeEventListener('zilox_products_updated', syncProducts);
     };
   }, []);
 
@@ -835,11 +841,30 @@ function DashboardApp() {
 
     // 2. Deduct stock and generate movements ONLY for direct in-store (for warehouse dispatch, stock is deducted when keeper approves dispatch)
     if (!isWarehouseDispatch) {
+      const storedBundles = getStoredProductBundles();
+
       setProducts(prevProducts => {
+        const deductionByProductId = new Map<string, number>();
+        for (const itemInInv of (finalizedInvoice.items || [])) {
+          const matchedProd = prevProducts.find(p => p.id === itemInInv.productId || p.sku === itemInInv.sku);
+          const bundleComps = storedBundles.filter(b => b.parentProductId === (matchedProd?.id || itemInInv.productId));
+          if (matchedProd?.isBundle || bundleComps.length > 0) {
+            for (const bc of bundleComps) {
+              const reqQty = Math.ceil((Number(bc.quantity) || 1) * itemInInv.quantity);
+              const compTarget = prevProducts.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+              if (compTarget) {
+                deductionByProductId.set(compTarget.id, (deductionByProductId.get(compTarget.id) || 0) + reqQty);
+              }
+            }
+          } else if (matchedProd) {
+            deductionByProductId.set(matchedProd.id, (deductionByProductId.get(matchedProd.id) || 0) + itemInInv.quantity);
+          }
+        }
+
         return prevProducts.map(p => {
-          const itemInInv = finalizedInvoice.items?.find(i => i.productId === p.id || i.sku === p.sku);
-          if (itemInInv) {
-            const newStock = Math.max(0, p.currentStock - itemInInv.quantity);
+          const deductQty = deductionByProductId.get(p.id);
+          if (deductQty && !p.isBundle) {
+            const newStock = Math.max(0, p.currentStock - deductQty);
             return {
               ...p,
               currentStock: newStock,
@@ -850,36 +875,71 @@ function DashboardApp() {
         });
       });
 
-      // 3. Generate atomic Outbound Stock Movements for each item with authentic product name & operator
+      // 3. Generate atomic Outbound Stock Movements for each item (expanding bundles into physical components + COGS)
       const newTxs: TransactionDetail[] = [];
       const nowIso = new Date().toISOString();
 
       if (finalizedInvoice.items && finalizedInvoice.items.length > 0) {
-        finalizedInvoice.items.forEach((item, index) => {
+        let txIdx = 0;
+        finalizedInvoice.items.forEach((item) => {
           const matchedProd = products.find(p => p.id === item.productId || p.sku === item.sku);
-          const prodName = isAr 
-            ? (item.nameAr || matchedProd?.nameAr || item.nameEn || matchedProd?.nameEn || item.sku)
-            : (item.nameEn || matchedProd?.nameEn || item.nameAr || matchedProd?.nameAr || item.sku);
-          const itemUnit = item.unit || matchedProd?.unit || (isAr ? 'قطعة' : 'unit');
+          const bundleComps = storedBundles.filter(b => b.parentProductId === (matchedProd?.id || item.productId));
+          if (matchedProd?.isBundle || bundleComps.length > 0) {
+            const bundleLabel = isAr
+              ? (item.nameAr || matchedProd?.nameAr || item.sku)
+              : (item.nameEn || matchedProd?.nameEn || item.sku);
+            bundleComps.forEach(bc => {
+              const compProd = products.find(p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)));
+              const reqQty = Math.ceil((Number(bc.quantity) || 1) * (item.quantity || 1));
+              const compName = compProd
+                ? (isAr ? compProd.nameAr : (compProd.nameEn || compProd.nameAr))
+                : bc.childProductName;
+              newTxs.push({
+                id: getNextTransactionId(txIdx++),
+                sku: compProd?.sku || bc.childProductSku || 'BND-COMP',
+                productName: `${compName} (${bundleLabel})`,
+                type: 'Outbound',
+                qty: -Math.abs(reqQty),
+                unit: compProd?.unit || (isAr ? 'قطعة' : 'unit'),
+                unitCost: compProd?.costPrice ?? bc.componentCostPrice ?? 0,
+                location: finalizedInvoice.warehouseName,
+                fromLocation: finalizedInvoice.warehouseName,
+                toLocation: finalizedInvoice.customerName || (isAr ? 'عميل نقدي عام' : 'Retail Customer'),
+                status: 'Dispatched',
+                timestamp: nowIso,
+                movementDate: nowIso,
+                createdAt: nowIso,
+                date: nowIso,
+                operator: effectiveOperator,
+                referenceNo: finalizedInvoice.invoiceNo
+              });
+            });
+          } else {
+            const prodName = isAr 
+              ? (item.nameAr || matchedProd?.nameAr || item.nameEn || matchedProd?.nameEn || item.sku)
+              : (item.nameEn || matchedProd?.nameEn || item.nameAr || matchedProd?.nameAr || item.sku);
+            const itemUnit = item.unit || matchedProd?.unit || (isAr ? 'قطعة' : 'unit');
 
-          newTxs.push({
-            id: getNextTransactionId(index),
-            sku: item.sku || matchedProd?.sku || 'INV-SALE',
-            productName: prodName,
-            type: 'Outbound',
-            qty: -Math.abs(item.quantity || 1),
-            unit: itemUnit,
-            location: finalizedInvoice.warehouseName,
-            fromLocation: finalizedInvoice.warehouseName,
-            toLocation: finalizedInvoice.customerName || (isAr ? 'عميل نقدي عام' : 'Retail Customer'),
-            status: 'Dispatched',
-            timestamp: nowIso,
-            movementDate: nowIso,
-            createdAt: nowIso,
-            date: nowIso,
-            operator: effectiveOperator,
-            referenceNo: finalizedInvoice.invoiceNo
-          });
+            newTxs.push({
+              id: getNextTransactionId(txIdx++),
+              sku: item.sku || matchedProd?.sku || 'INV-SALE',
+              productName: prodName,
+              type: 'Outbound',
+              qty: -Math.abs(item.quantity || 1),
+              unit: itemUnit,
+              unitCost: matchedProd?.costPrice ?? 0,
+              location: finalizedInvoice.warehouseName,
+              fromLocation: finalizedInvoice.warehouseName,
+              toLocation: finalizedInvoice.customerName || (isAr ? 'عميل نقدي عام' : 'Retail Customer'),
+              status: 'Dispatched',
+              timestamp: nowIso,
+              movementDate: nowIso,
+              createdAt: nowIso,
+              date: nowIso,
+              operator: effectiveOperator,
+              referenceNo: finalizedInvoice.invoiceNo
+            });
+          }
         });
       } else {
         newTxs.push({
@@ -1050,10 +1110,10 @@ function DashboardApp() {
     t.toLocation?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Dynamically compute warehouses with occupied and itemsCount from real products
+  // Dynamically compute warehouses with occupied and itemsCount from real physical products (exclude virtual bundles)
   const computedWarehouses = useMemo(() => {
     return warehouses.map(w => {
-      const whProducts = products.filter(p => p.warehouseId === w.id || p.warehouseName === w.nameAr || p.warehouseName === w.nameEn);
+      const whProducts = products.filter(p => !p.isBundle && (p.warehouseId === w.id || p.warehouseName === w.nameAr || p.warehouseName === w.nameEn));
       const itemsCount = whProducts.length;
       const occupied = whProducts.reduce((sum, p) => sum + (Number(p.currentStock) || 0), 0);
       return {
@@ -1064,18 +1124,18 @@ function DashboardApp() {
     });
   }, [warehouses, products]);
 
-  // Dynamic Valuation calculation from products
+  // Dynamic Valuation calculation from physical products only (bundles derive value from components)
   const totalStockValuation = useMemo(() => {
-    return products.reduce((acc, p) => acc + (Number(p.costPrice || 0) * Number(p.currentStock || 0)), 0);
+    return products.filter(p => !p.isBundle).reduce((acc, p) => acc + (Number(p.costPrice || 0) * Number(p.currentStock || 0)), 0);
   }, [products]);
 
   const formattedValuation = useMemo(() => {
     return formatMoney(totalStockValuation, true);
   }, [totalStockValuation, formatMoney]);
 
-  // Dynamic Low stock alerts count
+  // Dynamic Low stock alerts count (physical products only)
   const lowStockCount = useMemo(() => {
-    return products.filter(p => Number(p.currentStock || 0) <= Number(p.minStockAlert || 0)).length;
+    return products.filter(p => !p.isBundle && Number(p.currentStock || 0) <= Number(p.minStockAlert || 0)).length;
   }, [products]);
 
   // Dynamic Shipments & Logistics counters

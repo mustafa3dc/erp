@@ -128,11 +128,13 @@ export default function InventoryView({
     return warehouses.find(w => w.id === selectedWarehouseId) || null;
   }, [warehouses, selectedWarehouseId]);
 
-  // Products strictly isolated to the selected warehouse (or all if ALL selected)
+  // Products strictly isolated to physical items (exclude virtual Bundles so users never adjust physical shelf stock for a bundle)
+  const physicalProducts = useMemo(() => products.filter(p => !p.isBundle), [products]);
+
   const baseProducts = useMemo(() => {
-    if (!selectedWarehouseId || selectedWarehouseId === 'ALL') return products;
-    return products.filter(p => p.warehouseId === selectedWarehouseId);
-  }, [products, selectedWarehouseId]);
+    if (!selectedWarehouseId || selectedWarehouseId === 'ALL') return physicalProducts;
+    return physicalProducts.filter(p => p.warehouseId === selectedWarehouseId);
+  }, [physicalProducts, selectedWarehouseId]);
 
   const categories = useMemo(() => {
     const rawCats = Array.from(new Set(baseProducts.map(p => p.category)));
@@ -668,12 +670,12 @@ export default function InventoryView({
                   }}
                 >
                   <span>{isAr ? 'جميع التصنيفات' : 'All Categories'}</span>
-                  <span className="category-badge-count">{products.length}</span>
+                  <span className="category-badge-count">{physicalProducts.length}</span>
                 </div>
                 {categories
                   .filter(c => c.label.toLowerCase().includes(categorySearchText.toLowerCase()) || c.raw.toLowerCase().includes(categorySearchText.toLowerCase()))
                   .map(cat => {
-                    const count = products.filter(p => p.category === cat.raw).length;
+                    const count = physicalProducts.filter(p => p.category === cat.raw).length;
                     return (
                       <div 
                         key={cat.raw}
@@ -751,7 +753,7 @@ export default function InventoryView({
               onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
             >
               <span>{isAr ? 'الكل' : 'All'}</span>
-              <bdi className="chip-counter" dir="ltr">{products.length}</bdi>
+              <bdi className="chip-counter" dir="ltr">{baseProducts.length}</bdi>
             </button>
             <button 
               type="button"

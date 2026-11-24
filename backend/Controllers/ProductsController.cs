@@ -25,13 +25,24 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<IEnumerable<object>>> GetProducts(
         [FromQuery] string? search, 
         [FromQuery] Guid? categoryId,
-        [FromQuery] bool includeCost = false)
+        [FromQuery] bool includeCost = false,
+        [FromQuery] bool includeBundles = true)
     {
         var query = _context.Products
+            .AsNoTracking()
             .Include(p => p.Category)
             .Include(p => p.WarehouseStocks)
             .Include(p => p.QuantityTiers)
+            .Include(p => p.BundleComponents)
+                .ThenInclude(bc => bc.ComponentProduct)
+                .ThenInclude(cp => cp!.WarehouseStocks)
+            .Where(p => !p.IsBundle || p.IsActive)
             .AsQueryable();
+
+        if (!includeBundles)
+        {
+            query = query.Where(p => !p.IsBundle);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -43,35 +54,54 @@ public class ProductsController : ControllerBase
             query = query.Where(p => p.CategoryId == categoryId.Value);
         }
 
-        var results = await query.Select(p => new
+        var products = await query.ToListAsync();
+
+        var results = products.Select(p =>
         {
-            p.Id,
-            p.Sku,
-            p.Barcode,
-            p.Name,
-            CategoryName = p.Category != null ? p.Category.Name : "عام",
-            // Strict Cost Masking: Only return cost price if specifically privileged
-            CostPrice = includeCost ? (decimal?)p.CostPrice : null,
-            RetailPrice = p.SellingPrice,
-            p.SellingPrice,
-            p.UnitOfMeasure,
-            p.MinStockLevel,
-            p.MaxCashierDiscountPercent,
-            TotalQuantity = p.WarehouseStocks.Sum(ws => ws.Quantity),
-            p.IsActive,
-            p.IsBundle,
-            QuantityTiers = p.QuantityTiers
-                .OrderBy(t => t.MinQty)
-                .Select(t => new
-                {
-                    t.Id,
-                    t.ProductId,
-                    t.MinQty,
-                    t.MaxQty,
-                    t.UnitPrice,
-                    t.UpdatedAt
-                }).ToList()
-        }).ToListAsync();
+            var effectiveTotalQty = p.IsBundle
+                ? (p.BundleComponents.Count == 0
+                    ? 0
+                    : p.BundleComponents.Min(bc =>
+                    {
+                        var compAvail = bc.ComponentProduct?.WarehouseStocks.Sum(ws => Math.Max(0, ws.Quantity - ws.ReservedQuantity)) ?? 0;
+                        return bc.Quantity > 0 ? (int)Math.Floor((decimal)compAvail / bc.Quantity) : 0;
+                    }))
+                : p.WarehouseStocks.Sum(ws => ws.Quantity);
+
+            var effectiveCost = p.IsBundle && p.BundleComponents.Count > 0
+                ? p.BundleComponents.Sum(bc => (bc.ComponentProduct?.CostPrice ?? 0m) * bc.Quantity)
+                : p.CostPrice;
+
+            return new
+            {
+                p.Id,
+                p.Sku,
+                p.Barcode,
+                p.Name,
+                CategoryName = p.Category != null ? p.Category.Name : (p.IsBundle ? "حزم المنتجات" : "عام"),
+                // Strict Cost Masking: Only return cost price if specifically privileged
+                CostPrice = includeCost ? (decimal?)effectiveCost : null,
+                RetailPrice = p.SellingPrice,
+                p.SellingPrice,
+                UnitOfMeasure = p.IsBundle ? "حزمة" : p.UnitOfMeasure,
+                p.MinStockLevel,
+                p.MaxCashierDiscountPercent,
+                TotalQuantity = Math.Max(0, effectiveTotalQty),
+                p.IsActive,
+                p.IsBundle,
+                QuantityTiers = p.QuantityTiers
+                    .OrderBy(t => t.MinQty)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.ProductId,
+                        t.MinQty,
+                        t.MaxQty,
+                        t.UnitPrice,
+                        t.UpdatedAt
+                    }).ToList()
+            };
+        }).ToList();
 
         return Ok(results);
     }

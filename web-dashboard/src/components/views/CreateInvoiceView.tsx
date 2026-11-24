@@ -30,7 +30,9 @@ import {
   getStoredDispatchOrders,
   saveStoredDispatchOrders,
   createInstallmentContract,
-  resolveQuantityUnitPrice
+  resolveQuantityUnitPrice,
+  getStoredProductBundles,
+  getEffectiveProductStock
 } from '../../services/storageService';
 import { getTranslation } from '../../lib/i18n';
 import { useSettings } from '../../context/settings-context';
@@ -169,6 +171,8 @@ export default function CreateInvoiceView({
     }
   };
 
+  const storedBundles = getStoredProductBundles();
+
   // Add Item to Invoice
   const handleAddItem = () => {
     setFormError('');
@@ -193,7 +197,7 @@ export default function CreateInvoiceView({
       return;
     }
 
-    const availableStock = product.currentStock ?? 0;
+    const availableStock = getEffectiveProductStock(product, products, storedBundles, selectedWarehouseId);
     if (availableStock <= 0) {
       setFormError(isAr ? `نفد رصيد هذه المادة في المخزن (${product.nameAr})` : `Item is out of stock (${product.nameEn || product.nameAr})`);
       return;
@@ -251,7 +255,7 @@ export default function CreateInvoiceView({
     const updated = [...lineItems];
     const item = updated[index];
     const product = products.find(p => p.id === item.productId);
-    const maxStock = product?.currentStock ?? 999;
+    const maxStock = product ? getEffectiveProductStock(product, products, storedBundles, selectedWarehouseId) : 999;
     const nextQty = item.quantity + delta;
 
     if (nextQty <= 0) {
@@ -323,6 +327,37 @@ export default function CreateInvoiceView({
 
     let dispatchOrder: WarehouseDispatchOrder | undefined;
     if (isWarehouseDispatch) {
+      const expandedDispatchItems: WarehouseDispatchOrder['items'] = [];
+      for (const it of lineItems) {
+        const prod = products.find(p => p.id === it.productId);
+        const bundleComps = storedBundles.filter(b => b.parentProductId === it.productId);
+        if (prod?.isBundle || bundleComps.length > 0) {
+          for (const bc of bundleComps) {
+            const compProd = products.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
+            const reqQty = Math.ceil((Number(bc.quantity) || 1) * it.quantity);
+            expandedDispatchItems.push({
+              productId: bc.childProductId,
+              productName: `${compProd?.nameAr || bc.childProductName} (${it.productName || it.nameAr || it.nameEn})`,
+              sku: compProd?.sku || bc.childProductSku,
+              quantity: reqQty,
+              unitPrice: compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0,
+              totalPrice: (compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0) * reqQty,
+              shelfLocation: compProd?.shelf || 'A-01'
+            });
+          }
+        } else {
+          expandedDispatchItems.push({
+            productId: it.productId,
+            productName: it.productName || it.nameAr || it.nameEn,
+            sku: prod?.sku || 'SKU',
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            totalPrice: it.total,
+            shelfLocation: prod?.shelf || 'A-01'
+          });
+        }
+      }
+
       dispatchOrder = {
         id: `DISP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
         invoiceId,
@@ -331,18 +366,7 @@ export default function CreateInvoiceView({
         warehouseName: resolvedWarehouseName,
         customerName: customerName.trim(),
         cashierName: currentUser.fullName || (isAr ? 'أمين الصندوق' : 'Cashier'),
-        items: lineItems.map(it => {
-          const prod = products.find(p => p.id === it.productId);
-          return {
-            productId: it.productId,
-            productName: it.productName || it.nameAr || it.nameEn,
-            sku: prod?.sku || 'SKU',
-            quantity: it.quantity,
-            unitPrice: it.unitPrice,
-            totalPrice: it.total,
-            shelfLocation: prod?.shelf || 'A-01'
-          };
-        }),
+        items: expandedDispatchItems,
         totalQuantity: totalUnits,
         status: 'PENDING',
         notes: isAr ? 'طلب صرف وتجهيز صادر مع فاتورة المبيعات' : 'Warehouse dispatch order issued with sales invoice',
@@ -664,11 +688,15 @@ export default function CreateInvoiceView({
                         <SelectValue placeholder={isAr ? 'ابحث أو اختر الصنف...' : 'Select product...'} />
                       </SelectTrigger>
                       <SelectContent className="bg-popover text-popover-foreground border-border shadow-xl max-h-60">
-                        {products.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {isAr ? p.nameAr : (p.nameEn || p.nameAr)} — {formatMoney(p.sellingPrice)} (متاح: {p.currentStock ?? 0})
-                          </SelectItem>
-                        ))}
+                        {products.map((p) => {
+                          const effStock = getEffectiveProductStock(p, products, storedBundles, selectedWarehouseId);
+                          return (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.isBundle ? `[${getTranslation(lang, 'bundles.bundleBadge')}] ` : ''}
+                              {isAr ? p.nameAr : (p.nameEn || p.nameAr)} — {formatMoney(p.sellingPrice)} ({isAr ? 'متاح:' : 'Avail:'} {effStock})
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>

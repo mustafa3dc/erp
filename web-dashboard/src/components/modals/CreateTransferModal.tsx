@@ -79,9 +79,9 @@ export default function CreateTransferModal({
 
   if (!isOpen) return null;
 
-  // Filter products for the chosen origin warehouse
+  // Filter physical products for the chosen origin warehouse (exclude virtual bundles)
   const availableSourceProducts = products.filter(
-    p => p.warehouseId === fromWh || !p.warehouseId
+    p => !p.isBundle && (p.warehouseId === fromWh || !p.warehouseId)
   );
 
   const handleAddCargoItem = () => {

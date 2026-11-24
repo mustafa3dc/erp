@@ -25,7 +25,9 @@ import {
   getStoredAuthSession,
   getStoredDispatchOrders,
   saveStoredDispatchOrders,
-  resolveQuantityUnitPrice
+  resolveQuantityUnitPrice,
+  getStoredProductBundles,
+  getEffectiveProductStock
 } from '../../services/storageService';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
@@ -145,7 +147,11 @@ export default function CreateInvoiceModal({
     return () => { isMounted = false; };
   }, [isAr]);
 
+  const storedBundles = getStoredProductBundles();
   const selectedProduct = products.find(p => p.id === selectedProductId) || products[0];
+  const selectedProductStock = selectedProduct
+    ? getEffectiveProductStock(selectedProduct, products, storedBundles)
+    : 0;
 
   const handleAddItemFromSelector = () => {
     if (!selectedProduct) return;
@@ -153,8 +159,8 @@ export default function CreateInvoiceModal({
       setErrorMsg(isAr ? 'يرجى إدخال كمية صحيحة أكبر من الصفر' : 'Quantity must be greater than zero');
       return;
     }
-    if (itemQty > selectedProduct.currentStock) {
-      setErrorMsg(isAr ? `الكمية المطلوبة (${itemQty}) تتجاوز الرصيد المتاح (${selectedProduct.currentStock}) في المخزن!` : `Requested quantity exceeds stock (${selectedProduct.currentStock})`);
+    if (itemQty > selectedProductStock) {
+      setErrorMsg(isAr ? `الكمية المطلوبة (${itemQty}) تتجاوز الرصيد المتاح (${selectedProductStock}) في المخزن!` : `Requested quantity exceeds stock (${selectedProductStock})`);
       return;
     }
 
@@ -164,8 +170,8 @@ export default function CreateInvoiceModal({
     if (existingIndex >= 0) {
       const updated = [...lineItems];
       const newQty = updated[existingIndex].quantity + itemQty;
-      if (newQty > selectedProduct.currentStock) {
-        setErrorMsg(isAr ? `إجمالي الكمية المطلوبة تتجاوز الرصيد المتاح بالمخزن (${selectedProduct.currentStock})` : 'Total item quantity exceeds stock');
+      if (newQty > selectedProductStock) {
+        setErrorMsg(isAr ? `إجمالي الكمية المطلوبة تتجاوز الرصيد المتاح بالمخزن (${selectedProductStock})` : 'Total item quantity exceeds stock');
         return;
       }
       const tierRes = resolveQuantityUnitPrice(selectedProduct, newQty);
@@ -200,7 +206,7 @@ export default function CreateInvoiceModal({
     const updated = [...lineItems];
     const item = updated[index];
     const product = products.find(p => p.id === item.productId);
-    const maxStock = product?.currentStock || 999;
+    const maxStock = product ? getEffectiveProductStock(product, products, storedBundles) : 999;
     const newQty = item.quantity + delta;
 
     if (newQty <= 0) {
@@ -300,6 +306,37 @@ export default function CreateInvoiceModal({
 
     let dispatchOrder: WarehouseDispatchOrder | undefined;
     if (isWarehouseDispatch) {
+      const expandedDispatchItems: WarehouseDispatchOrder['items'] = [];
+      for (const it of lineItems) {
+        const prod = products.find(p => p.id === it.productId);
+        const bundleComps = storedBundles.filter(b => b.parentProductId === it.productId);
+        if (prod?.isBundle || bundleComps.length > 0) {
+          for (const bc of bundleComps) {
+            const compProd = products.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
+            const reqQty = Math.ceil((Number(bc.quantity) || 1) * it.quantity);
+            expandedDispatchItems.push({
+              productId: bc.childProductId,
+              productName: `${compProd?.nameAr || bc.childProductName} (${it.productName || it.nameAr || it.nameEn})`,
+              sku: compProd?.sku || bc.childProductSku,
+              quantity: reqQty,
+              unitPrice: compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0,
+              totalPrice: (compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0) * reqQty,
+              shelfLocation: compProd?.shelf || 'A-01'
+            });
+          }
+        } else {
+          expandedDispatchItems.push({
+            productId: it.productId,
+            productName: it.productName || it.nameAr || it.nameEn,
+            sku: prod?.sku || 'SKU',
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            totalPrice: it.total,
+            shelfLocation: prod?.shelf || 'A-01'
+          });
+        }
+      }
+
       dispatchOrder = {
         id: `DISP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
         invoiceId,
@@ -308,18 +345,7 @@ export default function CreateInvoiceModal({
         warehouseName: resolvedWarehouseName,
         customerName: customerName.trim(),
         cashierName: session?.fullName?.trim() || session?.username?.trim() || (isAr ? 'أمين الصندوق' : 'Cashier'),
-        items: lineItems.map(it => {
-          const prod = products.find(p => p.id === it.productId);
-          return {
-            productId: it.productId,
-            productName: it.productName || it.nameAr || it.nameEn,
-            sku: prod?.sku || 'SKU',
-            quantity: it.quantity,
-            unitPrice: it.unitPrice,
-            totalPrice: it.total,
-            shelfLocation: prod?.shelf || 'A-01'
-          };
-        }),
+        items: expandedDispatchItems,
         totalQuantity: totalUnits,
         status: 'PENDING',
         notes: isAr ? 'طلب صرف وتجهيز صادر مع فاتورة المبيعات' : 'Warehouse dispatch order issued with sales invoice',
@@ -635,10 +661,12 @@ export default function CreateInvoiceModal({
                 }}
               >
                 {products.map(p => {
-                  const isOutOfStock = p.currentStock <= 0;
+                  const effStock = getEffectiveProductStock(p, products, storedBundles);
+                  const isOutOfStock = effStock <= 0;
                   return (
                     <option key={p.id} value={p.id} disabled={isOutOfStock}>
                       {isOutOfStock ? (isAr ? '[نافد] ' : '[Out of Stock] ') : ''}
+                      {p.isBundle ? `[${getTranslation(lang, 'bundles.bundleBadge')}] ` : ''}
                       {p.nameAr} — {formatCurrency(p.sellingPrice)}
                     </option>
                   );
@@ -649,8 +677,8 @@ export default function CreateInvoiceModal({
             {selectedProduct && (
               <div className="bar-preview-badge">
                 <div className="preview-label">{isAr ? 'الرصيد المتاح' : 'Stock'}</div>
-                <div className={`preview-value ${selectedProduct.currentStock <= 0 ? 'out' : selectedProduct.currentStock <= selectedProduct.minStockAlert ? 'low' : ''}`}>
-                  {selectedProduct.currentStock} {selectedProduct.unit}
+                <div className={`preview-value ${selectedProductStock <= 0 ? 'out' : selectedProductStock <= selectedProduct.minStockAlert ? 'low' : ''}`}>
+                  {selectedProductStock} {selectedProduct.unit}
                 </div>
               </div>
             )}

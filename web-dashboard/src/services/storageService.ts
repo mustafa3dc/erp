@@ -119,6 +119,22 @@ export function getStoredProducts(): Product[] {
   if (existing !== null && Array.isArray(existing)) {
     let hasRepairedWarehouse = false;
     const mapped = existing.map(p => {
+      // Virtual bundles are warehouse-agnostic and derive stock dynamically from their components
+      if (p.isBundle) {
+        return {
+          ...p,
+          warehouseId: 'ALL',
+          warehouseName: p.warehouseName || 'حزمة مركبة (افتراضي)',
+          warehouseNameEn: p.warehouseNameEn || 'Virtual Bundle',
+          minSellingPrice: p.minSellingPrice ?? 0,
+          currentStock: 0,
+          unit: p.unit || 'حزمة',
+          unitEn: p.unitEn || 'Bundle',
+          category: p.category || 'حزم المنتجات',
+          categoryEn: p.categoryEn || 'Product Bundles'
+        };
+      }
+
       let targetWhId = p.warehouseId || warehouses[0]?.id || 'WH-01';
       let matchedWh = warehouses.find(w => w.id === targetWhId || w.code === targetWhId);
 
@@ -1194,19 +1210,38 @@ export function executePosSaleTransaction(
 
   const storedProducts = getStoredProducts();
   const updatedProducts = [...storedProducts];
+  const storedBundles = getStoredProductBundles();
 
-  // 1. Strict Stock Availability Check
+  // 1. Strict Stock Availability Check (Bundles verify every physical component!)
   for (const item of req.items) {
     const prod = updatedProducts.find(p => p.id === item.product.id || p.sku === item.product.sku);
     if (!prod) {
       throw new Error(`الصنف (${item.product.nameAr || item.product.sku}) غير موجود في قاعدة بيانات المخزون.`);
     }
 
-    const available = Number(prod.currentStock) || 0;
-    if (available < item.quantity) {
-      throw new Error(
-        `رصيد الصنف "${prod.nameAr}" (${prod.sku}) غير كافٍ في مستودع "${effectiveWarehouseName}". الرصيد المتاح فعلياً: ${available} قطعة، بينما الكمية المطلوبة: ${item.quantity} قطعة.`
-      );
+    const bundleComponents = storedBundles.filter(b => b.parentProductId === prod.id);
+    if (prod.isBundle || bundleComponents.length > 0) {
+      if (bundleComponents.length === 0) {
+        throw new Error(`حزمة المنتجات "${prod.nameAr}" (${prod.sku}) لا تحتوي على مكونات صالحة.`);
+      }
+      for (const bc of bundleComponents) {
+        const compProd = updatedProducts.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
+        const compAvail = Number(compProd?.currentStock) || 0;
+        const requiredCompQty = Math.ceil((Number(bc.quantity) || 1) * item.quantity);
+        if (!compProd || compAvail < requiredCompQty) {
+          const compLabel = compProd?.nameAr || bc.childProductName || bc.childProductSku;
+          throw new Error(
+            `رصيد مكون الحزمة "${compLabel}" داخل "${prod.nameAr}" غير كافٍ في مستودع "${effectiveWarehouseName}". المتاح: ${compAvail}، المطلوب: ${requiredCompQty}.`
+          );
+        }
+      }
+    } else {
+      const available = Number(prod.currentStock) || 0;
+      if (available < item.quantity) {
+        throw new Error(
+          `رصيد الصنف "${prod.nameAr}" (${prod.sku}) غير كافٍ في مستودع "${effectiveWarehouseName}". الرصيد المتاح فعلياً: ${available} قطعة، بينما الكمية المطلوبة: ${item.quantity} قطعة.`
+        );
+      }
     }
   }
 
@@ -1216,20 +1251,19 @@ export function executePosSaleTransaction(
   const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   if (!isWarehouseDispatch) {
-    // IN_STORE: Immediate deduction and outbound record (handles Product Bundles by deducting component SKUs)
-    const storedBundles = getStoredProductBundles();
+    // IN_STORE: Immediate deduction and outbound record (handles Product Bundles by deducting component SKUs ONLY)
     for (const item of req.items) {
       const bundleComponents = storedBundles.filter(b => b.parentProductId === item.product.id);
-      const deductionTargets: Array<{ product: Product | undefined; qty: number }> =
-        bundleComponents.length > 0
-          ? bundleComponents.map(bc => ({
-              product: updatedProducts.find(p => p.id === bc.childProductId || p.sku === bc.childProductSku),
-              qty: Math.ceil((Number(bc.quantity) || 1) * item.quantity),
-            }))
-          : [{ product: updatedProducts.find(p => p.id === item.product.id || p.sku === item.product.sku), qty: item.quantity }];
+      const isBundleItem = Boolean(item.product.isBundle) || bundleComponents.length > 0;
+      const deductionTargets: Array<{ product: Product | undefined; qty: number }> = isBundleItem
+        ? bundleComponents.map(bc => ({
+            product: updatedProducts.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku)),
+            qty: Math.ceil((Number(bc.quantity) || 1) * item.quantity),
+          }))
+        : [{ product: updatedProducts.find(p => p.id === item.product.id || p.sku === item.product.sku), qty: item.quantity }];
 
       for (const target of deductionTargets) {
-        if (!target.product) continue;
+        if (!target.product || target.product.isBundle) continue;
         const pIndex = updatedProducts.findIndex(p => p.id === target.product!.id);
         if (pIndex >= 0) {
           const prod = updatedProducts[pIndex];
@@ -1254,7 +1288,7 @@ export function executePosSaleTransaction(
             type: 'Outbound',
             status: 'Dispatched',
             sku: prod.sku,
-            productName: bundleComponents.length > 0 ? `${prod.nameAr} (${item.product.nameAr})` : prod.nameAr,
+            productName: isBundleItem ? `${prod.nameAr} (${item.product.nameAr})` : prod.nameAr,
             qty: -target.qty,
             unit: prod.unit || 'قطعة',
             unitCost: prod.costPrice,
@@ -1278,6 +1312,36 @@ export function executePosSaleTransaction(
   let dispatchOrder: WarehouseDispatchOrder | undefined;
 
   if (isWarehouseDispatch) {
+    const expandedDispatchItems: WarehouseDispatchOrder['items'] = [];
+    for (const it of req.items) {
+      const bundleComponents = storedBundles.filter(b => b.parentProductId === it.product.id);
+      if (bundleComponents.length > 0) {
+        for (const bc of bundleComponents) {
+          const compProd = updatedProducts.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
+          const reqQty = Math.ceil((Number(bc.quantity) || 1) * it.quantity);
+          expandedDispatchItems.push({
+            productId: bc.childProductId,
+            productName: `${compProd?.nameAr || bc.childProductName} (${it.product.nameAr})`,
+            sku: compProd?.sku || bc.childProductSku,
+            quantity: reqQty,
+            unitPrice: compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0,
+            totalPrice: (compProd?.sellingPrice ?? bc.componentSellingPrice ?? 0) * reqQty,
+            shelfLocation: compProd?.shelf || 'A-01'
+          });
+        }
+      } else {
+        expandedDispatchItems.push({
+          productId: it.product.id,
+          productName: it.product.nameAr,
+          sku: it.product.sku,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice,
+          shelfLocation: it.product.shelf || 'A-01'
+        });
+      }
+    }
+
     dispatchOrder = {
       id: `DSP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       invoiceId,
@@ -1286,15 +1350,7 @@ export function executePosSaleTransaction(
       warehouseName: effectiveWarehouseName,
       customerName: req.customerName || 'عميل نقدي (صالة العرض)',
       cashierName: req.cashierName || req.cashierId || 'الكاشير',
-      items: req.items.map(it => ({
-        productId: it.product.id,
-        productName: it.product.nameAr,
-        sku: it.product.sku,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        totalPrice: it.totalPrice,
-        shelfLocation: it.product.shelf || 'A-01'
-      })),
+      items: expandedDispatchItems,
       totalQuantity: req.items.reduce((sum, it) => sum + it.quantity, 0),
       status: 'PENDING',
       notes: 'طلب تجهيز وتسليم صادر من نقطة البيع POS',
@@ -2860,6 +2916,214 @@ export function getStoredProductBundles(): ProductBundleItem[] {
 
 export function saveStoredProductBundles(bundles: ProductBundleItem[]): void {
   safeSet(KEYS.PRODUCT_BUNDLES, bundles);
+}
+
+export function generateNextBundleSku(existingProducts?: Product[]): string {
+  const prods = existingProducts ?? getStoredProducts();
+  let maxNum = 1000;
+  for (const p of prods) {
+    const sku = (p.sku || '').trim().toUpperCase();
+    if (sku.startsWith('BND-')) {
+      const parsed = parseInt(sku.slice(4), 10);
+      if (Number.isFinite(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  }
+  return `BND-${maxNum + 1}`;
+}
+
+export function generateNextBundleBarcode(existingProducts?: Product[]): string {
+  const prods = existingProducts ?? getStoredProducts();
+  const used = new Set(prods.map(p => (p.barcode || '').trim()));
+  let candidate = '';
+  for (let i = 0; i < 20; i++) {
+    candidate = `299${Math.floor(1000000000 + Math.random() * 8999999999)}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `299${Date.now().toString().slice(-10)}`;
+}
+
+/**
+ * Dynamically calculates how many full bundles can be fulfilled from component stock:
+ * Min(Floor(Component.AvailableStock / Component.RequiredQty))
+ */
+export function getBundleAvailableStock(
+  bundleProductId: string,
+  allProducts?: Product[],
+  allBundles?: ProductBundleItem[],
+  warehouseId?: string
+): number {
+  const products = allProducts ?? getStoredProducts();
+  const bundles = allBundles ?? getStoredProductBundles();
+  const comps = bundles.filter(b => b.parentProductId === bundleProductId);
+  if (comps.length === 0) return 0;
+
+  let minFulfillable = Infinity;
+  for (const c of comps) {
+    const reqQty = Number(c.quantity) || 1;
+    if (reqQty <= 0) continue;
+
+    // Match component products by ID or SKU; if scoped to a specific warehouse, sum stock in that warehouse
+    const matchingComps = products.filter(p =>
+      !p.isBundle &&
+      (p.id === c.childProductId || (c.childProductSku && p.sku === c.childProductSku)) &&
+      (!warehouseId || warehouseId === 'ALL' || !p.warehouseId || p.warehouseId === warehouseId)
+    );
+
+    const compStock = matchingComps.length > 0
+      ? matchingComps.reduce((sum, p) => sum + Math.max(0, Number(p.currentStock) || 0), 0)
+      : (typeof c.availableStock === 'number' ? c.availableStock : 0);
+
+    const fulfillable = Math.floor(compStock / reqQty);
+    if (fulfillable < minFulfillable) {
+      minFulfillable = fulfillable;
+    }
+  }
+
+  return Number.isFinite(minFulfillable) ? Math.max(0, minFulfillable) : 0;
+}
+
+/**
+ * Returns physical stock for standalone items or dynamic component-derived stock for bundles.
+ */
+export function getEffectiveProductStock(
+  product: Product,
+  allProducts?: Product[],
+  allBundles?: ProductBundleItem[],
+  warehouseId?: string
+): number {
+  if (!product) return 0;
+  if (product.isBundle) {
+    return getBundleAvailableStock(product.id, allProducts, allBundles, warehouseId);
+  }
+  return Math.max(0, Number(product.currentStock) || 0);
+}
+
+/**
+ * Computes total components cost & total individual retail price for a bundle.
+ */
+export function getBundleFinancials(
+  components: Array<{ childProductId: string; quantity: number }>,
+  allProducts?: Product[]
+): { totalCost: number; totalRetail: number } {
+  const products = allProducts ?? getStoredProducts();
+  let totalCost = 0;
+  let totalRetail = 0;
+  for (const c of components) {
+    const prod = products.find(p => p.id === c.childProductId);
+    const qty = Number(c.quantity) || 0;
+    if (prod && qty > 0) {
+      totalCost += (Number(prod.costPrice) || 0) * qty;
+      totalRetail += (Number(prod.sellingPrice) || 0) * qty;
+    }
+  }
+  return {
+    totalCost: Math.round(totalCost * 100) / 100,
+    totalRetail: Math.round(totalRetail * 100) / 100
+  };
+}
+
+/**
+ * Creates or updates a decoupled Virtual Bundle Product + its component rows in localStorage
+ * without ever modifying an existing standalone physical product.
+ */
+export function saveVirtualBundleInStorage(params: {
+  bundleId?: string | null;
+  bundleName: string;
+  bundleSku?: string;
+  barcode?: string;
+  bundleSellingPrice: number;
+  components: Array<{ childProductId: string; quantity: number }>;
+}): { bundleProduct: Product; bundleItems: ProductBundleItem[] } {
+  const products = getStoredProducts();
+  const existingBundles = getStoredProductBundles();
+  const nowDate = new Date().toISOString().split('T')[0];
+
+  const isUpdate = Boolean(params.bundleId);
+  const existingTarget = isUpdate ? products.find(p => p.id === params.bundleId) : undefined;
+  if (existingTarget && !existingTarget.isBundle) {
+    throw new Error('ERR_CANNOT_CONVERT_PHYSICAL_PRODUCT_TO_BUNDLE');
+  }
+
+  const bundleId = existingTarget?.id || params.bundleId || `BND-PRD-${Date.now()}`;
+  const cleanName = params.bundleName.trim();
+  const cleanSku = params.bundleSku?.trim() || existingTarget?.sku || generateNextBundleSku(products);
+  const cleanBarcode = params.barcode?.trim() || existingTarget?.barcode || generateNextBundleBarcode(products);
+  const { totalCost } = getBundleFinancials(params.components, products);
+
+  const bundleProduct: Product = {
+    ...(existingTarget || {}),
+    id: bundleId,
+    sku: cleanSku,
+    barcode: cleanBarcode,
+    nameAr: cleanName,
+    nameEn: cleanName,
+    category: 'حزم المنتجات',
+    categoryEn: 'Product Bundles',
+    costPrice: totalCost,
+    sellingPrice: Number(params.bundleSellingPrice) || 0,
+    minSellingPrice: 0,
+    unit: 'حزمة',
+    unitEn: 'Bundle',
+    currentStock: 0,
+    minStockAlert: 0,
+    warehouseId: 'ALL',
+    warehouseName: 'حزمة مركبة (افتراضي)',
+    warehouseNameEn: 'Virtual Bundle',
+    status: 'available',
+    shelf: 'BUNDLE',
+    updatedAt: nowDate,
+    isBundle: true
+  };
+
+  const nextProducts = existingTarget
+    ? products.map(p => (p.id === bundleId ? bundleProduct : p))
+    : [bundleProduct, ...products];
+  saveStoredProducts(nextProducts);
+
+  const newItems: ProductBundleItem[] = params.components.map((bc, idx) => {
+    const child = nextProducts.find(p => p.id === bc.childProductId);
+    return {
+      id: `PBI-${Date.now()}-${idx}`,
+      parentProductId: bundleId,
+      parentProductName: cleanName,
+      parentProductSku: cleanSku,
+      parentBarcode: cleanBarcode,
+      parentSellingPrice: bundleProduct.sellingPrice,
+      childProductId: bc.childProductId,
+      childProductName: child ? (child.nameAr || child.nameEn) : bc.childProductId,
+      childProductSku: child?.sku || '',
+      quantity: Number(bc.quantity) || 1,
+      unitPriceRatio: 1.0,
+      componentCostPrice: Number(child?.costPrice) || 0,
+      componentSellingPrice: Number(child?.sellingPrice) || 0,
+      availableStock: Number(child?.currentStock) || 0
+    };
+  });
+
+  const nextBundles = [...existingBundles.filter(b => b.parentProductId !== bundleId), ...newItems];
+  saveStoredProductBundles(nextBundles);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zilox_products_updated'));
+  }
+
+  return { bundleProduct, bundleItems: newItems };
+}
+
+export function deleteVirtualBundleInStorage(bundleId: string): void {
+  const existingBundles = getStoredProductBundles();
+  saveStoredProductBundles(existingBundles.filter(b => b.parentProductId !== bundleId));
+
+  const products = getStoredProducts();
+  // Remove only if it's a virtual bundle record — never delete a physical product
+  const nextProducts = products.filter(p => !(p.id === bundleId && p.isBundle));
+  saveStoredProducts(nextProducts);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zilox_products_updated'));
+  }
 }
 
 // ----------------------------------------------------

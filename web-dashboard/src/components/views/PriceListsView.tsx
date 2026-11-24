@@ -11,7 +11,11 @@ import {
   Boxes,
   Boxes as PackageCheck,
   AlertCircle,
-  Tag
+  AlertTriangle,
+  Tag,
+  RefreshCw,
+  TrendingUp,
+  Barcode as BarcodeIcon
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -24,7 +28,13 @@ import {
   validateQuantityTierRanges,
   getStoredProductBundles,
   saveStoredProductBundles,
-  getStoredProducts
+  getStoredProducts,
+  generateNextBundleSku,
+  generateNextBundleBarcode,
+  getBundleAvailableStock,
+  getBundleFinancials,
+  saveVirtualBundleInStorage,
+  deleteVirtualBundleInStorage
 } from '../../services/storageService';
 import {
   ProductQuantityTier,
@@ -71,13 +81,25 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
   const [tierRows, setTierRows] = useState<TierDraftRow[]>([{ minQty: '2', maxQty: '', unitPrice: '' }]);
   const [tierModalError, setTierModalError] = useState('');
 
-  // Create Bundle Modal State
-  const [bundleParentId, setBundleParentId] = useState('');
+  // Create / Edit Decoupled Virtual Bundle Modal State
+  const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
+  const [bundleName, setBundleName] = useState('');
+  const [bundleSku, setBundleSku] = useState('');
+  const [bundleBarcode, setBundleBarcode] = useState('');
+  const [bundleSellingPrice, setBundleSellingPrice] = useState('');
+  const [bundlePriceTouched, setBundlePriceTouched] = useState(false);
+  const [bundleModalError, setBundleModalError] = useState('');
   const [bundleComponents, setBundleComponents] = useState<Array<{
     childProductId: string;
     quantity: number;
     unitPriceRatio: number;
   }>>([]);
+
+  // Standalone physical products eligible to be bundle components (never virtual bundles)
+  const physicalProducts = useMemo(
+    () => products.filter(p => Boolean(p.id) && !p.isBundle),
+    [products]
+  );
 
   // Fetch remote data with offline fallback
   useEffect(() => {
@@ -109,18 +131,27 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
           const flattened: ProductBundleItem[] = [];
           for (const b of bRes.data) {
             const pId = String(b.parentProductId ?? b.ParentProductId ?? '');
+            const pSku = b.bundleSku ?? b.BundleSku ?? '';
+            const pBarcode = b.barcode ?? b.Barcode ?? '';
             const pName = b.bundleName ?? b.BundleName ?? '';
+            const pSellingPrice = Number(b.bundleSellingPrice ?? b.BundleSellingPrice ?? 0);
             const comps = Array.isArray(b.components ?? b.Components) ? (b.components ?? b.Components) : [];
             comps.forEach((c: any, idx: number) => {
               flattened.push({
                 id: `${pId}-${c.componentProductId ?? c.ComponentProductId ?? idx}`,
                 parentProductId: pId,
                 parentProductName: pName,
+                parentProductSku: pSku,
+                parentBarcode: pBarcode,
+                parentSellingPrice: pSellingPrice,
                 childProductId: String(c.componentProductId ?? c.ComponentProductId ?? ''),
                 childProductName: c.componentName ?? c.ComponentName ?? '',
                 childProductSku: c.componentSku ?? c.ComponentSku ?? '',
                 quantity: Number(c.quantity ?? c.Quantity ?? 1),
-                unitPriceRatio: 1.0
+                unitPriceRatio: 1.0,
+                componentCostPrice: Number(c.componentCostPrice ?? c.ComponentCostPrice ?? 0),
+                componentSellingPrice: Number(c.componentSellingPrice ?? c.ComponentSellingPrice ?? 0),
+                availableStock: Number(c.availableStock ?? c.AvailableStock ?? 0)
               });
             });
           }
@@ -178,11 +209,15 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     fetchData();
   }, []);
 
-  // Group bundles by parentProductId
+  // Group bundles by parentProductId (supports both API and localStorage decoupled virtual bundles)
   const bundleGroups = useMemo(() => {
     const groups = new Map<string, {
       parentProductId: string;
       parentProduct?: Product;
+      bundleName: string;
+      bundleSku: string;
+      barcode: string;
+      sellingPrice: number;
       components: ProductBundleItem[];
     }>();
 
@@ -192,6 +227,10 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
         groups.set(item.parentProductId, {
           parentProductId: item.parentProductId,
           parentProduct: parent,
+          bundleName: getProdName(parent) || item.parentProductName || item.parentProductId,
+          bundleSku: parent?.sku || item.parentProductSku || '-',
+          barcode: parent?.barcode || item.parentBarcode || '',
+          sellingPrice: parent?.sellingPrice ?? item.parentSellingPrice ?? 0,
           components: []
         });
       }
@@ -199,7 +238,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     });
 
     return Array.from(groups.values());
-  }, [bundles, products]);
+  }, [bundles, products, isAr]);
 
   // Filtered Quantity Tiers
   const filteredTiers = useMemo(() => {
@@ -228,13 +267,14 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return bundleGroups;
     return bundleGroups.filter(bg => {
-      const pName = (getProdName(bg.parentProduct) || bg.components[0]?.parentProductName || '').toLowerCase();
-      const pSku = (bg.parentProduct?.sku || '').toLowerCase();
-      return pName.includes(q) || pSku.includes(q) || bg.components.some(c =>
+      const pName = bg.bundleName.toLowerCase();
+      const pSku = bg.bundleSku.toLowerCase();
+      const pBar = bg.barcode.toLowerCase();
+      return pName.includes(q) || pSku.includes(q) || pBar.includes(q) || bg.components.some(c =>
         c.childProductName.toLowerCase().includes(q) || c.childProductSku.toLowerCase().includes(q)
       );
     });
-  }, [bundleGroups, searchQuery, isAr]);
+  }, [bundleGroups, searchQuery]);
 
   // KPIs
   const totalProductsWithTiers = useMemo(() => new Set(tiers.map(t => t.productId)).size, [tiers]);
@@ -383,54 +423,158 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     showToast(getTranslation(lang, 'quantityPricing.tierDeleted'));
   };
 
-  // Bundle Handlers
-  const openBundleModal = () => {
-    setBundleParentId('');
-    setBundleComponents([{ childProductId: '', quantity: 1, unitPriceRatio: 1.0 }]);
+  // Bundle Handlers (Decoupled Create & Edit)
+  const openBundleModal = (bundleToEdit?: (typeof bundleGroups)[number]) => {
+    setBundleModalError('');
+    if (bundleToEdit) {
+      setEditingBundleId(bundleToEdit.parentProductId);
+      setBundleName(bundleToEdit.bundleName);
+      setBundleSku(bundleToEdit.bundleSku);
+      setBundleBarcode(bundleToEdit.barcode || '');
+      setBundleSellingPrice(String(bundleToEdit.sellingPrice));
+      setBundlePriceTouched(true);
+      setBundleComponents(
+        bundleToEdit.components.map(c => ({
+          childProductId: c.childProductId,
+          quantity: Number(c.quantity) || 1,
+          unitPriceRatio: 1.0
+        }))
+      );
+    } else {
+      setEditingBundleId(null);
+      setBundleName('');
+      setBundleSku(generateNextBundleSku(products));
+      setBundleBarcode('');
+      setBundleSellingPrice('');
+      setBundlePriceTouched(false);
+      setBundleComponents([{ childProductId: '', quantity: 1, unitPriceRatio: 1.0 }]);
+    }
     setIsBundleModalOpen(true);
   };
 
-  const handleCreateBundle = async (e: React.FormEvent) => {
+  // Live Financial Summary inside Bundle Modal
+  const bundleFinancials = useMemo(() => {
+    const { totalCost, totalRetail } = getBundleFinancials(bundleComponents, products);
+    const selling = Number(bundleSellingPrice) || 0;
+    const profit = selling - totalCost;
+    const marginPct = totalCost > 0
+      ? Math.round((profit / totalCost) * 1000) / 10
+      : (selling > 0 ? 100 : 0);
+    const savings = Math.max(0, totalRetail - selling);
+    const savingsPct = totalRetail > 0 && selling < totalRetail
+      ? Math.round(((totalRetail - selling) / totalRetail) * 100)
+      : 0;
+    const isBelowCost = bundleSellingPrice.trim() !== '' && selling < totalCost;
+
+    return {
+      totalCost,
+      totalRetail,
+      selling,
+      profit,
+      marginPct,
+      savings,
+      savingsPct,
+      isBelowCost
+    };
+  }, [bundleComponents, bundleSellingPrice, products]);
+
+  // Suggest retail sum as initial selling price while user adds components (unless manually edited)
+  useEffect(() => {
+    if (isBundleModalOpen && !editingBundleId && !bundlePriceTouched && bundleFinancials.totalRetail > 0) {
+      setBundleSellingPrice(String(bundleFinancials.totalRetail));
+    }
+  }, [isBundleModalOpen, editingBundleId, bundlePriceTouched, bundleFinancials.totalRetail]);
+
+  const handleSaveBundle = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBundleModalError('');
+
+    const cleanName = bundleName.trim();
+    const parsedPrice = Number(bundleSellingPrice);
     const validComponents = bundleComponents.filter(bc => bc.childProductId && bc.quantity > 0);
-    if (!bundleParentId || validComponents.length === 0 || validComponents.length !== bundleComponents.length) {
-      showToast(getTranslation(lang, 'bundles.validationError'));
+
+    if (!cleanName || bundleSellingPrice.trim() === '' || !Number.isFinite(parsedPrice) || parsedPrice < 0 || validComponents.length === 0 || validComponents.length !== bundleComponents.length) {
+      setBundleModalError(getTranslation(lang, 'bundles.validationError'));
       return;
     }
 
-    const parent = products.find(x => x.id === bundleParentId);
-    const newItems: ProductBundleItem[] = validComponents.map((bc, idx) => {
-      const child = products.find(x => x.id === bc.childProductId);
-      return {
-        id: `PBI-${Date.now()}-${idx}`,
-        parentProductId: bundleParentId,
-        parentProductName: getProdName(parent),
-        childProductId: bc.childProductId,
-        childProductName: getProdName(child) || bc.childProductId,
-        childProductSku: child?.sku || '',
-        quantity: bc.quantity,
-        unitPriceRatio: bc.unitPriceRatio
-      };
-    });
+    // Merge duplicate component rows cleanly
+    const mergedMap = new Map<string, number>();
+    for (const c of validComponents) {
+      mergedMap.set(c.childProductId, (mergedMap.get(c.childProductId) || 0) + Number(c.quantity));
+    }
+    const normalizedComponents = Array.from(mergedMap.entries()).map(([childProductId, quantity]) => ({
+      childProductId,
+      quantity
+    }));
+
+    const targetSku = bundleSku.trim() || generateNextBundleSku(products);
+    const targetBarcode = bundleBarcode.trim();
 
     try {
-      await apiClient.post('/api/bundles', {
-        parentProductId: bundleParentId,
-        components: validComponents.map(bc => ({
+      const payload = {
+        bundleId: editingBundleId || undefined,
+        bundleName: cleanName,
+        bundleSku: targetSku,
+        barcode: targetBarcode || undefined,
+        bundleSellingPrice: parsedPrice,
+        components: normalizedComponents.map(bc => ({
           componentProductId: bc.childProductId,
           quantity: bc.quantity
         }))
-      });
+      };
+
+      const res = editingBundleId
+        ? await apiClient.put(`/api/bundles/${editingBundleId}`, payload)
+        : await apiClient.post('/api/bundles', payload);
+
+      if (res && res.success === false && res.errorCode) {
+        const translatedErr = getTranslation(lang, `errors.${res.errorCode}`);
+        setBundleModalError(translatedErr && translatedErr !== `errors.${res.errorCode}` ? translatedErr : res.errorCode);
+        return;
+      }
+
+      if (res && res.success && res.data) {
+        const b = res.data;
+        const savedId = String(b.parentProductId ?? b.ParentProductId ?? editingBundleId ?? '');
+        const savedSku = b.bundleSku ?? b.BundleSku ?? targetSku;
+        const savedBarcode = b.barcode ?? b.Barcode ?? targetBarcode;
+        const savedName = b.bundleName ?? b.BundleName ?? cleanName;
+        const savedPrice = Number(b.bundleSellingPrice ?? b.BundleSellingPrice ?? parsedPrice);
+
+        const storageResult = saveVirtualBundleInStorage({
+          bundleId: savedId,
+          bundleName: savedName,
+          bundleSku: savedSku,
+          barcode: savedBarcode,
+          bundleSellingPrice: savedPrice,
+          components: normalizedComponents
+        });
+
+        setProducts(getStoredProducts());
+        setBundles(prev => [
+          ...prev.filter(x => x.parentProductId !== storageResult.bundleProduct.id),
+          ...storageResult.bundleItems
+        ]);
+        setIsBundleModalOpen(false);
+        showToast(getTranslation(lang, 'priceLists.bundleSaved'));
+        return;
+      }
     } catch {
-      // fallback
+      // offline fallback below
     }
 
-    const nextBundles = [...bundles.filter(b => b.parentProductId !== bundleParentId), ...newItems];
-    setBundles(nextBundles);
-    saveStoredProductBundles(nextBundles);
+    saveVirtualBundleInStorage({
+      bundleId: editingBundleId,
+      bundleName: cleanName,
+      bundleSku: targetSku,
+      barcode: targetBarcode,
+      bundleSellingPrice: parsedPrice,
+      components: normalizedComponents
+    });
 
-    setBundleParentId('');
-    setBundleComponents([{ childProductId: '', quantity: 1, unitPriceRatio: 1.0 }]);
+    setProducts(getStoredProducts());
+    setBundles(getStoredProductBundles());
     setIsBundleModalOpen(false);
     showToast(getTranslation(lang, 'priceLists.bundleSaved'));
   };
@@ -441,9 +585,9 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
     } catch {
       // fallback
     }
-    const nextBundles = bundles.filter(b => b.parentProductId !== parentProductId);
-    setBundles(nextBundles);
-    saveStoredProductBundles(nextBundles);
+    deleteVirtualBundleInStorage(parentProductId);
+    setProducts(getStoredProducts());
+    setBundles(getStoredProductBundles());
     showToast(getTranslation(lang, 'quantityPricing.bundleDeleted'));
   };
 
@@ -484,7 +628,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
             <button
               type="button"
               className="btn-clean-primary"
-              onClick={openBundleModal}
+              onClick={() => openBundleModal()}
             >
               <PackageCheck size={15} />
               <span>{getTranslation(lang, 'priceLists.newBundle')}</span>
@@ -821,11 +965,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
           <div className="overflow-x-auto">
             <table className="enterprise-table w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0 }}>
               <colgroup>
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '21%' }} />
+                <col style={{ width: '13%' }} />
                 <col style={{ width: '14%' }} />
                 <col style={{ width: '26%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '34%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '11%' }} />
               </colgroup>
               <thead>
                 <tr>
@@ -834,6 +979,9 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                   </th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
                     {getTranslation(lang, 'priceLists.bundleName')}
+                  </th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                    {getTranslation(lang, 'bundles.colAvailableQty')}
                   </th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
                     {getTranslation(lang, 'priceLists.bundlePrice')}
@@ -849,7 +997,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
               <tbody>
                 {filteredBundleGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10">
+                    <td colSpan={6} className="py-10">
                       <EmptyState
                         lang={lang}
                         icon={<Boxes size={28} />}
@@ -859,7 +1007,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           <button
                             type="button"
                             className="btn-clean-primary"
-                            onClick={openBundleModal}
+                            onClick={() => openBundleModal()}
                           >
                             <Plus size={14} />
                             <span>{getTranslation(lang, 'priceLists.newBundle')}</span>
@@ -870,47 +1018,125 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                   </tr>
                 ) : (
                   filteredBundleGroups.map(group => {
-                    const bundleTitle = getProdName(group.parentProduct) || group.components[0]?.parentProductName || group.parentProductId;
-                    const bundleSku = group.parentProduct?.sku || '-';
-                    const bundlePrice = group.parentProduct?.sellingPrice ?? 0;
+                    const bundleTitle = group.bundleName;
+                    const bundleSku = group.bundleSku;
+                    const bundlePrice = group.sellingPrice;
+                    const availableQty = getBundleAvailableStock(group.parentProductId, products, bundles);
+                    const totalRetail = group.components.reduce((sum, c) => {
+                      const compProd = products.find(p => p.id === c.childProductId);
+                      const unitRetail = compProd?.sellingPrice ?? c.componentSellingPrice ?? 0;
+                      return sum + unitRetail * (Number(c.quantity) || 1);
+                    }, 0);
+                    const savingsPct = totalRetail > 0 && bundlePrice < totalRetail
+                      ? Math.round(((totalRetail - bundlePrice) / totalRetail) * 100)
+                      : 0;
+
                     return (
                       <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
-                        {/* SKU */}
+                        {/* SKU & Barcode */}
                         <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: isAr ? 'flex-end' : 'flex-start' }}>
+                            <span
+                              dir="ltr"
+                              style={{
+                                fontFamily: 'monospace',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                color: '#7c3aed',
+                                background: 'color-mix(in srgb, #8b5cf6 10%, transparent)',
+                                border: '1px solid color-mix(in srgb, #8b5cf6 22%, transparent)',
+                                borderRadius: '5px',
+                                padding: '2px 7px',
+                                display: 'inline-block',
+                                letterSpacing: '0.03em',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {bundleSku}
+                            </span>
+                            {group.barcode && (
+                              <span dir="ltr" style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--muted-foreground)' }}>
+                                {group.barcode}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {/* Bundle Name + Badge */}
+                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)' }}>
+                              {bundleTitle}
+                            </span>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              alignSelf: 'flex-start',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '1px 7px',
+                              borderRadius: '999px',
+                              background: 'color-mix(in srgb, #8b5cf6 12%, transparent)',
+                              color: '#7c3aed',
+                              border: '1px solid color-mix(in srgb, #8b5cf6 25%, transparent)'
+                            }}>
+                              <Boxes size={10} />
+                              <span>{getTranslation(lang, 'bundles.bundleBadge')}</span>
+                            </span>
+                          </div>
+                        </td>
+                        {/* Dynamically Available Qty */}
+                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }} title={getTranslation(lang, 'bundles.dynamicStockHint')}>
                           <span
                             dir="ltr"
                             style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '4px 11px',
+                              borderRadius: '999px',
+                              fontSize: '12px',
+                              fontWeight: 700,
                               fontFamily: 'monospace',
-                              fontSize: '11px',
-                              color: 'var(--muted-foreground)',
-                              background: 'var(--muted)',
-                              borderRadius: '5px',
-                              padding: '2px 7px',
-                              display: 'inline-block',
-                              letterSpacing: '0.03em',
-                              whiteSpace: 'nowrap'
+                              fontVariantNumeric: 'tabular-nums',
+                              background: availableQty > 5
+                                ? 'color-mix(in srgb, #10b981 14%, transparent)'
+                                : availableQty > 0
+                                  ? 'color-mix(in srgb, #f59e0b 14%, transparent)'
+                                  : 'color-mix(in srgb, #ef4444 14%, transparent)',
+                              color: availableQty > 5 ? '#059669' : availableQty > 0 ? '#d97706' : '#dc2626',
+                              border: `1px solid ${availableQty > 5 ? 'color-mix(in srgb, #10b981 28%, transparent)' : availableQty > 0 ? 'color-mix(in srgb, #f59e0b 28%, transparent)' : 'color-mix(in srgb, #ef4444 28%, transparent)'}`
                             }}
                           >
-                            {bundleSku}
-                          </span>
-                        </td>
-                        {/* Bundle Name */}
-                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)' }}>
-                            {bundleTitle}
+                            {availableQty}
                           </span>
                         </td>
                         {/* Price */}
                         <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <span style={{
-                            fontFamily: 'monospace',
-                            fontWeight: 700,
-                            fontSize: '14px',
-                            fontVariantNumeric: 'tabular-nums',
-                            color: 'var(--color-emerald-600, #059669)'
-                          }}>
-                            {formatMoney(bundlePrice)}
-                          </span>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '14px',
+                              fontVariantNumeric: 'tabular-nums',
+                              color: 'var(--color-emerald-600, #059669)'
+                            }}>
+                              {formatMoney(bundlePrice)}
+                            </span>
+                            {savingsPct > 0 && (
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: '999px',
+                                background: 'color-mix(in srgb, #10b981 14%, transparent)',
+                                color: '#059669',
+                                border: '1px solid color-mix(in srgb, #10b981 25%, transparent)'
+                              }}>
+                                -{savingsPct}%
+                              </span>
+                            )}
+                          </div>
                         </td>
                         {/* Components */}
                         <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
@@ -933,24 +1159,42 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                             ))}
                           </div>
                         </td>
-                        {/* Actions */}
+                        {/* Actions (Edit + Delete) */}
                         <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteBundle(group.parentProductId)}
-                            title={getTranslation(lang, 'bundles.deleteBundle')}
-                            style={{
-                              padding: '6px', borderRadius: '8px',
-                              border: '1px solid var(--border)', background: 'var(--card)',
-                              color: 'var(--destructive)', cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => openBundleModal(group)}
+                              title={getTranslation(lang, 'bundles.editBundle')}
+                              style={{
+                                padding: '6px', borderRadius: '8px',
+                                border: '1px solid var(--border)', background: 'var(--card)',
+                                color: 'var(--foreground)', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBundle(group.parentProductId)}
+                              title={getTranslation(lang, 'bundles.deleteBundle')}
+                              style={{
+                                padding: '6px', borderRadius: '8px',
+                                border: '1px solid var(--border)', background: 'var(--card)',
+                                color: 'var(--destructive)', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1140,50 +1384,120 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
         </ModalBackdropPortal>
       )}
 
-      {/* Modal: Create Product Bundle */}
+      {/* Modal: Create / Edit Decoupled Product Bundle */}
       {isBundleModalOpen && (
         <ModalBackdropPortal onClose={() => setIsBundleModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
           <div
             className="modal-content glass-panel"
-            style={{ maxWidth: '600px', width: '92%', borderRadius: '16px', padding: '24px' }}
+            style={{ maxWidth: '680px', width: '94%', maxHeight: '92vh', overflowY: 'auto', borderRadius: '16px', padding: '24px' }}
             onClick={e => e.stopPropagation()}
             dir={isAr ? 'rtl' : 'ltr'}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
                   <Boxes size={20} />
                 </div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{getTranslation(lang, 'priceLists.newBundle')}</h3>
+                <div>
+                  <h3 className="m-0 text-base font-bold text-foreground">
+                    {editingBundleId
+                      ? getTranslation(lang, 'bundles.editBundleTitle')
+                      : getTranslation(lang, 'bundles.createBundleTitle')}
+                  </h3>
+                  <p className="m-0 text-[11px] text-muted-foreground">
+                    {getTranslation(lang, 'bundles.virtualNotice')}
+                  </p>
+                </div>
               </div>
-              <button type="button" onClick={() => setIsBundleModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+              <button
+                type="button"
+                onClick={() => setIsBundleModalOpen(false)}
+                className="p-1.5 rounded-lg bg-transparent border-0 text-muted-foreground hover:bg-muted cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateBundle} className="flex flex-col gap-4">
+            <form onSubmit={handleSaveBundle} className="flex flex-col gap-4">
+              {/* Bundle Name */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  {getTranslation(lang, 'priceLists.parentProduct')} *
+                  {getTranslation(lang, 'bundles.bundleNameLabel')} *
                 </label>
-                <select
-                  className="select-clean w-full h-10 px-3 rounded-lg"
-                  value={bundleParentId}
-                  onChange={e => setBundleParentId(e.target.value)}
+                <input
+                  type="text"
                   required
-                >
-                  <option value="" disabled>
-                    {getTranslation(lang, 'bundles.select_main_product')}
-                  </option>
-                  {products.filter(p => Boolean(p.id)).map(p => (
-                    <option key={p.id} value={p.id}>
-                      {getProdName(p)}{p.sku ? ` (${p.sku})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  value={bundleName}
+                  onChange={e => {
+                    setBundleName(e.target.value);
+                    setBundleModalError('');
+                  }}
+                  placeholder={getTranslation(lang, 'bundles.bundleNamePlaceholder')}
+                  className="input-clean w-full h-10 px-3 text-sm rounded-lg"
+                />
               </div>
 
-              {/* Components */}
+              {/* Bundle SKU & Barcode */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    {getTranslation(lang, 'bundles.bundleSkuLabel')} *
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      required
+                      dir="ltr"
+                      value={bundleSku}
+                      onChange={e => {
+                        setBundleSku(e.target.value);
+                        setBundleModalError('');
+                      }}
+                      className="input-clean flex-1 h-10 px-3 text-xs font-mono font-bold rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBundleSku(generateNextBundleSku(products))}
+                      title={getTranslation(lang, 'bundles.regenerateSku')}
+                      className="h-10 px-2.5 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center transition-colors"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    {getTranslation(lang, 'bundles.bundleBarcodeLabel')}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <BarcodeIcon size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={bundleBarcode}
+                        onChange={e => {
+                          setBundleBarcode(e.target.value);
+                          setBundleModalError('');
+                        }}
+                        placeholder={getTranslation(lang, 'bundles.bundleBarcodePlaceholder')}
+                        className="input-clean w-full h-10 ps-9 pe-3 text-xs font-mono rounded-lg"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBundleBarcode(generateNextBundleBarcode(products))}
+                      className="h-10 px-2.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground cursor-pointer transition-colors whitespace-nowrap"
+                    >
+                      {getTranslation(lang, 'bundles.generateBarcode')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Components Builder (Strictly Non-Bundle Physical Products) */}
               <div className="border border-border rounded-xl p-3.5 bg-muted/40">
                 <div className="flex justify-between items-center mb-2.5 gap-2">
                   <span className="text-xs font-bold text-foreground">
@@ -1215,29 +1529,30 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           const next = [...bundleComponents];
                           next[idx].childProductId = e.target.value;
                           setBundleComponents(next);
+                          setBundleModalError('');
                         }}
                       >
                         <option value="" disabled>
                           {getTranslation(lang, 'bundles.select_component_product')}
                         </option>
-                        {products
-                          .filter(p => Boolean(p.id) && p.id !== bundleParentId)
-                          .map(p => (
-                            <option key={p.id} value={p.id}>
-                              {getProdName(p)}{p.sku ? ` (${p.sku})` : ''}
-                            </option>
-                          ))}
+                        {physicalProducts.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {getProdName(p)}{p.sku ? ` (${p.sku})` : ''} — {formatMoney(p.sellingPrice)} [{getTranslation(lang, 'bundles.componentAvailLabel')}: {p.currentStock}]
+                          </option>
+                        ))}
                       </select>
 
                       <input
                         type="number"
                         min="1"
+                        step="1"
                         required
                         value={bc.quantity}
                         onChange={e => {
                           const next = [...bundleComponents];
                           next[idx].quantity = Math.max(1, Number(e.target.value));
                           setBundleComponents(next);
+                          setBundleModalError('');
                         }}
                         className="input-clean w-full h-10 px-2 text-xs font-mono font-bold tabular-nums text-center rounded-lg"
                       />
@@ -1257,7 +1572,101 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 mt-2">
+              {/* Live Financial Summary Box + Bundle Selling Price */}
+              <div className="border border-border rounded-xl p-3.5 bg-card flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={15} className="text-primary" />
+                  <span className="text-xs font-bold text-foreground">
+                    {getTranslation(lang, 'bundles.financialSummaryTitle')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="p-2.5 rounded-lg bg-muted/50 border border-border/80 flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {getTranslation(lang, 'bundles.totalComponentsCost')}
+                    </span>
+                    <span className="text-xs font-mono font-bold tabular-nums text-foreground">
+                      {formatMoney(bundleFinancials.totalCost)}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-muted/50 border border-border/80 flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {getTranslation(lang, 'bundles.totalIndividualRetail')}
+                    </span>
+                    <span className="text-xs font-mono font-bold tabular-nums text-foreground">
+                      {formatMoney(bundleFinancials.totalRetail)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bundle Selling Price Input + Live Margin/Savings Indicators */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">
+                      {getTranslation(lang, 'bundles.bundleSellingPriceLabel')} *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={bundleSellingPrice}
+                      onChange={e => {
+                        setBundleSellingPrice(e.target.value);
+                        setBundlePriceTouched(true);
+                        setBundleModalError('');
+                      }}
+                      className="input-clean w-full h-10 px-3 text-sm font-mono font-bold tabular-nums rounded-lg"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <div
+                      className={`px-3 py-1.5 rounded-lg border text-xs flex items-center justify-between ${
+                        bundleFinancials.isBelowCost
+                          ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                          : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400'
+                      }`}
+                    >
+                      <span className="text-[11px] font-semibold">
+                        {getTranslation(lang, 'bundles.estimatedProfit')}
+                      </span>
+                      <span className="font-mono font-bold tabular-nums" dir="ltr">
+                        {formatMoney(bundleFinancials.profit)} ({bundleFinancials.marginPct >= 0 ? `+${bundleFinancials.marginPct}%` : `${bundleFinancials.marginPct}%`})
+                      </span>
+                    </div>
+
+                    {bundleFinancials.totalRetail > 0 && (
+                      <div className="px-3 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[11px] flex items-center justify-between">
+                        <span className="font-medium">
+                          {getTranslation(lang, 'bundles.customerSavings')}
+                        </span>
+                        <span className="font-mono font-bold tabular-nums" dir="ltr">
+                          {formatMoney(bundleFinancials.savings)} ({bundleFinancials.savingsPct}%)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {bundleFinancials.isBelowCost && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold">
+                    <AlertTriangle size={14} className="shrink-0" />
+                    <span>{getTranslation(lang, 'bundles.belowCostWarning')}</span>
+                  </div>
+                )}
+              </div>
+
+              {bundleModalError && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{bundleModalError}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2.5 mt-1">
                 <button
                   type="button"
                   className="btn-clean-secondary"

@@ -89,17 +89,19 @@ public class PriceListsController : ControllerBase
 
     [HttpGet("/api/bundles")]
     [HasPermission(Permissions.Inventory.ItemsView)]
-    public async Task<ActionResult<ApiResponse<List<ProductBundleDto>>>> GetBundles()
+    public async Task<ActionResult<ApiResponse<List<ProductBundleDto>>>> GetBundles([FromQuery] Guid? warehouseId = null)
     {
-        var bundles = await _priceListService.GetBundlesAsync();
+        var bundles = await _priceListService.GetBundlesAsync(warehouseId);
         return Ok(ApiResponse<List<ProductBundleDto>>.Ok(bundles));
     }
 
     [HttpGet("/api/bundles/{productId:guid}")]
     [HasPermission(Permissions.Inventory.ItemsView)]
-    public async Task<ActionResult<ApiResponse<ProductBundleDto>>> GetBundleByProductId(Guid productId)
+    public async Task<ActionResult<ApiResponse<ProductBundleDto>>> GetBundleByProductId(
+        Guid productId,
+        [FromQuery] Guid? warehouseId = null)
     {
-        var bundle = await _priceListService.GetBundleByProductIdAsync(productId);
+        var bundle = await _priceListService.GetBundleByProductIdAsync(productId, warehouseId);
         if (bundle == null)
         {
             return NotFound(ApiResponse<ProductBundleDto>.Fail("ERR_BUNDLE_NOT_FOUND", "PRICING"));
@@ -113,6 +115,22 @@ public class PriceListsController : ControllerBase
     {
         var performedBy = User?.Identity?.Name;
         var result = await _priceListService.SaveBundleAsync(request, performedBy);
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpPut("/api/bundles/{bundleId:guid}")]
+    [HasPermission(Permissions.Inventory.ItemsEdit)]
+    public async Task<ActionResult<ApiResponse<ProductBundleDto>>> UpdateBundle(
+        Guid bundleId,
+        [FromBody] SaveProductBundleRequest request)
+    {
+        var performedBy = User?.Identity?.Name;
+        var scopedRequest = request with { BundleId = bundleId };
+        var result = await _priceListService.SaveBundleAsync(scopedRequest, performedBy);
         if (!result.Success)
         {
             return BadRequest(result);

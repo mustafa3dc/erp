@@ -212,7 +212,9 @@ public class QuotationService : IQuotationService
         {
             var quotation = await _context.SalesQuotations
                 .Include(q => q.Items)
-                .ThenInclude(i => i.Product)
+                    .ThenInclude(i => i.Product)
+                    .ThenInclude(p => p!.BundleComponents)
+                    .ThenInclude(bc => bc.ComponentProduct)
                 .FirstOrDefaultAsync(q => q.Id == id);
 
             if (quotation == null)
@@ -238,26 +240,59 @@ public class QuotationService : IQuotationService
                 return ApiResponse<ConvertQuotationResponseDto>.Fail("ERR_WAREHOUSE_NOT_FOUND", "INVENTORY");
             }
 
-            // 1. Stock ATP Verification
+            // 1. Stock ATP Verification (handles Product Bundles via components)
             foreach (var item in quotation.Items)
             {
-                var stock = await _context.WarehouseStocks
-                    .FirstOrDefaultAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == item.ProductId);
-
-                var availableStock = stock?.AvailableToPromise ?? 0;
                 var requestedQty = (int)Math.Ceiling(item.Quantity);
 
-                if (availableStock < requestedQty)
+                if (item.Product != null && item.Product.IsBundle)
                 {
-                    await transaction.RollbackAsync();
-                    return ApiResponse<ConvertQuotationResponseDto>.Fail("ERR_INSUFFICIENT_STOCK", "INVENTORY",
-                        new Dictionary<string, object>
+                    if (item.Product.BundleComponents.Count == 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return ApiResponse<ConvertQuotationResponseDto>.Fail("ERR_BUNDLE_COMPONENTS_REQUIRED", "PRICING");
+                    }
+
+                    foreach (var comp in item.Product.BundleComponents)
+                    {
+                        var compStock = await _context.WarehouseStocks
+                            .FirstOrDefaultAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == comp.ComponentProductId);
+                        var compAvail = compStock?.AvailableToPromise ?? 0;
+                        var reqCompQty = (int)Math.Ceiling(comp.Quantity * requestedQty);
+
+                        if (compAvail < reqCompQty)
                         {
-                            ["sku"] = item.ProductSku,
-                            ["productName"] = item.ProductName,
-                            ["requestedQty"] = requestedQty,
-                            ["availableQty"] = availableStock
-                        });
+                            await transaction.RollbackAsync();
+                            return ApiResponse<ConvertQuotationResponseDto>.Fail("ERR_INSUFFICIENT_STOCK", "INVENTORY",
+                                new Dictionary<string, object>
+                                {
+                                    ["sku"] = comp.ComponentProduct?.Sku ?? item.ProductSku,
+                                    ["productName"] = comp.ComponentProduct?.Name ?? item.ProductName,
+                                    ["requestedQty"] = reqCompQty,
+                                    ["availableQty"] = compAvail
+                                });
+                        }
+                    }
+                }
+                else
+                {
+                    var stock = await _context.WarehouseStocks
+                        .FirstOrDefaultAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == item.ProductId);
+
+                    var availableStock = stock?.AvailableToPromise ?? 0;
+
+                    if (availableStock < requestedQty)
+                    {
+                        await transaction.RollbackAsync();
+                        return ApiResponse<ConvertQuotationResponseDto>.Fail("ERR_INSUFFICIENT_STOCK", "INVENTORY",
+                            new Dictionary<string, object>
+                            {
+                                ["sku"] = item.ProductSku,
+                                ["productName"] = item.ProductName,
+                                ["requestedQty"] = requestedQty,
+                                ["availableQty"] = availableStock
+                            });
+                    }
                 }
             }
 
@@ -305,36 +340,102 @@ public class QuotationService : IQuotationService
                 };
                 invoiceItems.Add(line);
 
-                var stock = await _context.WarehouseStocks
-                    .FirstAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == qItem.ProductId);
-
-                if (isWarehouseDispatch)
+                if (qItem.Product != null && qItem.Product.IsBundle && qItem.Product.BundleComponents.Count > 0)
                 {
-                    stock.ReservedQuantity += line.Quantity;
+                    foreach (var comp in qItem.Product.BundleComponents)
+                    {
+                        var compStock = await _context.WarehouseStocks
+                            .FirstAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == comp.ComponentProductId);
+                        var reqCompQty = (int)Math.Ceiling(comp.Quantity * line.Quantity);
+
+                        if (isWarehouseDispatch)
+                        {
+                            compStock.ReservedQuantity += reqCompQty;
+                        }
+                        else
+                        {
+                            compStock.Quantity -= reqCompQty;
+                            compStock.LastCountedAt = DateTime.UtcNow;
+
+                            _context.InventoryTransactions.Add(new InventoryTransaction
+                            {
+                                ProductId = comp.ComponentProductId,
+                                WarehouseId = targetWarehouseId,
+                                QuantityChange = -reqCompQty,
+                                TransactionType = "SALE",
+                                Reason = $"تحويل عرض سعر {quotation.QuotationNumber} إلى فاتورة {invoiceNumber} (مكون حزمة {qItem.ProductName})",
+                                ReferenceUserId = cashierId ?? "System",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+                    }
                 }
                 else
                 {
-                    stock.Quantity -= line.Quantity;
-                    stock.LastCountedAt = DateTime.UtcNow;
+                    var stock = await _context.WarehouseStocks
+                        .FirstAsync(ws => ws.WarehouseId == targetWarehouseId && ws.ProductId == qItem.ProductId);
 
-                    _context.InventoryTransactions.Add(new InventoryTransaction
+                    if (isWarehouseDispatch)
                     {
-                        ProductId = qItem.ProductId,
-                        WarehouseId = targetWarehouseId,
-                        QuantityChange = -line.Quantity,
-                        TransactionType = "SALE",
-                        Reason = $"تحويل عرض سعر {quotation.QuotationNumber} إلى فاتورة {invoiceNumber}",
-                        ReferenceUserId = cashierId ?? "System",
-                        CreatedAt = DateTime.UtcNow
-                    });
+                        stock.ReservedQuantity += line.Quantity;
+                    }
+                    else
+                    {
+                        stock.Quantity -= line.Quantity;
+                        stock.LastCountedAt = DateTime.UtcNow;
+
+                        _context.InventoryTransactions.Add(new InventoryTransaction
+                        {
+                            ProductId = qItem.ProductId,
+                            WarehouseId = targetWarehouseId,
+                            QuantityChange = -line.Quantity,
+                            TransactionType = "SALE",
+                            Reason = $"تحويل عرض سعر {quotation.QuotationNumber} إلى فاتورة {invoiceNumber}",
+                            ReferenceUserId = cashierId ?? "System",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
                 }
             }
 
             _context.SalesInvoiceItems.AddRange(invoiceItems);
 
-            // 4. If Warehouse Dispatch, Stage in Warehouse Queue
+            // 4. If Warehouse Dispatch, Stage in Warehouse Queue (expand bundles into physical component picks)
             if (isWarehouseDispatch)
             {
+                var expandedDispatchItems = new List<object>();
+                foreach (var qi in quotation.Items)
+                {
+                    var lineQty = (int)Math.Ceiling(qi.Quantity);
+                    if (qi.Product != null && qi.Product.IsBundle && qi.Product.BundleComponents.Count > 0)
+                    {
+                        foreach (var comp in qi.Product.BundleComponents)
+                        {
+                            expandedDispatchItems.Add(new
+                            {
+                                productId = comp.ComponentProductId,
+                                productSku = comp.ComponentProduct?.Sku ?? "",
+                                productName = $"{comp.ComponentProduct?.Name ?? ""} ({qi.ProductName})",
+                                Quantity = (int)Math.Ceiling(comp.Quantity * lineQty),
+                                unitPrice = comp.ComponentProduct?.SellingPrice ?? 0m,
+                                lineTotal = (comp.ComponentProduct?.SellingPrice ?? 0m) * (int)Math.Ceiling(comp.Quantity * lineQty)
+                            });
+                        }
+                    }
+                    else
+                    {
+                        expandedDispatchItems.Add(new
+                        {
+                            productId = qi.ProductId,
+                            productSku = qi.ProductSku,
+                            productName = qi.ProductName,
+                            Quantity = lineQty,
+                            unitPrice = qi.UnitPrice,
+                            lineTotal = qi.LineTotal
+                        });
+                    }
+                }
+
                 var dispatchOrder = new WarehouseDispatchOrder
                 {
                     InvoiceId = invoice.Id,
@@ -342,15 +443,7 @@ public class QuotationService : IQuotationService
                     WarehouseId = targetWarehouseId,
                     CustomerName = quotation.CustomerName,
                     CashierName = invoice.CashierName,
-                    ItemsSnapshot = System.Text.Json.JsonSerializer.Serialize(quotation.Items.Select(i => new
-                    {
-                        i.ProductId,
-                        i.ProductSku,
-                        i.ProductName,
-                        Quantity = (int)Math.Ceiling(i.Quantity),
-                        i.UnitPrice,
-                        i.LineTotal
-                    })),
+                    ItemsSnapshot = System.Text.Json.JsonSerializer.Serialize(expandedDispatchItems),
                     TotalQuantity = (int)quotation.Items.Sum(i => i.Quantity),
                     Status = "PENDING",
                     Notes = $"من عرض السعر {quotation.QuotationNumber}",

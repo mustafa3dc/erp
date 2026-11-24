@@ -127,11 +127,38 @@ export interface ProductBundleItem {
   id: string;
   parentProductId: string;
   parentProductName?: string;
+  parentProductSku?: string;
+  parentBarcode?: string;
+  parentSellingPrice?: number;
   childProductId: string;
   childProductName: string;
   childProductSku: string;
   quantity: number;
   unitPriceRatio: number;
+  componentCostPrice?: number;
+  componentSellingPrice?: number;
+  availableStock?: number;
+}
+
+export interface ProductBundleRecord {
+  bundleId: string;
+  bundleSku: string;
+  barcode?: string;
+  bundleName: string;
+  bundleSellingPrice: number;
+  totalComponentsCost: number;
+  totalComponentsRetailPrice: number;
+  availableQuantity: number;
+  components: Array<{
+    id: string;
+    componentProductId: string;
+    componentProductName: string;
+    componentProductSku: string;
+    quantity: number;
+    componentCostPrice: number;
+    componentSellingPrice: number;
+    availableStock: number;
+  }>;
 }
 
 export type PurchaseReturnStatus = 'Draft' | 'Approved' | 'Rejected';

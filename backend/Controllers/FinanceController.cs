@@ -151,19 +151,29 @@ public class FinanceController : ControllerBase
         // 1. Sales Revenue
         var invoices = await _context.SalesInvoices
             .Include(i => i.Items)
-            .ThenInclude(it => it.Product)
+                .ThenInclude(it => it.Product)
+                .ThenInclude(p => p!.BundleComponents)
+                .ThenInclude(bc => bc.ComponentProduct)
             .Where(i => i.CreatedAt >= start && i.CreatedAt <= end && i.PaymentStatus == "PAID")
             .ToListAsync();
 
         var totalRevenue = invoices.Sum(i => i.TotalAmount);
         
-        // 2. Cost of Goods Sold (COGS)
+        // 2. Cost of Goods Sold (COGS) - bundles sum their component costs dynamically
         decimal totalCogs = 0;
         foreach (var inv in invoices)
         {
             foreach (var item in inv.Items)
             {
-                var unitCost = item.Product?.CostPrice ?? 0;
+                decimal unitCost;
+                if (item.Product != null && item.Product.IsBundle && item.Product.BundleComponents.Count > 0)
+                {
+                    unitCost = item.Product.BundleComponents.Sum(bc => (bc.ComponentProduct?.CostPrice ?? 0m) * bc.Quantity);
+                }
+                else
+                {
+                    unitCost = item.Product?.CostPrice ?? 0m;
+                }
                 totalCogs += unitCost * item.Quantity;
             }
         }

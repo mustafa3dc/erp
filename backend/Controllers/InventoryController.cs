@@ -70,6 +70,16 @@ public class InventoryController : ControllerBase
             return NotFound(new { success = false, errorCode = "ERR_PRODUCT_NOT_FOUND", message = "الصنف المحدد غير موجود في قاعدة البيانات" });
         }
 
+        if (product.IsBundle)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                errorCode = "ERR_BUNDLE_NO_PHYSICAL_STOCK",
+                message = "لا يمكن إجراء تسوية مخزنية مباشرة لحزمة منتجات مركبة؛ يتم احتساب رصيدها تلقائياً من مكوناتها."
+            });
+        }
+
         var warehouse = await _context.Warehouses
             .FirstOrDefaultAsync(w => w.Id == request.WarehouseId && w.IsActive);
         if (warehouse == null)

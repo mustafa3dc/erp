@@ -20,7 +20,8 @@ import {
   MapPin,
   Tag,
   Receipt,
-  Store
+  Store,
+  Wallet
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { UserProfile } from '../../types/rbac';
@@ -33,7 +34,8 @@ import {
   resolveQuantityUnitPrice,
   getStoredProductBundles,
   getEffectiveProductStock,
-  resolveOrCreateLocalCustomer
+  resolveOrCreateLocalCustomer,
+  getStoredTreasuryAccounts
 } from '../../services/storageService';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
@@ -119,8 +121,13 @@ export default function CreateInvoiceView({
   const [barcodeQuery, setBarcodeQuery] = useState<string>('');
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
 
-  // Financials & Payment
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit' | 'card' | 'electronic' | 'installment'>('cash');
+  // Financials & Payment (Strictly decoupled from POS shifts: routes to Safe / Bank Account)
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit' | 'card' | 'bank_transfer' | 'electronic' | 'installment'>('cash');
+  const [treasuryAccounts] = useState<any[]>(() => getStoredTreasuryAccounts());
+  const [selectedTreasuryAccountId, setSelectedTreasuryAccountId] = useState<string>(() => {
+    const accounts = getStoredTreasuryAccounts();
+    return accounts.find(a => a.id === 'ACC-01' || a.type === 'CASH')?.id || accounts[0]?.id || 'ACC-01';
+  });
   const [downPayment, setDownPayment] = useState<number>(0);
   const [installmentCount, setInstallmentCount] = useState<number>(6);
   const [guarantorName, setGuarantorName] = useState<string>('');
@@ -135,6 +142,22 @@ export default function CreateInvoiceView({
       setPaymentMethod('cash');
     }
   }, [isIraqTenant, paymentMethod]);
+
+  // Auto-select sensible default Treasury account (Safe vs Bank) when payment method switches
+  useEffect(() => {
+    if (treasuryAccounts.length === 0) return;
+    if (paymentMethod === 'card' || paymentMethod === 'bank_transfer' || paymentMethod === 'electronic') {
+      const bankAcc = treasuryAccounts.find(a => a.type === 'BANK');
+      if (bankAcc) {
+        setSelectedTreasuryAccountId(bankAcc.id);
+        return;
+      }
+    }
+    if (paymentMethod === 'cash') {
+      const cashSafe = treasuryAccounts.find(a => a.id === 'ACC-01' || a.type === 'CASH');
+      if (cashSafe) setSelectedTreasuryAccountId(cashSafe.id);
+    }
+  }, [paymentMethod, treasuryAccounts]);
 
   // Tax calculation from settings
   const taxRatePercent = typeof settings?.taxRate === 'number' ? settings.taxRate : 0;
@@ -421,6 +444,7 @@ export default function CreateInvoiceView({
       installmentContractId = contract.id;
     }
 
+    const chosenTreasury = treasuryAccounts.find(a => a.id === selectedTreasuryAccountId);
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
@@ -429,6 +453,10 @@ export default function CreateInvoiceView({
       customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
+      shiftId: null,
+      sourceModule: 'STANDARD_INVOICE',
+      treasuryAccountId: paymentMethod !== 'credit' ? (selectedTreasuryAccountId || 'ACC-01') : undefined,
+      treasuryAccountName: paymentMethod !== 'credit' ? (chosenTreasury?.nameAr || chosenTreasury?.name) : undefined,
       dispenseMode,
       fulfillmentStatus: isWarehouseDispatch ? 'PENDING_DISPATCH' : 'FULFILLED',
       dispatchOrderId: dispatchOrder?.id,
@@ -874,6 +902,9 @@ export default function CreateInvoiceView({
                     <SelectItem value="card">
                       {isAr ? 'بطاقة مصرفية / جهاز POS' : 'POS Bank Card'}
                     </SelectItem>
+                    <SelectItem value="bank_transfer">
+                      {isAr ? 'حوالة / تحويل بنكي' : 'Bank Transfer'}
+                    </SelectItem>
                     <SelectItem value="installment">
                       {isAr ? 'بيع بالتقسيط (Installment Plan)' : 'Installment Plan'}
                     </SelectItem>
@@ -885,6 +916,39 @@ export default function CreateInvoiceView({
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Safe / Bank Account Selector for Paid Standard Sales Invoices */}
+              {paymentMethod !== 'credit' && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="treasuryAccountSelect" className="text-xs font-semibold text-foreground/80 flex items-center gap-1.5 m-0">
+                      <Wallet size={13} className="text-emerald-600" />
+                      <span>{getTranslation(lang, 'ui.invoiceTreasury.safeBankLabel')}</span>
+                    </Label>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      {getTranslation(lang, 'ui.invoiceTreasury.independentBadge')}
+                    </span>
+                  </div>
+                  <Select
+                    value={selectedTreasuryAccountId}
+                    onValueChange={setSelectedTreasuryAccountId}
+                  >
+                    <SelectTrigger id="treasuryAccountSelect" className="h-9 rounded-lg border border-border/80 bg-background text-xs font-medium">
+                      <SelectValue placeholder={getTranslation(lang, 'ui.invoiceTreasury.selectTreasuryPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover text-popover-foreground border-border shadow-xl">
+                      {treasuryAccounts.map((acc) => (
+                        <SelectItem key={acc.id} value={acc.id}>
+                          {isAr ? (acc.nameAr || acc.name) : (acc.nameEn || acc.name)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10.5px] text-muted-foreground m-0">
+                    {getTranslation(lang, 'ui.invoiceTreasury.defaultMainSafeHint')}
+                  </p>
+                </div>
+              )}
 
               {/* Installment Plan Configuration Box */}
               {paymentMethod === 'installment' && (

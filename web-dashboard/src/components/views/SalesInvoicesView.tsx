@@ -17,6 +17,7 @@ import { Button } from '../ui/button';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useSettings } from '../../context/settings-context';
 import { localizeWarehouse } from '../../lib/localeHelpers';
+import { getTranslation } from '../../lib/i18n';
 
 export interface SalesInvoicesViewProps {
   invoices: SalesInvoice[];
@@ -88,9 +89,14 @@ export default function SalesInvoicesView({
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="view-title text-xl font-bold m-0 leading-tight">
-              {isAr ? 'فواتير المبيعات' : 'Sales Invoices'}
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="view-title text-xl font-bold m-0 leading-tight">
+                {isAr ? 'فواتير المبيعات' : 'Sales Invoices'}
+              </h2>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                {getTranslation(lang, 'ui.invoiceTreasury.independentBadge')}
+              </span>
+            </div>
             <p className="view-subtitle text-xs text-muted-foreground m-0 mt-0.5">
               {isAr ? 'سجل العمليات المفوترة، التحصيل النقدي، وإدارة الذمم المدينة' : 'Issued invoices register, cash receipts, and customer receivables'}
             </p>

@@ -120,6 +120,8 @@ public class PosTerminalController : ControllerBase
             });
         }
 
+        request.Source = InvoiceSource.POS;
+
         try
         {
             var invoice = await _discountEngine.CreatePosInvoiceAsync(request);
@@ -127,7 +129,9 @@ public class PosTerminalController : ControllerBase
         }
         catch (ApplicationException ex)
         {
-            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+            var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
+                ? "ERR_NO_ACTIVE_SHIFT"
+                : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
                 ? "ERR_CUSTOMER_NOT_FOUND"
@@ -216,7 +220,7 @@ public class PosTerminalController : ControllerBase
         var shiftInvoices = await _context.SalesInvoices
             .AsNoTracking()
             .Include(i => i.Items)
-            .Where(i => i.ShiftId == normalizedShiftId && i.PaymentStatus == "PAID")
+            .Where(i => i.ShiftId == normalizedShiftId && i.Source == nameof(InvoiceSource.POS) && i.PaymentStatus == "PAID")
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 
@@ -306,10 +310,10 @@ public class PosTerminalController : ControllerBase
             ? $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}"
             : request.ShiftId.Trim();
 
-        // Strictly query POS sales and petty expenses tagged with ShiftId == shiftId
+        // Strictly query POS sales and petty expenses tagged with ShiftId == shiftId && Source == POS
         var shiftInvoices = await _context.SalesInvoices
             .AsNoTracking()
-            .Where(i => i.ShiftId == shiftId && i.PaymentStatus == "PAID")
+            .Where(i => i.ShiftId == shiftId && i.Source == nameof(InvoiceSource.POS) && i.PaymentStatus == "PAID")
             .ToListAsync();
 
         var dbExpenseSum = await _context.CashExpenses
@@ -343,6 +347,19 @@ public class PosTerminalController : ControllerBase
         var expectedCash = request.OpeningFloat + cashSales - pettyExpenses;
         var difference = request.ActualCash - expectedCash;
         var zReportNumber = request.ZReportNumber ?? $"Z-{DateTime.UtcNow.Year}-{Random.Shared.Next(1000, 9999)}";
+
+        // Transfer net shift drawer cash (actual counted cash or expected cash net of float) to Main Safe upon Z-Report closure
+        var drawerTransferAmount = Math.Max(0m, request.ActualCash > 0m ? request.ActualCash - request.OpeningFloat : cashSales - pettyExpenses);
+        if (drawerTransferAmount > 0m)
+        {
+            var mainSafe = await _context.CashBoxes.FirstOrDefaultAsync(cb => cb.IsActive);
+            if (mainSafe != null)
+            {
+                mainSafe.CurrentBalance += drawerTransferAmount;
+                mainSafe.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        }
 
         var closedRecord = new ShiftAuditRecordDto
         {

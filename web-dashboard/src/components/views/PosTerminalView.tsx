@@ -724,7 +724,7 @@ export default function PosTerminalView({
 
     if (!activeShift) {
       showPaymentToast(
-        t('posMessages.shiftClosedError', isAr ? 'لا يمكن إتمام البيع: الوردية مقفلة، يرجى فتح وردية كاشير أولاً' : 'Cannot checkout: Shift is closed, please open a shift first')
+        getTranslation(lang, 'ui.invoiceTreasury.errNoActiveShift')
       );
       setIsOpenShiftModalOpen(true);
       return;
@@ -973,7 +973,12 @@ export default function PosTerminalView({
       } catch {}
 
     } catch (err: any) {
-      if (err.message?.includes('ERR_CREDIT_SALE_REQUIRES_CUSTOMER')) {
+      if (err.message?.includes('ERR_NO_ACTIVE_SHIFT')) {
+        const msg = getTranslation(lang, 'ui.invoiceTreasury.errNoActiveShift');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+        setIsOpenShiftModalOpen(true);
+      } else if (err.message?.includes('ERR_CREDIT_SALE_REQUIRES_CUSTOMER')) {
         setCustomerErrorHighlight(true);
         const msg = getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer');
         setStockError(msg);

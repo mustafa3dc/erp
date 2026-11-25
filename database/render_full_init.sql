@@ -1227,6 +1227,9 @@ CREATE INDEX IF NOT EXISTS idx_sales_invoices_fulfillment ON sales_invoices(fulf
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_dispense_mode ON sales_invoices(dispense_mode);
 ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS shift_id VARCHAR(100);
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_shift_id ON sales_invoices(shift_id);
+ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT 'POS';
+ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS treasury_account_id UUID;
+CREATE INDEX IF NOT EXISTS idx_sales_invoices_source_shift ON sales_invoices(source, shift_id);
 ALTER TABLE IF EXISTS customers ADD COLUMN IF NOT EXISTS is_default_cash_customer BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE IF EXISTS customers ADD COLUMN IF NOT EXISTS created_by VARCHAR(150);
 ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE RESTRICT;

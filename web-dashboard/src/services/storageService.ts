@@ -1314,9 +1314,12 @@ export function executePosSaleTransaction(
     }
   }
 
-  // 3. Save Sales Invoice with Dispense Attributes, Strict Shift Isolation & 3-Way Customer Resolution
+  // 3. Enforce Strict Active POS Shift & Dispatch Attributes
   const activeShift = getStoredActiveShift();
   const resolvedShiftId = req.shiftId || activeShift?.id;
+  if (!activeShift || activeShift.status !== 'ACTIVE' || !resolvedShiftId) {
+    throw new Error('ERR_NO_ACTIVE_SHIFT');
+  }
   const invoiceCreatedIso = new Date().toISOString();
   const upperMethod = (req.paymentMethod || 'CASH').toUpperCase();
   const isCreditOrInstallment = upperMethod === 'CREDIT' || upperMethod === 'INSTALLMENT' || upperMethod === 'CUSTOMER_ACCOUNT_DEBIT';
@@ -1973,18 +1976,22 @@ export function saveStoredActiveShift(shift: ActiveShift | null): void {
   }
 }
 
-export function recordTreasuryInflow(method: string, amount: number): void {
+export function recordTreasuryInflow(method: string, amount: number, preferredAccountId?: string): void {
   const normMethod = (method || '').toUpperCase();
   const numAmount = Number(amount) || 0;
   if (numAmount <= 0) return;
 
   const accounts = getStoredTreasuryAccounts();
   const isCash = normMethod === 'CASH' || normMethod === 'نقد' || normMethod === 'نقداً';
-  const targetId = isCash ? 'ACC-01' : (accounts.find(a => a.type === 'BANK')?.id || 'ACC-01');
+  const targetId = preferredAccountId
+    ? preferredAccountId
+    : isCash
+    ? 'ACC-01'
+    : (accounts.find(a => a.type === 'BANK')?.id || 'ACC-01');
   let matched = false;
 
   const updated = accounts.map(acc => {
-    if (acc.id === targetId || (!matched && isCash && (acc.type === 'CASH' || acc.id === 'ACC-01'))) {
+    if (acc.id === targetId || (!matched && !preferredAccountId && isCash && (acc.type === 'CASH' || acc.id === 'ACC-01'))) {
       matched = true;
       const isLargeIqd = numAmount > 10000;
       const addedIqd = isLargeIqd ? numAmount : Math.round(numAmount * 1520);
@@ -2001,11 +2008,21 @@ export function recordTreasuryInflow(method: string, amount: number): void {
   saveStoredTreasuryAccounts(updated);
 }
 
+/**
+ * Transfers POS cash drawer balance to the Main Safe (ACC-01) upon closing the shift / Z-Report.
+ */
+export function transferShiftDrawerToMainSafe(amount: number): void {
+  const numAmount = Number(amount) || 0;
+  if (numAmount <= 0) return;
+  recordTreasuryInflow('CASH', numAmount, 'ACC-01');
+}
+
 export function recordShiftSale(method: string, amount: number, targetShiftId?: string): void {
   const normMethod = (method || '').toUpperCase();
   const numAmount = Number(amount) || 0;
   if (numAmount <= 0) return;
 
+  // POS Cash stays strictly inside the Shift Drawer until Shift Close / Z-Report
   const current = getStoredActiveShift();
   if (current && (!targetShiftId || current.id === targetShiftId)) {
     if (normMethod === 'CASH' || normMethod === 'نقد' || normMethod === 'نقداً') {
@@ -2022,9 +2039,6 @@ export function recordShiftSale(method: string, amount: number, targetShiftId?: 
     }
     saveStoredActiveShift(current);
   }
-
-  // Record inflow into Treasury cash/bank account
-  recordTreasuryInflow(normMethod, numAmount);
 }
 
 export interface LocalShiftBreakdown {
@@ -2055,6 +2069,8 @@ export function getLocalShiftBreakdown(shiftId: string): LocalShiftBreakdown {
     inv =>
       inv &&
       inv.shiftId === shiftId &&
+      inv.sourceModule !== 'STANDARD_INVOICE' &&
+      inv.sourceModule !== 'INVOICE' &&
       (inv.status === 'paid' || (inv.status as string) === 'PAID')
   );
 
@@ -2155,6 +2171,16 @@ export function getStoredTreasuryAccounts(): any[] {
       balanceUsd: paidCashSum > 0 ? Math.round(paidCashSum / 1520) : 0, 
       balanceIqd: paidCashSum, 
       currency: 'IQD' 
+    },
+    {
+      id: 'ACC-02',
+      name: 'Primary Bank Account',
+      nameAr: 'الحساب البنكي الرئيسي',
+      nameEn: 'Primary Bank Account',
+      type: 'BANK',
+      balanceUsd: 0,
+      balanceIqd: 0,
+      currency: 'IQD'
     }
   ];
   safeSet(KEYS.TREASURY_ACCOUNTS, defaultAccounts);

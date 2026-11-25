@@ -304,6 +304,12 @@ public class StockMovementItem : ITenantEntity
     public decimal UnitCost { get; set; }
 }
 
+public enum InvoiceSource
+{
+    POS = 0,
+    StandardInvoice = 1
+}
+
 [Table("sales_invoices")]
 public class SalesInvoice : ITenantEntity
 {
@@ -346,6 +352,14 @@ public class SalesInvoice : ITenantEntity
     [MaxLength(100)]
     [Column("shift_id")]
     public string? ShiftId { get; set; }
+
+    [MaxLength(30)]
+    [Column("source")]
+    public string Source { get; set; } = nameof(InvoiceSource.POS);
+
+    [Column("treasury_account_id")]
+    public Guid? TreasuryAccountId { get; set; }
+    public CashBox? TreasuryAccount { get; set; }
 
     [Column("subtotal")]
     public decimal Subtotal { get; set; }
@@ -521,6 +535,14 @@ public class DiscountAuditLog : ITenantEntity
     [MaxLength(100)]
     [Column("shift_id")]
     public string? ShiftId { get; set; }
+
+    [MaxLength(30)]
+    [Column("source")]
+    public string Source { get; set; } = nameof(InvoiceSource.POS);
+
+    [Column("treasury_account_id")]
+    public Guid? TreasuryAccountId { get; set; }
+    public CashBox? TreasuryAccount { get; set; }
 
     [Column("was_manager_override")]
     public bool WasManagerOverride { get; set; }
@@ -988,6 +1010,14 @@ public class CashExpense : ITenantEntity
     [MaxLength(100)]
     [Column("shift_id")]
     public string? ShiftId { get; set; }
+
+    [MaxLength(30)]
+    [Column("source")]
+    public string Source { get; set; } = nameof(InvoiceSource.POS);
+
+    [Column("treasury_account_id")]
+    public Guid? TreasuryAccountId { get; set; }
+    public CashBox? TreasuryAccount { get; set; }
 
     [Column("cash_box_id")]
     public Guid? CashBoxId { get; set; }

@@ -706,6 +706,14 @@
       "balanceLabel": "الرصيد",
       "keyboardHint": "↑↓ للتنقل • Enter للاختيار • Esc للإغلاق"
     },
+    "invoiceTreasury": {
+      "safeBankLabel": "الخزينة / الحساب البنكي للإيداع",
+      "defaultMainSafeHint": "توريد مباشر للخزينة بدون الارتباط بوردية كاشير",
+      "independentBadge": "مستقل عن وردية الكاشير",
+      "selectTreasuryPlaceholder": "اختر الخزينة أو الحساب البنكي...",
+      "errNoActiveShift": "لا توجد وردية كاشير مفتوحة حالياً! يرجى فتح وردية أولاً لإتمام البيع من شاشة الكاشير.",
+      "drawerTransferredToast": "تم ترحيل صافي نقدية الوردية ({amount}) إلى الخزينة الرئيسية بنجاح!"
+    },
     "common": {
       "clearSearch": "مسح البحث",
       "loadingData": "جاري تحميل البيانات...",

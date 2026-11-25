@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ERP.Warehouse.Api.Models;
 
 /// <summary>
@@ -109,6 +111,9 @@ public class CreatePosInvoiceRequest
     public string CashierId { get; set; } = string.Empty;
     public string CashierName { get; set; } = string.Empty;
     public string? ShiftId { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public InvoiceSource Source { get; set; } = InvoiceSource.POS;
+    public Guid? TreasuryAccountId { get; set; }
     public string PaymentMethod { get; set; } = "CASH"; // CASH, CARD
     public List<PosInvoiceItemRequest> Items { get; set; } = new();
 }
@@ -141,6 +146,9 @@ public class PosInvoiceResponse
     public string PaymentMethod { get; set; } = "CASH";
     public string PaymentStatus { get; set; } = "PAID";
     public string? ShiftId { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public InvoiceSource Source { get; set; } = InvoiceSource.POS;
+    public Guid? TreasuryAccountId { get; set; }
     public DateTime CreatedAt { get; set; }
     public int DiscounterItemsCount { get; set; }
     public int OverriddenItemsCount { get; set; }

@@ -40,7 +40,8 @@ import {
   getStoredPastShifts, 
   saveStoredPastShifts,
   getStoredInvoices,
-  getLocalShiftBreakdown
+  getLocalShiftBreakdown,
+  transferShiftDrawerToMainSafe
 } from '../../services/storageService';
 import { SalesInvoice } from '../../types/warehouse';
 import { getTranslation } from '../../lib/i18n';
@@ -586,6 +587,15 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
       difference: discrepancy,
       status: 'CLOSED'
     };
+
+    // Transfer net shift drawer cash to the Main Safe upon closing the shift / Z-Report
+    const drawerCashForSafe = Math.max(
+      0,
+      (countedNum > 0 ? countedNum : expectedCash) - (activeShift.openingFloat || 0)
+    );
+    if (drawerCashForSafe > 0) {
+      transferShiftDrawerToMainSafe(drawerCashForSafe);
+    }
 
     // Close and clear active shift
     saveStoredActiveShift(null);

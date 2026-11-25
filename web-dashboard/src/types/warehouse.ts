@@ -111,8 +111,10 @@ export interface SalesInvoice {
   total: number;
   paymentMethod?: 'cash' | 'card' | 'credit' | 'bank_transfer' | 'installment' | 'zain_cash' | 'qi_card';
   installmentContractId?: string;
-  shiftId?: string;
-  sourceModule?: 'POS' | 'INVOICE';
+  shiftId?: string | null;
+  sourceModule?: 'POS' | 'STANDARD_INVOICE' | 'INVOICE';
+  treasuryAccountId?: string;
+  treasuryAccountName?: string;
   dispenseMode?: 'IN_STORE' | 'WAREHOUSE_DISPATCH';
   fulfillmentStatus?: 'FULFILLED' | 'PENDING_DISPATCH';
   dispatchOrderId?: string;

@@ -19,15 +19,18 @@ public class InvoicesController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ISalesReturnService _salesReturnService;
+    private readonly IDiscountEngineService _discountEngine;
     private readonly ILogger<InvoicesController> _logger;
 
     public InvoicesController(
         AppDbContext context,
         ISalesReturnService salesReturnService,
+        IDiscountEngineService discountEngine,
         ILogger<InvoicesController> logger)
     {
         _context = context;
         _salesReturnService = salesReturnService;
+        _discountEngine = discountEngine;
         _logger = logger;
     }
 
@@ -82,6 +85,45 @@ public class InvoicesController : ControllerBase
         {
             _logger.LogError(ex, "Failed to fetch invoices");
             return StatusCode(500, new { errorCode = "ERR_FETCH_INVOICES", message = "حدث خطأ أثناء تحميل الفواتير" });
+        }
+    }
+
+    /// <summary>
+    /// POST /api/invoices
+    /// Creates a Standard Back-Office Sales Invoice strictly decoupled from POS shifts (Source = StandardInvoice, ShiftId = null).
+    /// Paid cash/bank amounts route directly into the selected TreasuryAccountId (Main Safe by default).
+    /// </summary>
+    [HttpPost]
+    public async Task<ActionResult<PosInvoiceResponse>> CreateStandardInvoice([FromBody] CreatePosInvoiceRequest request)
+    {
+        request.Source = InvoiceSource.StandardInvoice;
+        request.ShiftId = null;
+
+        try
+        {
+            var created = await _discountEngine.CreatePosInvoiceAsync(request);
+            return CreatedAtAction(nameof(GetInvoices), new { id = created.InvoiceId }, created);
+        }
+        catch (ApplicationException ex)
+        {
+            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+                ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
+                : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
+                ? "ERR_CUSTOMER_NOT_FOUND"
+                : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
+                ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
+                ? "ERR_INSUFFICIENT_STOCK"
+                : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))
+                ? "INVALID_WAREHOUSE"
+                : "ERR_CREATE_STANDARD_INVOICE_FAILED";
+
+            return BadRequest(new { errorCode, message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create standard sales invoice");
+            return StatusCode(500, new { errorCode = "ERR_INTERNAL_INVOICE", message = "حدث خطأ أثناء إنشاء فاتورة المبيعات" });
         }
     }
 

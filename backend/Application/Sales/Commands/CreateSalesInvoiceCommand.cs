@@ -25,7 +25,9 @@ public sealed record CreateSalesInvoiceCommand(
     string CashierId,
     string CashierName,
     string PaymentMethod,
-    List<SalesItemRequestDto> Items
+    List<SalesItemRequestDto> Items,
+    Guid? TreasuryAccountId = null,
+    InvoiceSource Source = InvoiceSource.StandardInvoice
 ) : Inventory.Commands.IRequest<Result<PosInvoiceResponse>>;
 
 public sealed class CreateSalesInvoiceCommandHandler 
@@ -51,6 +53,9 @@ public sealed class CreateSalesInvoiceCommandHandler
                 CustomerName = cmd.CustomerName,
                 CashierId = cmd.CashierId,
                 CashierName = cmd.CashierName,
+                ShiftId = null, // Standard Sales Invoices are strictly shift-independent
+                Source = cmd.Source,
+                TreasuryAccountId = cmd.TreasuryAccountId,
                 PaymentMethod = cmd.PaymentMethod,
                 Items = cmd.Items.ConvertAll(i => new PosInvoiceItemRequest
                 {

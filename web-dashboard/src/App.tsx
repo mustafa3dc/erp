@@ -886,9 +886,11 @@ function DashboardApp() {
       || currentUser?.username?.trim() 
       || (isAr ? 'أمين الصندوق' : 'Cashier');
 
-    // Ensure invoice stores the actual operator
+    // Ensure Standard Back-Office Invoice is strictly decoupled from POS Shifts (ShiftId = null, Source = STANDARD_INVOICE)
     const finalizedInvoice: SalesInvoice = {
       ...newInvoice,
+      shiftId: null,
+      sourceModule: 'STANDARD_INVOICE',
       operator: effectiveOperator
     };
 
@@ -1026,10 +1028,54 @@ function DashboardApp() {
       });
     }
 
-    // 4. Update Treasury safe for Back-Office Sales Invoice (strictly isolated from POS Cashier Shift drawer)
+    // 4. Route Paid Standard Sales Invoice directly to Selected Safe / Bank Account (strictly decoupled from POS Shifts)
     if (finalizedInvoice.status === 'paid') {
-      recordTreasuryInflow(finalizedInvoice.paymentMethod || 'CASH', Number(finalizedInvoice.total) || 0);
+      recordTreasuryInflow(
+        finalizedInvoice.paymentMethod || 'CASH',
+        Number(finalizedInvoice.total) || 0,
+        finalizedInvoice.treasuryAccountId
+      );
     }
+
+    // Optional background API persistence for Standard Sales Invoices (Source = StandardInvoice, ShiftId = null)
+    try {
+      const token = typeof window !== 'undefined'
+        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+        : null;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const matchedWh = warehouses.find(
+        w => w.nameAr === finalizedInvoice.warehouseName || w.nameEn === finalizedInvoice.warehouseName
+      );
+      if (token && matchedWh && uuidRegex.test(matchedWh.id)) {
+        fetch('/api/invoices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            warehouseId: matchedWh.id,
+            dispenseMode: finalizedInvoice.dispenseMode || 'IN_STORE',
+            customerId: uuidRegex.test(finalizedInvoice.customerId || '') ? finalizedInvoice.customerId : null,
+            customerName: finalizedInvoice.customerName || null,
+            shiftId: null,
+            source: 'StandardInvoice',
+            treasuryAccountId: uuidRegex.test(finalizedInvoice.treasuryAccountId || '') ? finalizedInvoice.treasuryAccountId : null,
+            cashierId: currentUser?.username || 'ADMIN',
+            cashierName: effectiveOperator,
+            paymentMethod: (finalizedInvoice.paymentMethod || 'CASH').toUpperCase(),
+            items: (finalizedInvoice.items || [])
+              .filter(it => uuidRegex.test(it.productId))
+              .map(it => ({
+                productId: it.productId,
+                quantity: it.quantity,
+                discountType: 'NONE',
+                discountValue: 0
+              }))
+          })
+        }).catch(() => {});
+      }
+    } catch {}
 
     setSelectedInvoiceForModal(finalizedInvoice);
     showToast(

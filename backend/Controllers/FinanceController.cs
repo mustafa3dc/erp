@@ -138,6 +138,30 @@ public class FinanceController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/finance/treasury-accounts
+    /// Lists active Treasury Safes and Bank Accounts for direct routing on Standard Sales Invoices.
+    /// </summary>
+    [HttpGet("treasury-accounts")]
+    public async Task<ActionResult<IEnumerable<object>>> GetTreasuryAccounts()
+    {
+        var boxes = await _context.CashBoxes
+            .AsNoTracking()
+            .Where(cb => cb.IsActive)
+            .OrderBy(cb => cb.Code)
+            .Select(cb => new
+            {
+                cb.Id,
+                cb.Code,
+                cb.Name,
+                cb.Currency,
+                cb.CurrentBalance
+            })
+            .ToListAsync();
+
+        return Ok(boxes);
+    }
+
+    /// <summary>
     /// GET /api/finance/kpis
     /// Computes true financial KPIs factoring Operational Expenses into Net Profit.
     /// Net Profit = Gross Profit (Total Sales Revenue - COGS) - Operational Expenses.

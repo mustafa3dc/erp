@@ -16,7 +16,8 @@ import {
   ShoppingCart,
   Check,
   Zap,
-  Package
+  Package,
+  Wallet
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { useSettings } from '../../context/settings-context';
@@ -29,7 +30,8 @@ import {
   getStoredProductBundles,
   getEffectiveProductStock,
   getStoredCustomers,
-  resolveOrCreateLocalCustomer
+  resolveOrCreateLocalCustomer,
+  getStoredTreasuryAccounts
 } from '../../services/storageService';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
@@ -94,6 +96,11 @@ export default function CreateInvoiceModal({
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'credit'>('cash');
+  const [treasuryAccounts] = useState<any[]>(() => getStoredTreasuryAccounts());
+  const [selectedTreasuryAccountId, setSelectedTreasuryAccountId] = useState<string>(() => {
+    const accounts = getStoredTreasuryAccounts();
+    return accounts.find(a => a.id === 'ACC-01' || a.type === 'CASH')?.id || accounts[0]?.id || 'ACC-01';
+  });
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
   const [itemQty, setItemQty] = useState<number>(1);
   const [discount, setDiscount] = useState<number>(0);
@@ -379,6 +386,7 @@ export default function CreateInvoiceModal({
       saveStoredDispatchOrders([dispatchOrder, ...currentOrders]);
     }
 
+    const chosenTreasury = treasuryAccounts.find(a => a.id === selectedTreasuryAccountId);
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
@@ -387,6 +395,10 @@ export default function CreateInvoiceModal({
       customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
+      shiftId: null,
+      sourceModule: 'STANDARD_INVOICE',
+      treasuryAccountId: paymentMethod !== 'credit' ? (selectedTreasuryAccountId || 'ACC-01') : undefined,
+      treasuryAccountName: paymentMethod !== 'credit' ? (chosenTreasury?.nameAr || chosenTreasury?.name) : undefined,
       dispenseMode,
       fulfillmentStatus: isWarehouseDispatch ? 'PENDING_DISPATCH' : 'FULFILLED',
       dispatchOrderId: dispatchOrder?.id,
@@ -531,6 +543,27 @@ export default function CreateInvoiceModal({
                 </button>
               </div>
             </div>
+
+            {/* Safe / Bank Account Selector (Standard Invoice -> Treasury Direct) */}
+            {paymentMethod !== 'credit' && (
+              <div className="invoice-field">
+                <label className="invoice-field-label">
+                  <Wallet size={13} />
+                  <span>{getTranslation(lang, 'ui.invoiceTreasury.safeBankLabel')}</span>
+                </label>
+                <select
+                  className="invoice-text-input"
+                  value={selectedTreasuryAccountId}
+                  onChange={(e) => setSelectedTreasuryAccountId(e.target.value)}
+                >
+                  {treasuryAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {isAr ? (acc.nameAr || acc.name) : (acc.nameEn || acc.name)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Dispense Mode Segmented Control (Hidden if single warehouse) */}
             {isMultiWarehouse && (

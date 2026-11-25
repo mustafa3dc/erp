@@ -239,6 +239,15 @@ public class DiscountEngineService : IDiscountEngineService
             throw new ApplicationException("لا يمكن إتمام البيع: سلة المواد فارغة.");
         }
 
+        bool isPosSource = request.Source == InvoiceSource.POS;
+        if (isPosSource && string.IsNullOrWhiteSpace(request.ShiftId))
+        {
+            throw new ApplicationException("ERR_NO_ACTIVE_SHIFT");
+        }
+
+        var methodNormUpper = (request.PaymentMethod ?? "CASH").Trim().ToUpperInvariant();
+        bool isCreditSale = methodNormUpper is "CREDIT" or "INSTALLMENT" or "CUSTOMER_ACCOUNT_DEBIT";
+
         bool isWarehouseDispatch = string.Equals(request.DispenseMode, "WAREHOUSE_DISPATCH", StringComparison.OrdinalIgnoreCase);
         var fulfillmentWarehouseId = (isWarehouseDispatch && request.TargetWarehouseId.HasValue && request.TargetWarehouseId.Value != Guid.Empty)
             ? request.TargetWarehouseId.Value
@@ -370,9 +379,10 @@ public class DiscountEngineService : IDiscountEngineService
                 FulfillmentStatus = isWarehouseDispatch ? "PENDING_DISPATCH" : "FULFILLED",
                 CashierId = request.CashierId,
                 CashierName = request.CashierName,
-                ShiftId = string.IsNullOrWhiteSpace(request.ShiftId) ? null : request.ShiftId.Trim(),
+                ShiftId = isPosSource ? request.ShiftId?.Trim() : null,
+                Source = isPosSource ? nameof(InvoiceSource.POS) : nameof(InvoiceSource.StandardInvoice),
                 PaymentMethod = request.PaymentMethod,
-                PaymentStatus = "PAID",
+                PaymentStatus = isCreditSale ? "UNPAID" : "PAID",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -570,6 +580,24 @@ public class DiscountEngineService : IDiscountEngineService
             salesInvoice.CustomerId = resolvedCustomer.Id;
             salesInvoice.CustomerName = resolvedCustomer.Name;
 
+            // Standard Sales Invoices (Source = StandardInvoice) route paid Cash/Card/Bank Transfer directly into Treasury Safe/Bank without touching POS Shifts
+            if (!isPosSource && !isCreditSale)
+            {
+                CashBox? targetSafe = null;
+                if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
+                {
+                    targetSafe = await _context.CashBoxes
+                        .FirstOrDefaultAsync(cb => cb.Id == request.TreasuryAccountId.Value && cb.IsActive);
+                }
+                targetSafe ??= await _context.CashBoxes.FirstOrDefaultAsync(cb => cb.IsActive);
+                if (targetSafe != null)
+                {
+                    targetSafe.CurrentBalance += salesInvoice.TotalAmount;
+                    targetSafe.UpdatedAt = DateTime.UtcNow;
+                    salesInvoice.TreasuryAccountId = targetSafe.Id;
+                }
+            }
+
             _context.SalesInvoices.Add(salesInvoice);
 
             WarehouseDispatchOrder? dispatchOrder = null;
@@ -622,6 +650,8 @@ public class DiscountEngineService : IDiscountEngineService
                 PaymentMethod = salesInvoice.PaymentMethod,
                 PaymentStatus = salesInvoice.PaymentStatus,
                 ShiftId = salesInvoice.ShiftId,
+                Source = isPosSource ? InvoiceSource.POS : InvoiceSource.StandardInvoice,
+                TreasuryAccountId = salesInvoice.TreasuryAccountId,
                 CreatedAt = salesInvoice.CreatedAt,
                 DiscounterItemsCount = discountedCount,
                 OverriddenItemsCount = overriddenCount,

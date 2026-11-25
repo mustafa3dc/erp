@@ -67,6 +67,51 @@ const ALLOWED_MIME_SET = new Set([
   'application/pdf'
 ]);
 
+const normalizeMatchText = (input?: string | null): string => {
+  if (!input) return '';
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const levenshteinDistance = (a: string, b: string): number => {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0) return m;
+  if (m === 0) return n;
+  let prev = Array.from({ length: m + 1 }, (_, j) => j);
+  let curr = new Array<number>(m + 1);
+  for (let i = 1; i <= n; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[m];
+};
+
+const computeNameSimilarity = (a: string, b: string): number => {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const setA = new Set(a.split(' ').filter(Boolean));
+  const setB = new Set(b.split(' ').filter(Boolean));
+  let inter = 0;
+  setA.forEach(tok => { if (setB.has(tok)) inter++; });
+  const union = new Set([...setA, ...setB]).size;
+  const jaccard = union > 0 ? inter / union : 0;
+  const maxLen = Math.max(a.length, b.length);
+  const lev = maxLen > 0 ? 1 - levenshteinDistance(a, b) / maxLen : 0;
+  return Math.max(jaccard, lev);
+};
+
 export default function PurchaseOcrUploadModal({
   isOpen,
   onClose,
@@ -107,24 +152,35 @@ export default function PurchaseOcrUploadModal({
     const enrichedItems: ExtractedPurchaseInvoiceItem[] = (raw.items || []).map(item => {
       if (item.matchedProductId) return item;
       const code = (item.barcodeOrSku || '').trim().toLowerCase();
-      const nameNorm = (item.rawItemName || '').trim().toLowerCase();
+      const nameNorm = normalizeMatchText(item.rawItemName);
       const nonBundles = products.filter(p => !p.isBundle);
 
-      let matched = code
-        ? nonBundles.find(p => (p.barcode || '').toLowerCase() === code || (p.sku || '').toLowerCase() === code)
-        : undefined;
-      let conf: 'High' | 'Low' | 'None' = matched ? 'High' : 'None';
+      let matched: Product | undefined;
+      let conf: 'High' | 'Low' | 'None' = 'None';
 
-      if (!matched && nameNorm) {
+      if (code) {
+        // Strict rule: if Barcode/SKU is present, match ONLY on exact Barcode/SKU.
+        // Never fall back to fuzzy text matching against unrelated catalog products.
         matched = nonBundles.find(
-          p =>
-            p.nameAr.toLowerCase() === nameNorm ||
-            (p.nameEn && p.nameEn.toLowerCase() === nameNorm) ||
-            p.nameAr.toLowerCase().includes(nameNorm) ||
-            nameNorm.includes(p.nameAr.toLowerCase())
+          p => (p.barcode || '').trim().toLowerCase() === code || (p.sku || '').trim().toLowerCase() === code
         );
-        if (matched) {
-          conf = matched.nameAr.toLowerCase() === nameNorm ? 'High' : 'Low';
+        if (matched) conf = 'High';
+      } else if (nameNorm) {
+        let bestScore = 0;
+        let bestCand: Product | undefined;
+        for (const p of nonBundles) {
+          const score = Math.max(
+            computeNameSimilarity(nameNorm, normalizeMatchText(p.nameAr)),
+            p.nameEn ? computeNameSimilarity(nameNorm, normalizeMatchText(p.nameEn)) : 0
+          );
+          if (score > bestScore) {
+            bestScore = score;
+            bestCand = p;
+          }
+        }
+        if (bestCand && bestScore >= 0.85) {
+          matched = bestCand;
+          conf = 'High';
         }
       }
 

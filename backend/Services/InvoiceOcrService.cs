@@ -515,9 +515,10 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
                 {
                     confidence = "High";
                 }
+                // Strict rule: when an extracted Barcode/SKU does NOT exist in catalog,
+                // NEVER fall back to loose fuzzy name matching.
             }
-
-            if (matchedProduct == null)
+            else
             {
                 var normItemName = NormalizeText(rawName);
                 double bestScore = 0;
@@ -528,8 +529,6 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
                     var normProdName = NormalizeText(prod.Name);
                     double score = normProdName == normItemName
                         ? 1.0
-                        : (normProdName.Contains(normItemName) || normItemName.Contains(normProdName))
-                        ? 0.85
                         : ComputeSimilarity(normItemName, normProdName);
 
                     if (score > bestScore)
@@ -539,15 +538,10 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
                     }
                 }
 
-                if (bestCandidate != null && bestScore >= 0.78)
+                if (bestCandidate != null && bestScore >= 0.85)
                 {
                     matchedProduct = bestCandidate;
                     confidence = "High";
-                }
-                else if (bestCandidate != null && bestScore >= 0.45)
-                {
-                    matchedProduct = bestCandidate;
-                    confidence = "Low";
                 }
             }
 

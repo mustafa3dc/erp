@@ -123,12 +123,20 @@ public class PurchaseBillsController : ControllerBase
     {
         if (dto.Items == null || dto.Items.Count == 0)
         {
-            return BadRequest(new { errorCode = "ERR_PURCHASE_ITEMS_REQUIRED", message = "يجب أن تحتوي القائمة على مادة واحدة على الأقل." });
+            return BadRequest(new { errorCode = "ERR_PURCHASE_ITEMS_REQUIRED" });
         }
 
         if (string.IsNullOrWhiteSpace(dto.SupplierRefNo))
         {
-            return BadRequest(new { errorCode = "ERR_SUPPLIER_REF_REQUIRED", message = "رقم وصل أو قائمة التاجر الورقية إلزامي للمطابقة." });
+            return BadRequest(new { errorCode = "ERR_SUPPLIER_REF_REQUIRED" });
+        }
+
+        foreach (var itemDto in dto.Items)
+        {
+            if (itemDto.IsNewProduct && (!itemDto.SellingPrice.HasValue || itemDto.SellingPrice.Value <= 0m))
+            {
+                return BadRequest(new { errorCode = "ERR_SELLING_PRICE_REQUIRED" });
+            }
         }
 
         // Begin Atomic Database Transaction
@@ -191,12 +199,12 @@ public class PurchaseBillsController : ControllerBase
                 InvoiceDate = dto.InvoiceDate,
                 TargetWarehouseId = dto.TargetWarehouseId,
                 PaymentTerms = dto.PaymentTerms.ToUpper(),
-                Subtotal = dto.Subtotal,
-                DiscountAmount = dto.DiscountAmount,
-                ShippingCost = dto.ShippingCost,
-                NetTotal = dto.NetTotal,
-                PaidAmount = dto.PaidAmount,
-                BalanceDue = dto.BalanceDue,
+                Subtotal = Math.Round(dto.Subtotal, 4),
+                DiscountAmount = Math.Round(dto.DiscountAmount, 4),
+                ShippingCost = Math.Round(dto.ShippingCost, 4),
+                NetTotal = Math.Round(dto.NetTotal, 4),
+                PaidAmount = Math.Round(dto.PaidAmount, 4),
+                BalanceDue = Math.Round(dto.BalanceDue, 4),
                 TreasuryAccountId = dto.TreasuryAccountId,
                 BillStatus = "POSTED",
                 Notes = dto.Notes,
@@ -234,8 +242,19 @@ public class PurchaseBillsController : ControllerBase
                 int effectiveQty = Math.Max(1, (int)Math.Round(itemDto.Quantity, MidpointRounding.AwayFromZero));
 
                 bool isNewlyCreated = false;
+                decimal resolvedSellingPrice;
+                decimal roundedUnitCost = Math.Round(itemDto.UnitCost, 4);
+
                 if (targetProduct == null)
                 {
+                    if (!itemDto.SellingPrice.HasValue || itemDto.SellingPrice.Value <= 0m)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { errorCode = "ERR_SELLING_PRICE_REQUIRED" });
+                    }
+
+                    resolvedSellingPrice = Math.Round(itemDto.SellingPrice.Value, 4);
+
                     // Find or create category
                     Guid? catId = null;
                     if (!string.IsNullOrWhiteSpace(itemDto.CategoryName))
@@ -267,8 +286,8 @@ public class PurchaseBillsController : ControllerBase
                         Name = itemDto.Name.Trim(),
                         CategoryId = catId,
                         UnitOfMeasure = itemDto.UnitOfMeasure,
-                        CostPrice = itemDto.UnitCost,
-                        SellingPrice = itemDto.SellingPrice > 0 ? itemDto.SellingPrice : itemDto.UnitCost * 1.25m,
+                        CostPrice = roundedUnitCost,
+                        SellingPrice = resolvedSellingPrice,
                         MinStockLevel = 5,
                         MaxStockLevel = 1000,
                         IsActive = true,
@@ -280,11 +299,21 @@ public class PurchaseBillsController : ControllerBase
                 }
                 else
                 {
-                    // Update latest cost and proposed selling price
-                    targetProduct.CostPrice = itemDto.UnitCost;
-                    if (itemDto.SellingPrice > 0)
+                    // Update latest cost and manual selling price if provided and changed
+                    targetProduct.CostPrice = roundedUnitCost;
+                    if (itemDto.SellingPrice.HasValue && itemDto.SellingPrice.Value > 0m)
                     {
-                        targetProduct.SellingPrice = itemDto.SellingPrice;
+                        var manualSelling = Math.Round(itemDto.SellingPrice.Value, 4);
+                        if (targetProduct.SellingPrice != manualSelling)
+                        {
+                            targetProduct.SellingPrice = manualSelling;
+                            targetProduct.UpdatedAt = DateTime.UtcNow;
+                        }
+                        resolvedSellingPrice = manualSelling;
+                    }
+                    else
+                    {
+                        resolvedSellingPrice = targetProduct.SellingPrice;
                     }
                 }
 
@@ -299,9 +328,9 @@ public class PurchaseBillsController : ControllerBase
                     ItemName = targetProduct.Name,
                     UnitOfMeasure = itemDto.UnitOfMeasure,
                     Quantity = effectiveQty,
-                    UnitCost = itemDto.UnitCost,
-                    SellingPrice = itemDto.SellingPrice,
-                    LineTotal = Math.Round(itemDto.Quantity * itemDto.UnitCost, 4),
+                    UnitCost = roundedUnitCost,
+                    SellingPrice = resolvedSellingPrice,
+                    LineTotal = Math.Round(itemDto.Quantity * roundedUnitCost, 4),
                     IsNewlyCreatedProduct = isNewlyCreated,
                     CreatedAt = DateTime.UtcNow
                 };

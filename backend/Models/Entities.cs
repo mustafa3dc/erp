@@ -872,7 +872,7 @@ public record PurchaseBillItemInputDto(
     string UnitOfMeasure,
     decimal Quantity,
     decimal UnitCost,
-    decimal SellingPrice,
+    decimal? SellingPrice,
     decimal LineTotal,
     bool IsNewProduct
 );

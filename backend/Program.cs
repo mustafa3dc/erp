@@ -272,6 +272,19 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(loyaltySqlPath));
                 }
+
+                string[] aiSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "14_ai_ocr_settings.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "14_ai_ocr_settings.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "14_ai_ocr_settings.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "14_ai_ocr_settings.sql")
+                };
+                var aiSqlPath = aiSqlPaths.FirstOrDefault(File.Exists);
+                if (aiSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(aiSqlPath));
+                }
             }
         }
     }

@@ -72,6 +72,32 @@ public class PurchaseBillsController : ControllerBase
         }
     }
 
+    [HttpGet("ocr-settings")]
+    public async Task<IActionResult> GetOcrSettings(CancellationToken ct = default)
+    {
+        var status = await _invoiceOcrService.GetConfigStatusAsync(ct);
+        return Ok(status);
+    }
+
+    [HttpPut("ocr-settings")]
+    public async Task<IActionResult> UpdateOcrSettings(
+        [FromBody] UpdateOcrSettingsDto dto,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var actor = User.Identity?.Name ?? "Admin";
+            var updated = await _invoiceOcrService.SaveConfigAsync(dto.ApiKey, dto.Model, actor, ct);
+            return Ok(updated);
+        }
+        catch (OcrExtractionException ex)
+        {
+            return StatusCode(ex.StatusCode, new { errorCode = ex.ErrorCode });
+        }
+    }
+
+    public record UpdateOcrSettingsDto(string ApiKey, string? Model = null);
+
     /// <summary>
     /// Get purchase bills list with supplier and items summary
     /// </summary>

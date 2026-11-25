@@ -6,7 +6,9 @@ import {
   X,
   AlertTriangle,
   FileText,
-  Loader2
+  Loader2,
+  KeyRound,
+  CheckCircle2
 } from 'lucide-react';
 import { Product } from '../../types/warehouse';
 import { getStoredSuppliers } from '../../services/storageService';
@@ -80,6 +82,9 @@ export default function PurchaseOcrUploadModal({
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keyActivatedNotice, setKeyActivatedNotice] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -224,8 +229,48 @@ export default function PurchaseOcrUploadModal({
     if (file) processSelectedFile(file);
   };
 
+  const handleSaveApiKey = async () => {
+    const cleanKey = apiKeyInput.trim();
+    if (!cleanKey) {
+      setErrorCode('ERR_OCR_API_KEY_REQUIRED');
+      return;
+    }
+
+    setIsSavingKey(true);
+    setKeyActivatedNotice(null);
+    try {
+      const token = typeof window !== 'undefined'
+        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+        : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/purchases/ocr-settings', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ apiKey: cleanKey })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorCode(body?.errorCode || 'ERR_OCR_EXTRACTION_FAILED');
+        return;
+      }
+
+      setErrorCode(null);
+      setApiKeyInput('');
+      setKeyActivatedNotice(tr('keySavedToast'));
+    } catch {
+      setErrorCode('ERR_OCR_UPSTREAM_FAILED');
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
+
   const errorText = errorCode
-    ? getTranslation(lang, `ui.purchaseOcr.errors.${errorCode}`, getTranslation(lang, 'ui.purchaseOcr.errors.ERR_OCR_EXTRACTION_FAILED'))
+    ? (errorCode === 'ERR_OCR_API_KEY_REQUIRED'
+        ? tr('errApiKeyRequired')
+        : getTranslation(lang, `ui.purchaseOcr.errors.${errorCode}`, getTranslation(lang, 'ui.purchaseOcr.errors.ERR_OCR_EXTRACTION_FAILED')))
     : null;
 
   return (
@@ -258,12 +303,50 @@ export default function PurchaseOcrUploadModal({
 
         {/* Error Banner */}
         {errorText && (
-          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span className="flex-1">{errorText}</span>
-            <button type="button" onClick={() => setErrorCode(null)} className="cursor-pointer opacity-70 hover:opacity-100">
-              <X size={14} />
-            </button>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2.5 p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs font-semibold">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{errorText}</span>
+              <button type="button" onClick={() => setErrorCode(null)} className="cursor-pointer opacity-70 hover:opacity-100">
+                <X size={14} />
+              </button>
+            </div>
+
+            {errorCode === 'ERR_OCR_SERVICE_NOT_CONFIGURED' && (
+              <div className="p-3.5 rounded-xl border border-primary/25 bg-primary/5 space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                  <KeyRound className="w-4 h-4 text-primary shrink-0" />
+                  <span>{tr('configureKeyTitle')}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground m-0 leading-relaxed">{tr('configureKeyHint')}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder={tr('apiKeyPlaceholder')}
+                    dir="ltr"
+                    className="flex-1 h-9 px-3 rounded-lg border border-border bg-background text-xs font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSavingKey}
+                    onClick={handleSaveApiKey}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 cursor-pointer shrink-0"
+                  >
+                    {isSavingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span>{isSavingKey ? tr('savingKeyBtn') : tr('saveAndActivateKeyBtn')}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {keyActivatedNotice && (
+          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span className="flex-1">{keyActivatedNotice}</span>
           </div>
         )}
 

@@ -60,6 +60,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<LoyaltySettings> LoyaltySettings => Set<LoyaltySettings>();
     public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
+    public DbSet<AiSettings> AiSettings => Set<AiSettings>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -494,6 +495,11 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(lt => lt.ReturnId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AiSettings>(entity =>
+        {
+            entity.HasIndex(a => a.TenantId).IsUnique();
         });
     }
 }

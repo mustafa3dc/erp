@@ -96,7 +96,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         var model = _configuration["Gemini:Model"]?.Trim();
         if (string.IsNullOrWhiteSpace(model))
         {
-            model = "gemini-2.5-flash";
+            model = "gemini-3.8-flash";
         }
 
         // Cache key by content SHA-256 + tenant to eliminate duplicate Vision LLM spend on retries
@@ -215,7 +215,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
             generationConfig = new
             {
                 temperature = 0.1,
-                maxOutputTokens = 4096,
+                maxOutputTokens = 8192,
                 responseMimeType = "application/json",
                 responseSchema = new
                 {
@@ -251,16 +251,24 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         };
 
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(25);
+        client.Timeout = TimeSpan.FromSeconds(45);
 
-        var escapedModel = Uri.EscapeDataString(model);
         var escapedKey = Uri.EscapeDataString(apiKey);
-        var vertexExpressUrl = $"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}";
-        var aiStudioUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}";
+        var modelsToTry = model.Equals("gemini-3.8-flash", StringComparison.OrdinalIgnoreCase)
+            ? new[] { model, "gemini-2.5-flash" }
+            : new[] { model, "gemini-3.8-flash" };
 
-        var endpointsToTry = apiKey.StartsWith("AQ.", StringComparison.Ordinal)
-            ? new[] { vertexExpressUrl, aiStudioUrl }
-            : new[] { aiStudioUrl };
+        var endpointsToTry = new List<string>();
+        foreach (var candidateModel in modelsToTry.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var escapedModel = Uri.EscapeDataString(candidateModel);
+            endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}");
+            if (apiKey.StartsWith("AQ.", StringComparison.Ordinal))
+            {
+                endpointsToTry.Add($"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}");
+                endpointsToTry.Add($"https://aiplatform.googleapis.com/v1beta1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}");
+            }
+        }
 
         var serializedPayload = JsonSerializer.Serialize(requestPayload);
         HttpResponseMessage? response = null;
@@ -306,16 +314,39 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         try
         {
             using var doc = JsonDocument.Parse(rawResponse);
-            var textJson = doc.RootElement
+            var parts = doc.RootElement
                 .GetProperty("candidates")[0]
                 .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString();
+                .GetProperty("parts");
+
+            string? textJson = null;
+            foreach (var part in parts.EnumerateArray())
+            {
+                bool isThought = part.TryGetProperty("thought", out var thoughtProp) && thoughtProp.ValueKind == JsonValueKind.True;
+                if (!isThought && part.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+                {
+                    textJson = textProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(textJson))
+                    {
+                        break;
+                    }
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(textJson))
             {
                 throw new OcrExtractionException("ERR_OCR_SCHEMA_VALIDATION_FAILED", StatusCodes.Status422UnprocessableEntity);
+            }
+
+            textJson = textJson.Trim();
+            if (textJson.StartsWith("```", StringComparison.Ordinal))
+            {
+                var firstNewLine = textJson.IndexOf('\n');
+                var lastFence = textJson.LastIndexOf("```", StringComparison.Ordinal);
+                if (firstNewLine >= 0 && lastFence > firstNewLine)
+                {
+                    textJson = textJson[(firstNewLine + 1)..lastFence].Trim();
+                }
             }
 
             var parsed = JsonSerializer.Deserialize<GeminiExtractedInvoicePayload>(textJson, JsonOpts);

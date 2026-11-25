@@ -708,11 +708,20 @@
     },
     "invoiceTreasury": {
       "safeBankLabel": "Deposit to Safe / Bank Account",
-      "defaultMainSafeHint": "Direct treasury deposit (no POS shift required)",
-      "independentBadge": "Shift-Independent",
+      "defaultMainSafeHint": "Invoice is tracked in active shift and settled to Safe upon shift close",
+      "independentBadge": "Bound to Active Shift",
       "selectTreasuryPlaceholder": "Select safe or bank account...",
-      "errNoActiveShift": "No active POS shift is open! Please open a cashier shift first to checkout.",
-      "drawerTransferredToast": "Net POS shift drawer cash ({amount}) transferred to Main Safe!"
+      "errNoActiveShift": "No active shift is open! Please open a cashier shift first to checkout.",
+      "drawerTransferredToast": "Net shift drawer cash ({amount}) transferred to Main Safe!"
+    },
+    "invoiceShiftGate": {
+      "noActiveShiftTitle": "No Active Shift Open",
+      "noActiveShiftBadge": "Shift Closed",
+      "activeShiftLinkedBadge": "Active Shift: {shiftId}",
+      "noActiveShiftMessage": "An active open shift is strictly required before opening or issuing a sales invoice so drawer totals and Z-Reports stay accurate.",
+      "shiftClosedWhileEditing": "The active shift was closed while editing! Please open an active shift before saving this invoice.",
+      "openShiftActionBtn": "Go to Open Shift",
+      "dismissBtn": "Dismiss"
     },
     "common": {
       "clearSearch": "Clear search",

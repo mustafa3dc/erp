@@ -144,7 +144,8 @@ import {
   getStoredUsers,
   getAllStoredUsersMaster,
   saveStoredUsers,
-  recordTreasuryInflow,
+  getStoredActiveShift,
+  recordShiftSale,
   getStoredProductBundles
 } from './services/storageService';
 import './App.css';
@@ -886,10 +887,16 @@ function DashboardApp() {
       || currentUser?.username?.trim() 
       || (isAr ? 'أمين الصندوق' : 'Cashier');
 
-    // Ensure Standard Back-Office Invoice is strictly decoupled from POS Shifts (ShiftId = null, Source = STANDARD_INVOICE)
+    // Strictly bind Standard Sales Invoice to the current active open shift
+    const liveShift = getStoredActiveShift();
+    if (!liveShift || liveShift.status !== 'ACTIVE') {
+      showToast(getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftTitle'));
+      return;
+    }
+
     const finalizedInvoice: SalesInvoice = {
       ...newInvoice,
-      shiftId: null,
+      shiftId: newInvoice.shiftId || liveShift.id,
       sourceModule: 'STANDARD_INVOICE',
       operator: effectiveOperator
     };
@@ -1028,16 +1035,16 @@ function DashboardApp() {
       });
     }
 
-    // 4. Route Paid Standard Sales Invoice directly to Selected Safe / Bank Account (strictly decoupled from POS Shifts)
-    if (finalizedInvoice.status === 'paid') {
-      recordTreasuryInflow(
+    // 4. Route Paid Sales Invoice into the Active Shift Drawer (transferred to Main Safe once upon closing shift / Z-Report)
+    if (finalizedInvoice.status === 'paid' && finalizedInvoice.shiftId) {
+      recordShiftSale(
         finalizedInvoice.paymentMethod || 'CASH',
         Number(finalizedInvoice.total) || 0,
-        finalizedInvoice.treasuryAccountId
+        finalizedInvoice.shiftId
       );
     }
 
-    // Optional background API persistence for Standard Sales Invoices (Source = StandardInvoice, ShiftId = null)
+    // Optional background API persistence for Standard Sales Invoices bound to the active Shift
     try {
       const token = typeof window !== 'undefined'
         ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
@@ -1058,7 +1065,7 @@ function DashboardApp() {
             dispenseMode: finalizedInvoice.dispenseMode || 'IN_STORE',
             customerId: uuidRegex.test(finalizedInvoice.customerId || '') ? finalizedInvoice.customerId : null,
             customerName: finalizedInvoice.customerName || null,
-            shiftId: null,
+            shiftId: finalizedInvoice.shiftId,
             source: 'StandardInvoice',
             treasuryAccountId: uuidRegex.test(finalizedInvoice.treasuryAccountId || '') ? finalizedInvoice.treasuryAccountId : null,
             cashierId: currentUser?.username || 'ADMIN',
@@ -1995,8 +2002,23 @@ function DashboardApp() {
             invoices={invoices}
             products={products}
             lang={lang}
-            onOpenCreateModal={() => setIsCreateInvoiceOpen(true)}
-            onNavigateToCreate={() => setActiveNav('Create Invoice')}
+            onOpenCreateModal={() => {
+              const liveShift = getStoredActiveShift();
+              if (!liveShift || liveShift.status !== 'ACTIVE') {
+                showToast(getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftTitle'));
+                return;
+              }
+              setIsCreateInvoiceOpen(true);
+            }}
+            onNavigateToCreate={() => {
+              const liveShift = getStoredActiveShift();
+              if (!liveShift || liveShift.status !== 'ACTIVE') {
+                showToast(getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftTitle'));
+                return;
+              }
+              setActiveNav('Create Invoice');
+            }}
+            onNavigateToShifts={() => setActiveNav('Shifts & Cash Drawer')}
             onOpenInvoiceDetails={(inv) => setSelectedInvoiceForModal(inv)}
           />
         )}
@@ -2013,6 +2035,7 @@ function DashboardApp() {
               setActiveNav('Sales Invoices');
             }}
             onCancel={() => setActiveNav('Sales Invoices')}
+            onNavigateToShifts={() => setActiveNav('Shifts & Cash Drawer')}
           />
         )}
 
@@ -2309,14 +2332,17 @@ function DashboardApp() {
       />
 
       {/* Create Sales Invoice Modal */}
-      <CreateInvoiceModal
-        isOpen={isCreateInvoiceOpen}
-        onClose={() => setIsCreateInvoiceOpen(false)}
-        products={products}
-        warehouses={warehouses}
-        lang={lang}
-        onCreateInvoice={handleCreateInvoice}
-      />
+      {isCreateInvoiceOpen && (
+        <CreateInvoiceModal
+          isOpen={isCreateInvoiceOpen}
+          onClose={() => setIsCreateInvoiceOpen(false)}
+          products={products}
+          warehouses={warehouses}
+          lang={lang}
+          onCreateInvoice={handleCreateInvoice}
+          onNavigateToShifts={() => setActiveNav('Shifts & Cash Drawer')}
+        />
+      )}
 
       {/* Inter-Warehouse Transfer Modal */}
       <InterWarehouseTransferModal

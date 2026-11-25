@@ -708,11 +708,20 @@
     },
     "invoiceTreasury": {
       "safeBankLabel": "الخزينة / الحساب البنكي للإيداع",
-      "defaultMainSafeHint": "توريد مباشر للخزينة بدون الارتباط بوردية كاشير",
-      "independentBadge": "مستقل عن وردية الكاشير",
+      "defaultMainSafeHint": "تُحسب الفاتورة ضمن الوردية النشطة وتُرحل للخزينة عند الإغلاق",
+      "independentBadge": "مرتبط بالوردية النشطة",
       "selectTreasuryPlaceholder": "اختر الخزينة أو الحساب البنكي...",
-      "errNoActiveShift": "لا توجد وردية كاشير مفتوحة حالياً! يرجى فتح وردية أولاً لإتمام البيع من شاشة الكاشير.",
+      "errNoActiveShift": "لا توجد وردية كاشير مفتوحة حالياً! يرجى فتح وردية أولاً لإتمام البيع.",
       "drawerTransferredToast": "تم ترحيل صافي نقدية الوردية ({amount}) إلى الخزينة الرئيسية بنجاح!"
+    },
+    "invoiceShiftGate": {
+      "noActiveShiftTitle": "لا توجد وردية نشطة مفتوحة",
+      "noActiveShiftBadge": "الوردية مقفلة",
+      "activeShiftLinkedBadge": "وردية نشطة: {shiftId}",
+      "noActiveShiftMessage": "يجب فتح وردية كاشير نشطة أولاً قبل إنشاء أو إصدار أي فاتورة مبيعات، لضمان تقييد المبالغ وتدقيق الصندوق بدقة.",
+      "shiftClosedWhileEditing": "تم إغلاق الوردية النشطة أثناء تحرير الفاتورة! يرجى فتح وردية جديدة قبل حفظ الفاتورة.",
+      "openShiftActionBtn": "الانتقال لفتح وردية الآن",
+      "dismissBtn": "إغلاق التنبيه"
     },
     "common": {
       "clearSearch": "مسح البحث",

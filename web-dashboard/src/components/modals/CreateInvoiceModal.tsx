@@ -17,11 +17,15 @@ import {
   Check,
   Zap,
   Package,
-  Wallet
+  Wallet,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { useSettings } from '../../context/settings-context';
 import {
+  ActiveShift,
+  getStoredActiveShift,
   getStoredWarehouses,
   getStoredAuthSession,
   getStoredDispatchOrders,
@@ -44,6 +48,7 @@ interface CreateInvoiceModalProps {
   warehouses?: Warehouse[];
   lang: 'ar' | 'en';
   onCreateInvoice: (invoice: SalesInvoice) => void;
+  onNavigateToShifts?: () => void;
 }
 
 export default function CreateInvoiceModal({
@@ -52,13 +57,16 @@ export default function CreateInvoiceModal({
   products,
   warehouses: propWarehouses,
   lang,
-  onCreateInvoice
+  onCreateInvoice,
+  onNavigateToShifts
 }: CreateInvoiceModalProps) {
   if (!isOpen) return null;
   const isAr = lang === 'ar';
   const { settings, formatMoney, currencySymbol } = useSettings();
   const currentSession = getStoredAuthSession();
   const isMultiWarehouse = currentSession?.features?.multiWarehouse !== false;
+  const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => getStoredActiveShift());
+  const isShiftActive = Boolean(activeShift && activeShift.status === 'ACTIVE');
 
   const formatCurrency = (amount: number) => formatMoney(amount);
 
@@ -158,6 +166,19 @@ export default function CreateInvoiceModal({
     fetchTenantWarehouses();
     return () => { isMounted = false; };
   }, [isAr]);
+
+  useEffect(() => {
+    const syncShift = () => setActiveShift(getStoredActiveShift());
+    syncShift();
+    window.addEventListener('storage', syncShift);
+    window.addEventListener('focus', syncShift);
+    const interval = setInterval(syncShift, 2000);
+    return () => {
+      window.removeEventListener('storage', syncShift);
+      window.removeEventListener('focus', syncShift);
+      clearInterval(interval);
+    };
+  }, []);
 
   const storedBundles = getStoredProductBundles();
   const selectedProduct = products.find(p => p.id === selectedProductId) || products[0];
@@ -285,6 +306,13 @@ export default function CreateInvoiceModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const liveShift = getStoredActiveShift();
+    setActiveShift(liveShift);
+    if (!liveShift || liveShift.status !== 'ACTIVE') {
+      setErrorMsg(getTranslation(lang, 'ui.invoiceShiftGate.shiftClosedWhileEditing'));
+      return;
+    }
+
     if (lineItems.length === 0) {
       setErrorMsg(isAr ? 'يرجى إضافة صنف واحد على الأقل إلى الفاتورة' : 'Please add at least one line item');
       return;
@@ -387,6 +415,7 @@ export default function CreateInvoiceModal({
     }
 
     const chosenTreasury = treasuryAccounts.find(a => a.id === selectedTreasuryAccountId);
+    const liveShiftForStamp = getStoredActiveShift();
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
@@ -395,7 +424,7 @@ export default function CreateInvoiceModal({
       customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
-      shiftId: null,
+      shiftId: liveShiftForStamp?.id || activeShift?.id || null,
       sourceModule: 'STANDARD_INVOICE',
       treasuryAccountId: paymentMethod !== 'credit' ? (selectedTreasuryAccountId || 'ACC-01') : undefined,
       treasuryAccountName: paymentMethod !== 'credit' ? (chosenTreasury?.nameAr || chosenTreasury?.name) : undefined,
@@ -458,6 +487,40 @@ export default function CreateInvoiceModal({
         </div>
 
         <form onSubmit={handleSubmit} className="invoice-modal-form">
+          {!isShiftActive && (
+            <div className="invoice-alert-banner fade-in" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.35)', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                <Lock size={15} />
+                <span style={{ fontWeight: 600 }}>{getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftMessage')}</span>
+              </div>
+              {onNavigateToShifts && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onNavigateToShifts();
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '6px',
+                    background: '#dc2626',
+                    color: '#fff',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Unlock size={13} />
+                  <span>{getTranslation(lang, 'ui.invoiceShiftGate.openShiftActionBtn')}</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {errorMsg && (
             <div className="invoice-alert-banner fade-in">
               <span>{errorMsg}</span>
@@ -1018,10 +1081,10 @@ export default function CreateInvoiceModal({
             <button 
               type="submit" 
               className="invoice-btn-confirm"
-              disabled={lineItems.length === 0 || isDiscountBlocked}
+              disabled={lineItems.length === 0 || isDiscountBlocked || !isShiftActive}
               style={{
-                opacity: (lineItems.length === 0 || isDiscountBlocked) ? 0.5 : 1,
-                cursor: (lineItems.length === 0 || isDiscountBlocked) ? 'not-allowed' : 'pointer'
+                opacity: (lineItems.length === 0 || isDiscountBlocked || !isShiftActive) ? 0.5 : 1,
+                cursor: (lineItems.length === 0 || isDiscountBlocked || !isShiftActive) ? 'not-allowed' : 'pointer'
               }}
             >
               <CheckCircle2 size={17} />

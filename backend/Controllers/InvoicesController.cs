@@ -90,14 +90,18 @@ public class InvoicesController : ControllerBase
 
     /// <summary>
     /// POST /api/invoices
-    /// Creates a Standard Back-Office Sales Invoice strictly decoupled from POS shifts (Source = StandardInvoice, ShiftId = null).
-    /// Paid cash/bank amounts route directly into the selected TreasuryAccountId (Main Safe by default).
+    /// Creates a Standard Sales Invoice strictly requiring an active open ShiftId (ERR_NO_ACTIVE_SHIFT if missing).
+    /// Binds SalesInvoice.ShiftId to the active shift for unified drawer &amp; Z-Report tracking.
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<PosInvoiceResponse>> CreateStandardInvoice([FromBody] CreatePosInvoiceRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.ShiftId))
+        {
+            return BadRequest(new { errorCode = "ERR_NO_ACTIVE_SHIFT" });
+        }
+
         request.Source = InvoiceSource.StandardInvoice;
-        request.ShiftId = null;
 
         try
         {
@@ -106,7 +110,9 @@ public class InvoicesController : ControllerBase
         }
         catch (ApplicationException ex)
         {
-            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+            var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
+                ? "ERR_NO_ACTIVE_SHIFT"
+                : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
                 ? "ERR_CUSTOMER_NOT_FOUND"

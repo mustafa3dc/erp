@@ -26,6 +26,7 @@ public sealed record CreateSalesInvoiceCommand(
     string CashierName,
     string PaymentMethod,
     List<SalesItemRequestDto> Items,
+    string? ShiftId = null,
     Guid? TreasuryAccountId = null,
     InvoiceSource Source = InvoiceSource.StandardInvoice
 ) : Inventory.Commands.IRequest<Result<PosInvoiceResponse>>;
@@ -53,7 +54,7 @@ public sealed class CreateSalesInvoiceCommandHandler
                 CustomerName = cmd.CustomerName,
                 CashierId = cmd.CashierId,
                 CashierName = cmd.CashierName,
-                ShiftId = null, // Standard Sales Invoices are strictly shift-independent
+                ShiftId = cmd.ShiftId,
                 Source = cmd.Source,
                 TreasuryAccountId = cmd.TreasuryAccountId,
                 PaymentMethod = cmd.PaymentMethod,
@@ -72,7 +73,9 @@ public sealed class CreateSalesInvoiceCommandHandler
         }
         catch (ApplicationException ex)
         {
-            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+            var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
+                ? "ERR_NO_ACTIVE_SHIFT"
+                : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
                 ? "ERR_CUSTOMER_NOT_FOUND"

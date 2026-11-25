@@ -220,7 +220,7 @@ public class PosTerminalController : ControllerBase
         var shiftInvoices = await _context.SalesInvoices
             .AsNoTracking()
             .Include(i => i.Items)
-            .Where(i => i.ShiftId == normalizedShiftId && i.Source == nameof(InvoiceSource.POS) && i.PaymentStatus == "PAID")
+            .Where(i => i.ShiftId == normalizedShiftId && i.PaymentStatus == "PAID")
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 
@@ -310,10 +310,10 @@ public class PosTerminalController : ControllerBase
             ? $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}"
             : request.ShiftId.Trim();
 
-        // Strictly query POS sales and petty expenses tagged with ShiftId == shiftId && Source == POS
+        // Strictly query paid sales invoices (POS + Standard Sales Invoices) belonging to ShiftId == shiftId
         var shiftInvoices = await _context.SalesInvoices
             .AsNoTracking()
-            .Where(i => i.ShiftId == shiftId && i.Source == nameof(InvoiceSource.POS) && i.PaymentStatus == "PAID")
+            .Where(i => i.ShiftId == shiftId && i.PaymentStatus == "PAID")
             .ToListAsync();
 
         var dbExpenseSum = await _context.CashExpenses

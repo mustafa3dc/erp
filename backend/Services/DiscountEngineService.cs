@@ -240,7 +240,7 @@ public class DiscountEngineService : IDiscountEngineService
         }
 
         bool isPosSource = request.Source == InvoiceSource.POS;
-        if (isPosSource && string.IsNullOrWhiteSpace(request.ShiftId))
+        if (string.IsNullOrWhiteSpace(request.ShiftId))
         {
             throw new ApplicationException("ERR_NO_ACTIVE_SHIFT");
         }
@@ -379,7 +379,7 @@ public class DiscountEngineService : IDiscountEngineService
                 FulfillmentStatus = isWarehouseDispatch ? "PENDING_DISPATCH" : "FULFILLED",
                 CashierId = request.CashierId,
                 CashierName = request.CashierName,
-                ShiftId = isPosSource ? request.ShiftId?.Trim() : null,
+                ShiftId = request.ShiftId.Trim(),
                 Source = isPosSource ? nameof(InvoiceSource.POS) : nameof(InvoiceSource.StandardInvoice),
                 PaymentMethod = request.PaymentMethod,
                 PaymentStatus = isCreditSale ? "UNPAID" : "PAID",
@@ -580,22 +580,10 @@ public class DiscountEngineService : IDiscountEngineService
             salesInvoice.CustomerId = resolvedCustomer.Id;
             salesInvoice.CustomerName = resolvedCustomer.Name;
 
-            // Standard Sales Invoices (Source = StandardInvoice) route paid Cash/Card/Bank Transfer directly into Treasury Safe/Bank without touching POS Shifts
-            if (!isPosSource && !isCreditSale)
+            // Optional Treasury account metadata (drawer cash transfers to Main Safe once upon closing the active shift / Z-Report)
+            if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
             {
-                CashBox? targetSafe = null;
-                if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
-                {
-                    targetSafe = await _context.CashBoxes
-                        .FirstOrDefaultAsync(cb => cb.Id == request.TreasuryAccountId.Value && cb.IsActive);
-                }
-                targetSafe ??= await _context.CashBoxes.FirstOrDefaultAsync(cb => cb.IsActive);
-                if (targetSafe != null)
-                {
-                    targetSafe.CurrentBalance += salesInvoice.TotalAmount;
-                    targetSafe.UpdatedAt = DateTime.UtcNow;
-                    salesInvoice.TreasuryAccountId = targetSafe.Id;
-                }
+                salesInvoice.TreasuryAccountId = request.TreasuryAccountId.Value;
             }
 
             _context.SalesInvoices.Add(salesInvoice);

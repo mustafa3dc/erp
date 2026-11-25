@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Plus,
@@ -10,14 +10,19 @@ import {
   Eye,
   ShoppingBag,
   DollarSign,
-  Layers
+  Layers,
+  Lock,
+  Unlock,
+  AlertTriangle
 } from 'lucide-react';
 import { SalesInvoice, Product } from '../../types/warehouse';
 import { Button } from '../ui/button';
+import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useSettings } from '../../context/settings-context';
 import { localizeWarehouse } from '../../lib/localeHelpers';
 import { getTranslation } from '../../lib/i18n';
+import { ActiveShift, getStoredActiveShift } from '../../services/storageService';
 
 export interface SalesInvoicesViewProps {
   invoices: SalesInvoice[];
@@ -25,6 +30,7 @@ export interface SalesInvoicesViewProps {
   lang: 'en' | 'ar';
   onOpenCreateModal?: () => void;
   onNavigateToCreate?: () => void;
+  onNavigateToShifts?: () => void;
   onOpenInvoiceDetails: (invoice: SalesInvoice) => void;
 }
 
@@ -34,11 +40,28 @@ export default function SalesInvoicesView({
   lang,
   onOpenCreateModal,
   onNavigateToCreate,
+  onNavigateToShifts,
   onOpenInvoiceDetails
 }: SalesInvoicesViewProps) {
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions();
   const { formatMoney } = useSettings();
+  const gt = (key: string, fallback?: string) => getTranslation(lang, `ui.invoiceShiftGate.${key}`, fallback);
+
+  const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => getStoredActiveShift());
+  const [showNoShiftModal, setShowNoShiftModal] = useState(false);
+
+  useEffect(() => {
+    const syncShift = () => setActiveShift(getStoredActiveShift());
+    window.addEventListener('erp_active_shift_updated', syncShift);
+    window.addEventListener('storage', syncShift);
+    return () => {
+      window.removeEventListener('erp_active_shift_updated', syncShift);
+      window.removeEventListener('storage', syncShift);
+    };
+  }, []);
+
+  const isShiftActive = Boolean(activeShift && activeShift.status === 'ACTIVE');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING' | 'CREDIT'>('ALL');
@@ -73,6 +96,13 @@ export default function SalesInvoicesView({
   });
 
   const handleCreateClick = () => {
+    const liveShift = getStoredActiveShift();
+    setActiveShift(liveShift);
+    if (!liveShift || liveShift.status !== 'ACTIVE') {
+      setShowNoShiftModal(true);
+      return;
+    }
+
     if (onNavigateToCreate) {
       onNavigateToCreate();
     } else if (onOpenCreateModal) {
@@ -93,9 +123,17 @@ export default function SalesInvoicesView({
               <h2 className="view-title text-xl font-bold m-0 leading-tight">
                 {isAr ? 'فواتير المبيعات' : 'Sales Invoices'}
               </h2>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                {getTranslation(lang, 'ui.invoiceTreasury.independentBadge')}
-              </span>
+              {isShiftActive && activeShift ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <Unlock size={11} />
+                  <span>{gt('activeShiftLinkedBadge').replace('{shiftId}', activeShift.id)}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                  <Lock size={11} />
+                  <span>{gt('noActiveShiftBadge')}</span>
+                </span>
+              )}
             </div>
             <p className="view-subtitle text-xs text-muted-foreground m-0 mt-0.5">
               {isAr ? 'سجل العمليات المفوترة، التحصيل النقدي، وإدارة الذمم المدينة' : 'Issued invoices register, cash receipts, and customer receivables'}
@@ -359,6 +397,56 @@ export default function SalesInvoicesView({
           </table>
         </div>
       </div>
+
+      {/* Blocking Modal when user tries to create a Sales Invoice without an Active Shift */}
+      {showNoShiftModal && (
+        <DialogPortal>
+          <DialogOverlay onClick={() => setShowNoShiftModal(false)} />
+          <DialogContent
+            className="w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl p-6 text-foreground"
+            style={{ maxWidth: '460px', width: '92%' }}
+            dir={isAr ? 'rtl' : 'ltr'}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                <AlertTriangle size={22} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-foreground m-0">
+                  {gt('noActiveShiftTitle')}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed m-0">
+                  {gt('noActiveShiftMessage')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 mt-5 pt-4 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowNoShiftModal(false)}
+                className="h-9 px-4 text-xs font-semibold rounded-lg"
+              >
+                {gt('dismissBtn')}
+              </Button>
+              {onNavigateToShifts && (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowNoShiftModal(false);
+                    onNavigateToShifts();
+                  }}
+                  className="h-9 px-4 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg flex items-center gap-1.5"
+                >
+                  <Unlock size={14} />
+                  <span>{gt('openShiftActionBtn')}</span>
+                </Button>
+              )}
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      )}
     </div>
   );
 }

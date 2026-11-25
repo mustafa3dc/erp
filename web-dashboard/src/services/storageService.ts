@@ -2069,8 +2069,6 @@ export function getLocalShiftBreakdown(shiftId: string): LocalShiftBreakdown {
     inv =>
       inv &&
       inv.shiftId === shiftId &&
-      inv.sourceModule !== 'STANDARD_INVOICE' &&
-      inv.sourceModule !== 'INVOICE' &&
       (inv.status === 'paid' || (inv.status as string) === 'PAID')
   );
 

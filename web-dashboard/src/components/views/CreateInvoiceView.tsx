@@ -21,11 +21,15 @@ import {
   Tag,
   Receipt,
   Store,
-  Wallet
+  Wallet,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import type { Product, Warehouse, SalesInvoice, InvoiceLineItem, WarehouseDispatchOrder } from '../../types/warehouse';
 import { UserProfile } from '../../types/rbac';
 import {
+  ActiveShift,
+  getStoredActiveShift,
   getStoredCustomers,
   getStoredWarehouses,
   getStoredDispatchOrders,
@@ -58,6 +62,7 @@ export interface CreateInvoiceViewProps {
   currentUser: UserProfile;
   onInvoiceCreated: (invoice: SalesInvoice) => void;
   onCancel: () => void;
+  onNavigateToShifts?: () => void;
 }
 
 export default function CreateInvoiceView({
@@ -66,11 +71,28 @@ export default function CreateInvoiceView({
   lang,
   currentUser,
   onInvoiceCreated,
-  onCancel
+  onCancel,
+  onNavigateToShifts
 }: CreateInvoiceViewProps) {
   const isAr = lang === 'ar';
   const { settings, formatMoney, tenantCountryCode } = useSettings();
   const isIraqTenant = (tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ');
+
+  const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => getStoredActiveShift());
+  const isShiftActive = Boolean(activeShift && activeShift.status === 'ACTIVE');
+
+  useEffect(() => {
+    const syncShift = () => setActiveShift(getStoredActiveShift());
+    syncShift();
+    window.addEventListener('storage', syncShift);
+    window.addEventListener('focus', syncShift);
+    const interval = setInterval(syncShift, 2000);
+    return () => {
+      window.removeEventListener('storage', syncShift);
+      window.removeEventListener('focus', syncShift);
+      clearInterval(interval);
+    };
+  }, []);
 
   const [customersList, setCustomersList] = useState<any[]>(() => getStoredCustomers());
   const [warehousesList] = useState<Warehouse[]>(() => {
@@ -325,6 +347,13 @@ export default function CreateInvoiceView({
     e.preventDefault();
     setFormError('');
 
+    const liveShift = getStoredActiveShift();
+    setActiveShift(liveShift);
+    if (!liveShift || liveShift.status !== 'ACTIVE') {
+      setFormError(getTranslation(lang, 'ui.invoiceShiftGate.shiftClosedWhileEditing'));
+      return;
+    }
+
     const isCreditOrInstallment = paymentMethod === 'credit' || paymentMethod === 'installment';
 
     if (lineItems.length === 0) {
@@ -445,6 +474,7 @@ export default function CreateInvoiceView({
     }
 
     const chosenTreasury = treasuryAccounts.find(a => a.id === selectedTreasuryAccountId);
+    const liveShiftForStamp = getStoredActiveShift();
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
@@ -453,7 +483,7 @@ export default function CreateInvoiceView({
       customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
-      shiftId: null,
+      shiftId: liveShiftForStamp?.id || activeShift?.id || null,
       sourceModule: 'STANDARD_INVOICE',
       treasuryAccountId: paymentMethod !== 'credit' ? (selectedTreasuryAccountId || 'ACC-01') : undefined,
       treasuryAccountName: paymentMethod !== 'credit' ? (chosenTreasury?.nameAr || chosenTreasury?.name) : undefined,
@@ -511,14 +541,56 @@ export default function CreateInvoiceView({
           </div>
         </div>
 
-        {/* Tenant Scope Badge */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
+        {/* Tenant & Shift Scope Badges */}
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${
+            isShiftActive
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+              : 'bg-destructive/10 text-destructive border-destructive/30'
+          }`}>
+            {isShiftActive ? <Unlock size={12} /> : <Lock size={12} />}
+            <span>
+              {isShiftActive
+                ? getTranslation(lang, 'ui.invoiceShiftGate.activeShiftLinkedBadge').replace('{cashier}', activeShift?.cashierName || currentUser.fullName || currentUser.username)
+                : getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftBadge')}
+            </span>
+          </span>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border/70">
             <Store size={12} className="text-primary" />
             <span>{currentUser.tenantSlug ? `@${currentUser.tenantSlug}` : (isAr ? 'الفرع المباشر' : 'Direct Branch')}</span>
           </span>
         </div>
       </div>
+
+      {/* Strict Shift Blocking Banner */}
+      {!isShiftActive && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive animate-in fade-in duration-200">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-destructive/15 flex items-center justify-center shrink-0 mt-0.5">
+              <Lock className="w-4 h-4 text-destructive" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-bold">
+                {getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftTitle')}
+              </div>
+              <p className="text-xs text-destructive/90 leading-relaxed m-0">
+                {getTranslation(lang, 'ui.invoiceShiftGate.noActiveShiftMessage')}
+              </p>
+            </div>
+          </div>
+          {onNavigateToShifts && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onNavigateToShifts}
+              className="h-9 px-4 text-xs font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg shrink-0 gap-1.5 cursor-pointer"
+            >
+              <Unlock size={14} />
+              <span>{getTranslation(lang, 'ui.invoiceShiftGate.openShiftActionBtn')}</span>
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Error Alert Banner */}
       {formError && (
@@ -1107,7 +1179,7 @@ export default function CreateInvoiceView({
               <div className="pt-1 space-y-2">
                 <Button
                   type="submit"
-                  disabled={lineItems.length === 0}
+                  disabled={lineItems.length === 0 || !isShiftActive}
                   className="w-full h-11 text-xs font-bold bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 transition-all rounded-lg gap-2 disabled:opacity-40 cursor-pointer"
                 >
                   <CheckCircle2 size={16} />

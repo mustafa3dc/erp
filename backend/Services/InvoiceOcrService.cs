@@ -253,20 +253,28 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(45);
 
-        var escapedKey = Uri.EscapeDataString(apiKey);
+        bool isOAuthToken = apiKey.StartsWith("AQ.", StringComparison.Ordinal)
+                         || apiKey.StartsWith("ya29.", StringComparison.Ordinal);
+
         var modelsToTry = model.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase)
             ? new[] { model, "gemini-2.0-flash" }
             : new[] { model, "gemini-2.5-flash" };
 
-        var endpointsToTry = new List<string>();
+        var endpointsToTry = new List<(string Url, bool UseBearer)>();
         foreach (var candidateModel in modelsToTry.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var escapedModel = Uri.EscapeDataString(candidateModel);
-            endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}");
-            if (apiKey.StartsWith("AQ.", StringComparison.Ordinal))
+            if (isOAuthToken)
             {
-                endpointsToTry.Add($"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}");
-                endpointsToTry.Add($"https://aiplatform.googleapis.com/v1beta1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}");
+                // OAuth2 tokens: use Authorization: Bearer header (no ?key= in URL)
+                endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent", true));
+                endpointsToTry.Add(($"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent", true));
+            }
+            else
+            {
+                // API keys (AIza...): use ?key= query param
+                var escapedKey = Uri.EscapeDataString(apiKey);
+                endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}", false));
             }
         }
 
@@ -274,9 +282,15 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         HttpResponseMessage? response = null;
         string? lastErrBody = null;
 
-        foreach (var url in endpointsToTry)
+        foreach (var (url, useBearer) in endpointsToTry)
         {
             using var httpContent = new StringContent(serializedPayload, Encoding.UTF8, "application/json");
+            if (useBearer)
+            {
+                httpContent.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                client.DefaultRequestHeaders.Remove("Authorization");
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+            }
             try
             {
                 response = await client.PostAsync(url, httpContent, ct);

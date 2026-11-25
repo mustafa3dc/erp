@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 using ERP.Warehouse.Api.Services;
 
@@ -9,11 +11,16 @@ namespace ERP.Warehouse.Api.Controllers;
 public class PosTerminalController : ControllerBase
 {
     private readonly IDiscountEngineService _discountEngine;
+    private readonly AppDbContext _context;
     private readonly ILogger<PosTerminalController> _logger;
 
-    public PosTerminalController(IDiscountEngineService discountEngine, ILogger<PosTerminalController> logger)
+    public PosTerminalController(
+        IDiscountEngineService discountEngine,
+        AppDbContext context,
+        ILogger<PosTerminalController> logger)
     {
         _discountEngine = discountEngine;
+        _context = context;
         _logger = logger;
     }
 
@@ -182,24 +189,154 @@ public class PosTerminalController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/pos/shifts/{shiftId}/summary
+    /// Strictly computes active shift drawer totals and breakdown strictly from POS invoices &amp; cash expenses
+    /// where ShiftId == shiftId (excludes other shifts and non-POS back-office invoices).
+    /// </summary>
+    [HttpGet("shifts/{shiftId}/summary")]
+    public async Task<ActionResult<ShiftBreakdownSummaryDto>> GetShiftSummary(string shiftId)
+    {
+        if (string.IsNullOrWhiteSpace(shiftId))
+        {
+            return BadRequest(new { errorCode = "ERR_INVALID_SHIFT_ID", message = "Shift ID is required." });
+        }
+
+        var normalizedShiftId = shiftId.Trim();
+
+        var shiftInvoices = await _context.SalesInvoices
+            .AsNoTracking()
+            .Include(i => i.Items)
+            .Where(i => i.ShiftId == normalizedShiftId && i.PaymentStatus == "PAID")
+            .OrderByDescending(i => i.CreatedAt)
+            .ToListAsync();
+
+        var shiftExpenses = await _context.CashExpenses
+            .AsNoTracking()
+            .Where(e => e.ShiftId == normalizedShiftId)
+            .OrderByDescending(e => e.CreatedAt)
+            .ToListAsync();
+
+        decimal cashSales = 0m;
+        decimal cardSales = 0m;
+        decimal zainCashSales = 0m;
+        decimal qiCardSales = 0m;
+
+        foreach (var inv in shiftInvoices)
+        {
+            var method = (inv.PaymentMethod ?? "CASH").Trim().ToUpperInvariant();
+            switch (method)
+            {
+                case "CASH":
+                    cashSales += inv.TotalAmount;
+                    break;
+                case "CARD":
+                case "CREDIT_CARD":
+                    cardSales += inv.TotalAmount;
+                    break;
+                case "ZAIN_CASH":
+                    zainCashSales += inv.TotalAmount;
+                    break;
+                case "QI_CARD":
+                    qiCardSales += inv.TotalAmount;
+                    break;
+            }
+        }
+
+        var pettyExpenses = shiftExpenses.Sum(e => e.Amount);
+
+        var summary = new ShiftBreakdownSummaryDto
+        {
+            ShiftId = normalizedShiftId,
+            CashSales = cashSales,
+            CardSales = cardSales,
+            ZainCashSales = zainCashSales,
+            QiCardSales = qiCardSales,
+            PettyExpenses = pettyExpenses,
+            InvoicesCount = shiftInvoices.Count,
+            ExpensesCount = shiftExpenses.Count,
+            Invoices = shiftInvoices.Select(i => new ShiftInvoiceMovementDto
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                CreatedAt = i.CreatedAt,
+                PaymentMethod = i.PaymentMethod,
+                PaymentStatus = i.PaymentStatus,
+                DispenseMode = i.DispenseMode,
+                TotalAmount = i.TotalAmount,
+                CashierName = i.CashierName ?? i.CashierId,
+                ItemsCount = i.Items.Sum(it => it.Quantity)
+            }).ToList(),
+            Expenses = shiftExpenses.Select(e => new ShiftCashExpenseMovementDto
+            {
+                Id = e.Id,
+                CreatedAt = e.CreatedAt,
+                CategoryName = e.CategoryName,
+                Amount = e.Amount,
+                Currency = e.Currency,
+                Notes = e.Notes,
+                CreatedBy = e.CreatedBy
+            }).ToList()
+        };
+
+        return Ok(summary);
+    }
+
+    /// <summary>
     /// POST /api/pos/shifts/close
-    /// Closes a POS cashier shift, records exact closing timestamp, calculates duration and variances, and archives Z-Report.
+    /// Closes a POS cashier shift, verifies drawer cash against ShiftId-filtered POS sales and expenses, and archives Z-Report.
     /// </summary>
     [HttpPost("shifts/close")]
-    public ActionResult<ShiftAuditRecordDto> CloseShift([FromBody] CloseShiftApiRequest request)
+    public async Task<ActionResult<ShiftAuditRecordDto>> CloseShift([FromBody] CloseShiftApiRequest request)
     {
         var openedAt = request.OpenedAt ?? DateTime.UtcNow.AddHours(-8);
         var closedAt = request.ClosedAt ?? DateTime.UtcNow;
         var durationSpan = closedAt > openedAt ? closedAt - openedAt : TimeSpan.Zero;
         var durationText = $"{(int)durationSpan.TotalHours} ساعة و {durationSpan.Minutes} دقيقة";
+        var shiftId = string.IsNullOrWhiteSpace(request.ShiftId)
+            ? $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}"
+            : request.ShiftId.Trim();
 
-        var expectedCash = request.OpeningFloat + request.CashSales;
+        // Strictly query POS sales and petty expenses tagged with ShiftId == shiftId
+        var shiftInvoices = await _context.SalesInvoices
+            .AsNoTracking()
+            .Where(i => i.ShiftId == shiftId && i.PaymentStatus == "PAID")
+            .ToListAsync();
+
+        var dbExpenseSum = await _context.CashExpenses
+            .AsNoTracking()
+            .Where(e => e.ShiftId == shiftId)
+            .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+
+        var cashSales = request.CashSales;
+        var cardSales = request.CardSales;
+        var zainCashSales = request.ZainCashSales ?? 0m;
+        var qiCardSales = request.QiCardSales ?? 0m;
+
+        if (shiftInvoices.Count > 0)
+        {
+            cashSales = shiftInvoices
+                .Where(i => string.Equals(i.PaymentMethod, "CASH", StringComparison.OrdinalIgnoreCase))
+                .Sum(i => i.TotalAmount);
+            cardSales = shiftInvoices
+                .Where(i => string.Equals(i.PaymentMethod, "CARD", StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(i.PaymentMethod, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase))
+                .Sum(i => i.TotalAmount);
+            zainCashSales = shiftInvoices
+                .Where(i => string.Equals(i.PaymentMethod, "ZAIN_CASH", StringComparison.OrdinalIgnoreCase))
+                .Sum(i => i.TotalAmount);
+            qiCardSales = shiftInvoices
+                .Where(i => string.Equals(i.PaymentMethod, "QI_CARD", StringComparison.OrdinalIgnoreCase))
+                .Sum(i => i.TotalAmount);
+        }
+
+        var pettyExpenses = dbExpenseSum > 0m ? dbExpenseSum : (request.PettyExpenses ?? 0m);
+        var expectedCash = request.OpeningFloat + cashSales - pettyExpenses;
         var difference = request.ActualCash - expectedCash;
-        var zReportNumber = request.ZReportNumber ?? $"Z-{DateTime.UtcNow.Year}-{new Random().Next(1000, 9999)}";
+        var zReportNumber = request.ZReportNumber ?? $"Z-{DateTime.UtcNow.Year}-{Random.Shared.Next(1000, 9999)}";
 
         var closedRecord = new ShiftAuditRecordDto
         {
-            Id = string.IsNullOrWhiteSpace(request.ShiftId) ? $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}" : request.ShiftId,
+            Id = shiftId,
             ZReportNumber = zReportNumber,
             CashierName = request.CashierName,
             TerminalId = request.TerminalId,
@@ -209,10 +346,11 @@ public class PosTerminalController : ControllerBase
             EndTime = closedAt.ToString("yyyy/MM/dd hh:mm:ss tt"),
             Duration = durationText,
             OpeningFloat = request.OpeningFloat,
-            CashSales = request.CashSales,
-            CardSales = request.CardSales,
-            ZainCashSales = request.ZainCashSales ?? 0,
-            QiCardSales = request.QiCardSales ?? 0,
+            CashSales = cashSales,
+            CardSales = cardSales,
+            ZainCashSales = zainCashSales,
+            QiCardSales = qiCardSales,
+            PettyExpenses = pettyExpenses,
             ExpectedCash = expectedCash,
             ActualCash = request.ActualCash,
             Difference = difference,

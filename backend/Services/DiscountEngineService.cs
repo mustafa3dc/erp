@@ -370,6 +370,7 @@ public class DiscountEngineService : IDiscountEngineService
                 FulfillmentStatus = isWarehouseDispatch ? "PENDING_DISPATCH" : "FULFILLED",
                 CashierId = request.CashierId,
                 CashierName = request.CashierName,
+                ShiftId = string.IsNullOrWhiteSpace(request.ShiftId) ? null : request.ShiftId.Trim(),
                 PaymentMethod = request.PaymentMethod,
                 PaymentStatus = "PAID",
                 CreatedAt = DateTime.UtcNow
@@ -613,6 +614,7 @@ public class DiscountEngineService : IDiscountEngineService
                 TotalAmount = salesInvoice.TotalAmount,
                 PaymentMethod = salesInvoice.PaymentMethod,
                 PaymentStatus = salesInvoice.PaymentStatus,
+                ShiftId = salesInvoice.ShiftId,
                 CreatedAt = salesInvoice.CreatedAt,
                 DiscounterItemsCount = discountedCount,
                 OverriddenItemsCount = overriddenCount,

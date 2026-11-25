@@ -143,7 +143,7 @@ import {
   getStoredUsers,
   getAllStoredUsersMaster,
   saveStoredUsers,
-  recordShiftSale,
+  recordTreasuryInflow,
   getStoredProductBundles
 } from './services/storageService';
 import './App.css';
@@ -969,9 +969,9 @@ function DashboardApp() {
       });
     }
 
-    // 4. Update Shift sales and Treasury safe if paid
+    // 4. Update Treasury safe for Back-Office Sales Invoice (strictly isolated from POS Cashier Shift drawer)
     if (finalizedInvoice.status === 'paid') {
-      recordShiftSale(finalizedInvoice.paymentMethod || 'CASH', Number(finalizedInvoice.total) || 0);
+      recordTreasuryInflow(finalizedInvoice.paymentMethod || 'CASH', Number(finalizedInvoice.total) || 0);
     }
 
     setSelectedInvoiceForModal(finalizedInvoice);

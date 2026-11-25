@@ -231,8 +231,24 @@ export default function InvoiceDetailsModal({
                 </span>
                 <span className="payment-method-chip">
                   {isAr 
-                    ? (invoice.paymentMethod === 'cash' ? 'نقداً' : invoice.paymentMethod === 'card' ? 'بطاقة إلكترونية' : 'آجل')
-                    : (invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'card' ? 'Card' : 'Credit')}
+                    ? (invoice.paymentMethod === 'cash'
+                        ? 'نقداً'
+                        : invoice.paymentMethod === 'card'
+                        ? 'بطاقة إلكترونية'
+                        : invoice.paymentMethod === 'zain_cash'
+                        ? 'زين كاش'
+                        : invoice.paymentMethod === 'qi_card'
+                        ? 'كي كارد'
+                        : 'آجل')
+                    : (invoice.paymentMethod === 'cash'
+                        ? 'Cash'
+                        : invoice.paymentMethod === 'card'
+                        ? 'Card'
+                        : invoice.paymentMethod === 'zain_cash'
+                        ? 'ZainCash'
+                        : invoice.paymentMethod === 'qi_card'
+                        ? 'QiCard'
+                        : 'Credit')}
                 </span>
                 {invoice.dispenseMode && (
                   <span 
@@ -333,7 +349,7 @@ export default function InvoiceDetailsModal({
 
               <div className="party-box">
                 <div className="party-title">{isAr ? 'شروط السداد والاستحقاق' : 'PAYMENT TERMS'}</div>
-                <p><strong>{isAr ? 'طريقة الدفع: ' : 'Method: '}</strong> {isAr ? (invoice.paymentMethod === 'cash' ? 'نقدي فور التسليم' : invoice.paymentMethod === 'card' ? 'شبكة بنكية / مدى' : 'أجل خلال 30 يوم') : invoice.paymentMethod?.toUpperCase() || 'CASH'}</p>
+                <p><strong>{isAr ? 'طريقة الدفع: ' : 'Method: '}</strong> {isAr ? (invoice.paymentMethod === 'cash' ? 'نقدي فور التسليم' : invoice.paymentMethod === 'card' ? 'شبكة بنكية / مدى' : invoice.paymentMethod === 'zain_cash' ? 'محفظة زين كاش' : invoice.paymentMethod === 'qi_card' ? 'بطاقة كي كارد' : 'آجل خلال 30 يوم') : (invoice.paymentMethod?.replace('_', ' ').toUpperCase() || 'CASH')}</p>
                 <p><strong>{isAr ? 'حالة السداد: ' : 'Payment Status: '}</strong> {isAr ? (invoice.status === 'paid' ? 'تم استلام المبلغ بالكامل' : 'معلق بحساب العميل') : invoice.status.toUpperCase()}</p>
                 <p><strong>{isAr ? 'تاريخ الاستحقاق: ' : 'Due Date: '}</strong> {invoice.dueDate || invoice.date}</p>
               </div>

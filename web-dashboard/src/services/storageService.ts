@@ -1136,6 +1136,7 @@ export interface PosSaleTransactionRequest {
   dispenseMode?: DispenseMode;
   targetWarehouseId?: string;
   targetWarehouseName?: string;
+  shiftId?: string;
   cashierId: string;
   cashierName: string;
   paymentMethod: string;
@@ -1317,10 +1318,21 @@ export function executePosSaleTransaction(
     }
   }
 
-  // 3. Save Sales Invoice with Dispense Attributes
-  const mappedPaymentMethod = req.paymentMethod === 'CASH' ? 'cash' 
-    : req.paymentMethod === 'CARD' ? 'card' 
-    : 'cash';
+  // 3. Save Sales Invoice with Dispense Attributes & Strict Shift Isolation
+  const activeShift = getStoredActiveShift();
+  const resolvedShiftId = req.shiftId || activeShift?.id;
+  const invoiceCreatedIso = new Date().toISOString();
+  const upperMethod = (req.paymentMethod || 'CASH').toUpperCase();
+  const mappedPaymentMethod =
+    upperMethod === 'CARD' || upperMethod === 'CREDIT_CARD'
+      ? 'card'
+      : upperMethod === 'ZAIN_CASH'
+      ? 'zain_cash'
+      : upperMethod === 'QI_CARD'
+      ? 'qi_card'
+      : upperMethod === 'INSTALLMENT'
+      ? 'installment'
+      : 'cash';
 
   const invoiceId = `INV-${Date.now()}`;
   let dispatchOrder: WarehouseDispatchOrder | undefined;
@@ -1382,6 +1394,8 @@ export function executePosSaleTransaction(
     customerPhone: '—',
     customerAddress: isWarehouseDispatch ? `تجهيز من مخزن ${effectiveWarehouseName}` : 'نقطة البيع المباشرة',
     warehouseName: effectiveWarehouseName,
+    shiftId: resolvedShiftId,
+    sourceModule: 'POS',
     dispenseMode: isWarehouseDispatch ? 'WAREHOUSE_DISPATCH' : 'IN_STORE',
     fulfillmentStatus: isWarehouseDispatch ? 'PENDING_DISPATCH' : 'FULFILLED',
     dispatchOrderId: dispatchOrder?.id,
@@ -1396,6 +1410,7 @@ export function executePosSaleTransaction(
     paymentMethod: mappedPaymentMethod as any,
     status: 'paid',
     date: nowStr,
+    createdAt: invoiceCreatedIso,
     operator: req.cashierName,
     items: req.items.map(it => ({
       id: `LNE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1420,8 +1435,8 @@ export function executePosSaleTransaction(
   const currentInvoices = getStoredInvoices();
   saveStoredInvoices([salesInvoice, ...currentInvoices]);
 
-  // 5. Update Cashier Shift Sales
-  recordShiftSale(req.paymentMethod, req.grandTotal);
+  // 5. Update Cashier Shift Sales (strictly isolated to resolvedShiftId)
+  recordShiftSale(req.paymentMethod, req.grandTotal, resolvedShiftId);
 
   return {
     invoice: salesInvoice,
@@ -1902,11 +1917,17 @@ export function getStoredActiveShift(): ActiveShift | null {
         }
       }
 
-      // Automatic reconciliation: If active shift cash sales are 0, compute from existing paid cash invoices
+      // Automatic reconciliation strictly scoped to invoices belonging to THIS exact shiftId
       if (!parsed.cashSales || Number(parsed.cashSales) === 0) {
         const invoices = safeGet<any[]>(KEYS.INVOICES, []);
         const cashSum = invoices
-          .filter(inv => inv && (inv.status === 'paid' || inv.status === 'PAID') && ((inv.paymentMethod || '').toUpperCase() === 'CASH' || !inv.paymentMethod))
+          .filter(
+            inv =>
+              inv &&
+              inv.shiftId === parsed.id &&
+              (inv.status === 'paid' || inv.status === 'PAID') &&
+              ((inv.paymentMethod || '').toUpperCase() === 'CASH' || !inv.paymentMethod)
+          )
           .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
         if (cashSum > 0) {
           parsed.cashSales = cashSum > 250 ? Math.round(cashSum / 250) * 250 : cashSum;
@@ -1970,13 +1991,13 @@ export function recordTreasuryInflow(method: string, amount: number): void {
   saveStoredTreasuryAccounts(updated);
 }
 
-export function recordShiftSale(method: string, amount: number): void {
+export function recordShiftSale(method: string, amount: number, targetShiftId?: string): void {
   const normMethod = (method || '').toUpperCase();
   const numAmount = Number(amount) || 0;
   if (numAmount <= 0) return;
 
   const current = getStoredActiveShift();
-  if (current) {
+  if (current && (!targetShiftId || current.id === targetShiftId)) {
     if (normMethod === 'CASH' || normMethod === 'نقد' || normMethod === 'نقداً') {
       const isIqdCash = numAmount >= 250;
       const cashAddition = isIqdCash ? Math.round(numAmount / 250) * 250 : numAmount;
@@ -1994,6 +2015,72 @@ export function recordShiftSale(method: string, amount: number): void {
 
   // Record inflow into Treasury cash/bank account
   recordTreasuryInflow(normMethod, numAmount);
+}
+
+export interface LocalShiftBreakdown {
+  invoices: SalesInvoice[];
+  expenses: QuickExpenseRecord[];
+  cashSales: number;
+  cardSales: number;
+  zainCashSales: number;
+  qiCardSales: number;
+  pettyExpenses: number;
+}
+
+export function getLocalShiftBreakdown(shiftId: string): LocalShiftBreakdown {
+  if (!shiftId) {
+    return {
+      invoices: [],
+      expenses: [],
+      cashSales: 0,
+      cardSales: 0,
+      zainCashSales: 0,
+      qiCardSales: 0,
+      pettyExpenses: 0
+    };
+  }
+
+  const allInvoices = getStoredInvoices();
+  const shiftInvoices = allInvoices.filter(
+    inv =>
+      inv &&
+      inv.shiftId === shiftId &&
+      (inv.status === 'paid' || (inv.status as string) === 'PAID')
+  );
+
+  const allExpenses = getStoredQuickExpenses();
+  const shiftExpenses = allExpenses.filter(exp => exp && exp.shiftId === shiftId);
+
+  let cashSales = 0;
+  let cardSales = 0;
+  let zainCashSales = 0;
+  let qiCardSales = 0;
+
+  for (const inv of shiftInvoices) {
+    const amt = Number(inv.total) || 0;
+    const method = (inv.paymentMethod || 'cash').toUpperCase();
+    if (method === 'CARD' || method === 'CREDIT_CARD') {
+      cardSales += amt;
+    } else if (method === 'ZAIN_CASH') {
+      zainCashSales += amt;
+    } else if (method === 'QI_CARD') {
+      qiCardSales += amt;
+    } else if (method === 'CASH') {
+      cashSales += amt;
+    }
+  }
+
+  const pettyExpenses = shiftExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
+
+  return {
+    invoices: shiftInvoices,
+    expenses: shiftExpenses,
+    cashSales,
+    cardSales,
+    zainCashSales,
+    qiCardSales,
+    pettyExpenses
+  };
 }
 
 export function getStoredPastShifts(): any[] {

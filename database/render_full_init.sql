@@ -1225,6 +1225,8 @@ COMMENT ON COLUMN sales_invoices.fulfillment_status IS 'FULFILLED for completed 
 
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_fulfillment ON sales_invoices(fulfillment_status);
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_dispense_mode ON sales_invoices(dispense_mode);
+ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS shift_id VARCHAR(100);
+CREATE INDEX IF NOT EXISTS idx_sales_invoices_shift_id ON sales_invoices(shift_id);
 
 -- 3. Sales Invoice Items: Explicit Source Location Attribution
 ALTER TABLE IF EXISTS sales_invoice_items 

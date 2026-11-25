@@ -108,14 +108,17 @@ export interface SalesInvoice {
   tax: number;
   discount?: number;
   total: number;
-  paymentMethod?: 'cash' | 'card' | 'credit' | 'bank_transfer' | 'installment';
+  paymentMethod?: 'cash' | 'card' | 'credit' | 'bank_transfer' | 'installment' | 'zain_cash' | 'qi_card';
   installmentContractId?: string;
+  shiftId?: string;
+  sourceModule?: 'POS' | 'INVOICE';
   dispenseMode?: 'IN_STORE' | 'WAREHOUSE_DISPATCH';
   fulfillmentStatus?: 'FULFILLED' | 'PENDING_DISPATCH';
   dispatchOrderId?: string;
   receiptDispenseNotice?: string;
   status: 'paid' | 'pending' | 'credit' | 'refunded';
   date: string;
+  createdAt?: string;
   dueDate?: string;
   operator?: string;
   notes?: string;

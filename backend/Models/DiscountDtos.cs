@@ -107,6 +107,7 @@ public class CreatePosInvoiceRequest
     public string? CustomerName { get; set; }
     public string CashierId { get; set; } = string.Empty;
     public string CashierName { get; set; } = string.Empty;
+    public string? ShiftId { get; set; }
     public string PaymentMethod { get; set; } = "CASH"; // CASH, CARD
     public List<PosInvoiceItemRequest> Items { get; set; } = new();
 }
@@ -136,6 +137,7 @@ public class PosInvoiceResponse
     public decimal TotalAmount { get; set; }
     public string PaymentMethod { get; set; } = "CASH";
     public string PaymentStatus { get; set; } = "PAID";
+    public string? ShiftId { get; set; }
     public DateTime CreatedAt { get; set; }
     public int DiscounterItemsCount { get; set; }
     public int OverriddenItemsCount { get; set; }

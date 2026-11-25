@@ -335,6 +335,10 @@ public class SalesInvoice : ITenantEntity
     [Column("cashier_name")]
     public string? CashierName { get; set; }
 
+    [MaxLength(100)]
+    [Column("shift_id")]
+    public string? ShiftId { get; set; }
+
     [Column("subtotal")]
     public decimal Subtotal { get; set; }
 
@@ -497,6 +501,10 @@ public class DiscountAuditLog : ITenantEntity
 
     [Column("cashier_name")]
     public string? CashierName { get; set; }
+
+    [MaxLength(100)]
+    [Column("shift_id")]
+    public string? ShiftId { get; set; }
 
     [Column("was_manager_override")]
     public bool WasManagerOverride { get; set; }

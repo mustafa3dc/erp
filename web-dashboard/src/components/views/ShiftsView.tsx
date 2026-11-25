@@ -21,7 +21,15 @@ import {
   RotateCcw,
   Calendar,
   Hourglass,
-  Timer
+  Timer,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  ArrowUpRight,
+  ArrowDownRight,
+  ShieldCheck,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
@@ -30,8 +38,13 @@ import {
   getStoredActiveShift, 
   saveStoredActiveShift, 
   getStoredPastShifts, 
-  saveStoredPastShifts 
+  saveStoredPastShifts,
+  getStoredInvoices,
+  getLocalShiftBreakdown
 } from '../../services/storageService';
+import { SalesInvoice } from '../../types/warehouse';
+import { getTranslation } from '../../lib/i18n';
+import InvoiceDetailsModal from '../modals/InvoiceDetailsModal';
 import { 
   formatMovementDate,
   formatShiftDateTime,
@@ -91,6 +104,9 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
     return formatMoney(val);
   };
 
+  const tr = (subKey: string, fallback?: string) =>
+    getTranslation(lang, `ui.shiftBreakdown.${subKey}`, fallback);
+
   // Permission & Role Check
   const hasShiftPermission = currentUser ? (
     currentUser.role === 'SuperAdmin' || 
@@ -143,6 +159,39 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
   const [currentZReport, setCurrentZReport] = useState<ShiftRecord | null>(null);
   const [toastMsg, setToastMsg] = useState('');
 
+  // Active Shift Breakdown Drawer / Table State
+  const [isBreakdownOpen, setIsBreakdownOpen] = useState<boolean>(true);
+  const [breakdownTab, setBreakdownTab] = useState<'ALL' | 'INVOICES' | 'EXPENSES'>('ALL');
+  const [selectedBreakdownInvoice, setSelectedBreakdownInvoice] = useState<SalesInvoice | null>(null);
+  const [localRevision, setLocalRevision] = useState<number>(0);
+  const [backendBreakdown, setBackendBreakdown] = useState<{
+    cashSales: number;
+    cardSales: number;
+    zainCashSales: number;
+    qiCardSales: number;
+    pettyExpenses: number;
+    invoices: Array<{
+      id: string;
+      invoiceNumber: string;
+      createdAt: string;
+      paymentMethod: string;
+      paymentStatus: string;
+      dispenseMode: string;
+      totalAmount: number;
+      cashierName: string;
+      itemsCount: number;
+    }>;
+    expenses: Array<{
+      id: string;
+      createdAt: string;
+      categoryName: string;
+      amount: number;
+      currency: string;
+      notes?: string;
+      createdBy?: string;
+    }>;
+  } | null>(null);
+
   // Iraqi Denominations Banknote Counter State
   const [showDenomCalculator, setShowDenomCalculator] = useState<boolean>(false);
   const [denomCounts, setDenomCounts] = useState<Record<number, number>>({
@@ -159,6 +208,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
   useEffect(() => {
     const handleStorageChange = () => {
       setActiveShift(getStoredActiveShift());
+      setLocalRevision(prev => prev + 1);
     };
     window.addEventListener('erp_active_shift_updated', handleStorageChange);
     window.addEventListener('storage', handleStorageChange);
@@ -167,6 +217,261 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
+  // Fetch authoritative ShiftId-isolated summary & movements from .NET Core Backend
+  useEffect(() => {
+    if (!activeShift?.id) {
+      setBackendBreakdown(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const controller = new AbortController();
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+      : null;
+
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (settings.tenantCountryCode) headers['X-Tenant-Country'] = settings.tenantCountryCode;
+
+    fetch(`/api/pos/shifts/${encodeURIComponent(activeShift.id)}/summary`, {
+      headers,
+      signal: controller.signal
+    })
+      .then(async res => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(data => {
+        if (!isCancelled && data && typeof data === 'object' && Array.isArray(data.invoices)) {
+          setBackendBreakdown(data);
+        }
+      })
+      .catch(() => {
+        // Offline / local-first fallback remains active without noise
+      });
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [activeShift?.id, localRevision, settings.tenantCountryCode]);
+
+  const shiftBreakdownData = useMemo(() => {
+    if (!activeShift) {
+      return {
+        movements: [] as Array<{
+          key: string;
+          kind: 'INVOICE' | 'EXPENSE';
+          reference: string;
+          timestamp: string;
+          paymentMethodKey: string;
+          amount: number;
+          cashierOrUser: string;
+          note?: string;
+          invoiceObj?: SalesInvoice;
+        }>,
+        invoicesCount: 0,
+        expensesCount: 0,
+        cashSales: 0,
+        cardSales: 0,
+        zainCashSales: 0,
+        qiCardSales: 0,
+        pettyExpenses: 0,
+        serverSynced: Boolean(backendBreakdown)
+      };
+    }
+
+    const localData = getLocalShiftBreakdown(activeShift.id);
+    const allStoredInvoices = getStoredInvoices();
+    const seenInvoiceNos = new Set<string>();
+    type ShiftMovementRow = {
+      key: string;
+      kind: 'INVOICE' | 'EXPENSE';
+      reference: string;
+      timestamp: string;
+      paymentMethodKey: string;
+      amount: number;
+      cashierOrUser: string;
+      note?: string;
+      invoiceObj?: SalesInvoice;
+    };
+
+    const invoiceEntries: ShiftMovementRow[] = [];
+
+    const mapPaymentKey = (rawMethod?: string): string => {
+      const m = (rawMethod || 'CASH').toUpperCase();
+      if (m === 'CARD' || m === 'CREDIT_CARD') return 'methodCard';
+      if (m === 'ZAIN_CASH') return 'methodZainCash';
+      if (m === 'QI_CARD') return 'methodQiCard';
+      if (m === 'INSTALLMENT') return 'methodInstallment';
+      return 'methodCash';
+    };
+
+    const normalizeMethodCode = (rawMethod?: string): SalesInvoice['paymentMethod'] => {
+      const m = (rawMethod || 'CASH').toUpperCase();
+      if (m === 'CARD' || m === 'CREDIT_CARD') return 'card';
+      if (m === 'ZAIN_CASH') return 'zain_cash';
+      if (m === 'QI_CARD') return 'qi_card';
+      if (m === 'INSTALLMENT') return 'installment';
+      return 'cash';
+    };
+
+    // 1. Local invoices strictly belonging to activeShift.id
+    for (const inv of localData.invoices) {
+      seenInvoiceNos.add(inv.invoiceNo);
+      invoiceEntries.push({
+        key: `inv-${inv.id}`,
+        kind: 'INVOICE',
+        reference: inv.invoiceNo,
+        timestamp: inv.createdAt || inv.date,
+        paymentMethodKey: mapPaymentKey(inv.paymentMethod),
+        amount: Number(inv.total) || 0,
+        cashierOrUser: inv.operator || activeShift.cashierName,
+        invoiceObj: inv
+      });
+    }
+
+    // 2. Merge any backend invoices for activeShift.id not yet in localStorage
+    if (backendBreakdown?.invoices) {
+      for (const bInv of backendBreakdown.invoices) {
+        if (seenInvoiceNos.has(bInv.invoiceNumber)) continue;
+        seenInvoiceNos.add(bInv.invoiceNumber);
+        const matchedStored = allStoredInvoices.find(i => i.invoiceNo === bInv.invoiceNumber);
+        const previewInvoice: SalesInvoice = matchedStored || {
+          id: String(bInv.id),
+          invoiceNo: bInv.invoiceNumber,
+          customerName: tr('typePosSale'),
+          warehouseName: activeShift.terminalId,
+          shiftId: activeShift.id,
+          sourceModule: 'POS',
+          dispenseMode: bInv.dispenseMode === 'WAREHOUSE_DISPATCH' ? 'WAREHOUSE_DISPATCH' : 'IN_STORE',
+          itemsCount: bInv.itemsCount || 1,
+          subtotal: Number(bInv.totalAmount) || 0,
+          tax: 0,
+          discount: 0,
+          total: Number(bInv.totalAmount) || 0,
+          paymentMethod: normalizeMethodCode(bInv.paymentMethod),
+          status: 'paid',
+          date: bInv.createdAt,
+          createdAt: bInv.createdAt,
+          operator: bInv.cashierName || activeShift.cashierName,
+          items: []
+        };
+
+        invoiceEntries.push({
+          key: `binv-${bInv.id}`,
+          kind: 'INVOICE',
+          reference: bInv.invoiceNumber,
+          timestamp: bInv.createdAt,
+          paymentMethodKey: mapPaymentKey(bInv.paymentMethod),
+          amount: Number(bInv.totalAmount) || 0,
+          cashierOrUser: bInv.cashierName || activeShift.cashierName,
+          invoiceObj: previewInvoice
+        });
+      }
+    }
+
+    // 3. Petty Cash Expenses strictly belonging to activeShift.id
+    const seenExpenseIds = new Set<string>();
+    const expenseEntries: ShiftMovementRow[] = [];
+
+    for (const exp of localData.expenses) {
+      seenExpenseIds.add(exp.id);
+      expenseEntries.push({
+        key: `exp-${exp.id}`,
+        kind: 'EXPENSE',
+        reference: exp.id,
+        timestamp: exp.createdAt,
+        paymentMethodKey: 'typeExpense',
+        amount: Number(exp.amount) || 0,
+        cashierOrUser: activeShift.cashierName,
+        note: exp.notes ? `${exp.categoryName} — ${exp.notes}` : exp.categoryName
+      });
+    }
+
+    if (backendBreakdown?.expenses) {
+      for (const bExp of backendBreakdown.expenses) {
+        const expIdStr = String(bExp.id);
+        if (seenExpenseIds.has(expIdStr)) continue;
+        expenseEntries.push({
+          key: `bexp-${expIdStr}`,
+          kind: 'EXPENSE',
+          reference: `EXP-${expIdStr.slice(0, 6).toUpperCase()}`,
+          timestamp: bExp.createdAt,
+          paymentMethodKey: 'typeExpense',
+          amount: Number(bExp.amount) || 0,
+          cashierOrUser: bExp.createdBy || activeShift.cashierName,
+          note: bExp.notes ? `${bExp.categoryName} — ${bExp.notes}` : bExp.categoryName
+        });
+      }
+    }
+
+    const movements = [...invoiceEntries, ...expenseEntries].sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+    const useBackendTotals = Boolean(
+      backendBreakdown &&
+      (backendBreakdown.invoices.length >= invoiceEntries.length || localData.invoices.length === 0) &&
+      (backendBreakdown.invoices.length > 0 || backendBreakdown.expenses.length > 0)
+    );
+
+    const rawCashSales = useBackendTotals ? Number(backendBreakdown!.cashSales) || 0 : localData.cashSales;
+    const rawCardSales = useBackendTotals ? Number(backendBreakdown!.cardSales) || 0 : localData.cardSales;
+    const rawZainCashSales = useBackendTotals ? Number(backendBreakdown!.zainCashSales) || 0 : localData.zainCashSales;
+    const rawQiCardSales = useBackendTotals ? Number(backendBreakdown!.qiCardSales) || 0 : localData.qiCardSales;
+    const rawPettyExpenses = useBackendTotals ? Number(backendBreakdown!.pettyExpenses) || 0 : localData.pettyExpenses;
+
+    return {
+      movements,
+      invoicesCount: invoiceEntries.length,
+      expensesCount: expenseEntries.length,
+      cashSales: isIqd && rawCashSales > 250 ? Math.round(rawCashSales / 250) * 250 : rawCashSales,
+      cardSales: rawCardSales,
+      zainCashSales: rawZainCashSales,
+      qiCardSales: rawQiCardSales,
+      pettyExpenses: rawPettyExpenses,
+      serverSynced: Boolean(backendBreakdown)
+    };
+  }, [activeShift, backendBreakdown, localRevision, isIqd]);
+
+  const filteredShiftMovements = useMemo(() => {
+    if (breakdownTab === 'INVOICES') {
+      return shiftBreakdownData.movements.filter(m => m.kind === 'INVOICE');
+    }
+    if (breakdownTab === 'EXPENSES') {
+      return shiftBreakdownData.movements.filter(m => m.kind === 'EXPENSE');
+    }
+    return shiftBreakdownData.movements;
+  }, [shiftBreakdownData.movements, breakdownTab]);
+
+  const normalizedActiveCashSales = activeShift
+    ? (isIqd && activeShift.cashSales > 250 ? Math.round(activeShift.cashSales / 250) * 250 : activeShift.cashSales)
+    : 0;
+
+  const hasCashDiscrepancy = Boolean(
+    activeShift && Math.abs(normalizedActiveCashSales - shiftBreakdownData.cashSales) > 0.01
+  );
+
+  const handleRecalculateShiftFromInvoices = () => {
+    if (!activeShift) return;
+    const reconciled: ActiveShift = {
+      ...activeShift,
+      cashSales: shiftBreakdownData.cashSales,
+      cardSales: shiftBreakdownData.cardSales,
+      zainCashSales: shiftBreakdownData.zainCashSales,
+      qiCardSales: shiftBreakdownData.qiCardSales,
+      expenses: shiftBreakdownData.pettyExpenses
+    };
+    saveStoredActiveShift(reconciled);
+    setActiveShift(reconciled);
+    setLocalRevision(prev => prev + 1);
+    showToast(tr('reconcileSuccessToast'));
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -294,6 +599,35 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
     setCurrentZReport(zReport);
     setShowCloseShiftModal(false);
     setShowZReportModal(true);
+
+    // Sync closure audit record with .NET Core Backend (verifies ShiftId-isolated totals server-side)
+    try {
+      const token = typeof window !== 'undefined'
+        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+        : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch('/api/pos/shifts/close', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          shiftId: activeShift.id,
+          cashierName: activeShift.cashierName,
+          terminalId: activeShift.terminalId,
+          openingFloat: activeShift.openingFloat,
+          cashSales: zReport.cashSales,
+          cardSales: zReport.cardSales,
+          zainCashSales: zReport.zainCashSales || 0,
+          qiCardSales: zReport.qiCardSales || 0,
+          pettyExpenses: activeShift.expenses || 0,
+          actualCash: countedNum,
+          zReportNumber: zReport.zReportNumber,
+          openedAt: activeShift.openedAt,
+          closedAt: now.toISOString()
+        })
+      }).catch(() => {});
+    } catch {}
 
     showToast(isAr ? `تم إغلاق الوردية وتوثيق وقت الإغلاق: ${formattedEndTime}` : `Shift closed at: ${formattedEndTime}`);
   };
@@ -500,6 +834,224 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                 {formatShiftMoney(expectedCash)}
               </h4>
             </div>
+          </div>
+
+          {/* Audit Alert when recorded drawer cash does not match ShiftId-filtered POS invoices */}
+          {hasCashDiscrepancy && (
+            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+                <span>
+                  {tr('reconcileWarningTitle')
+                    .replace('{recorded}', formatShiftMoney(normalizedActiveCashSales))
+                    .replace('{matched}', formatShiftMoney(shiftBreakdownData.cashSales))}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRecalculateShiftFromInvoices}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                <RefreshCw size={13} />
+                <span>{tr('reconcileFixBtn')}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Shift Invoices & Cash Movements Breakdown Section */}
+          <div className="rounded-xl border border-border bg-muted/20 overflow-hidden">
+            <div className="px-4 py-3.5 border-b border-border/80 bg-muted/40 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                  <Receipt size={16} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-foreground m-0">
+                      {tr('sectionTitle')}
+                    </h4>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <ShieldCheck size={12} />
+                      <span>{tr('strictIsolationBadge')}</span>
+                    </span>
+                    {shiftBreakdownData.serverSynced && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                        <span>{tr('liveDbSyncLabel')}</span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-0">
+                    {tr('sectionSubtitle')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-border bg-background p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setBreakdownTab('ALL')}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      breakdownTab === 'ALL'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tr('allTab')} ({shiftBreakdownData.movements.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBreakdownTab('INVOICES')}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      breakdownTab === 'INVOICES'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tr('invoicesTab')} ({shiftBreakdownData.invoicesCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBreakdownTab('EXPENSES')}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      breakdownTab === 'EXPENSES'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tr('expensesTab')} ({shiftBreakdownData.expensesCount})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBreakdownOpen(prev => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  {isBreakdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  <span>{isBreakdownOpen ? tr('collapseBtn') : tr('expandBtn')}</span>
+                </button>
+              </div>
+            </div>
+
+            {isBreakdownOpen && (
+              <div>
+                {filteredShiftMovements.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mx-auto mb-2.5 text-muted-foreground">
+                      <FileText size={18} />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground m-0">{tr('emptyTitle')}</p>
+                    <p className="text-xs text-muted-foreground mt-1 mb-0">{tr('emptySubtitle')}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/50 text-muted-foreground">
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colReference')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colType')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colTime')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colPaymentMethod')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colAmount')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-start">{tr('colCashier')}</th>
+                          <th className="py-2.5 px-3 font-semibold text-center">{tr('colActions')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60 bg-background/60">
+                        {filteredShiftMovements.map(row => {
+                          const isInvoice = row.kind === 'INVOICE' && Boolean(row.invoiceObj);
+                          return (
+                            <tr
+                              key={row.key}
+                              onClick={() => {
+                                if (isInvoice && row.invoiceObj) {
+                                  setSelectedBreakdownInvoice(row.invoiceObj);
+                                }
+                              }}
+                              className={`transition-colors ${
+                                isInvoice
+                                  ? 'hover:bg-primary/5 cursor-pointer'
+                                  : 'hover:bg-muted/40'
+                              }`}
+                            >
+                              <td className="py-2.5 px-3 font-mono font-bold text-foreground">
+                                <div className="flex items-center gap-1.5">
+                                  <span>#{row.reference}</span>
+                                </div>
+                                {row.note && (
+                                  <div className="text-[11px] font-sans font-normal text-muted-foreground mt-0.5 truncate max-w-[220px]">
+                                    {row.note}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {row.kind === 'INVOICE' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                    <ArrowUpRight size={12} />
+                                    <span>{tr('typePosSale')}</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400">
+                                    <ArrowDownRight size={12} />
+                                    <span>{tr('typeExpense')}</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                                {formatMovementDate(row.timestamp, lang)}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted border border-border text-[11px] font-medium text-foreground">
+                                  {tr(row.paymentMethodKey)}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                                <span className={row.kind === 'INVOICE' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+                                  {row.kind === 'INVOICE' ? '+' : '-'}{formatShiftMoney(row.amount)}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-foreground whitespace-nowrap">
+                                {row.cashierOrUser}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                {isInvoice && row.invoiceObj ? (
+                                  <button
+                                    type="button"
+                                    title={tr('viewInvoiceTooltip')}
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setSelectedBreakdownInvoice(row.invoiceObj!);
+                                    }}
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-border bg-background hover:bg-primary hover:text-primary-foreground text-muted-foreground transition-colors cursor-pointer"
+                                  >
+                                    <Eye size={14} />
+                                  </button>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="px-4 py-2.5 border-t border-border/80 bg-muted/30 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span>{tr('clickRowHint')}</span>
+                  <div className="flex flex-wrap items-center gap-3 font-mono">
+                    <span>
+                      {shiftBreakdownData.invoicesCount} {tr('invoicesCountLabel')} • {shiftBreakdownData.expensesCount} {tr('expensesCountLabel')}
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {tr('cashImpactNet')}: {formatShiftMoney(expectedCash)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -1096,6 +1648,14 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
           </DialogContent>
         </DialogPortal>
       )}
+
+      {/* Quick Invoice Inspection Modal triggered from Shift Breakdown */}
+      <InvoiceDetailsModal
+        invoice={selectedBreakdownInvoice}
+        isOpen={Boolean(selectedBreakdownInvoice)}
+        onClose={() => setSelectedBreakdownInvoice(null)}
+        lang={lang}
+      />
     </div>
   );
 }

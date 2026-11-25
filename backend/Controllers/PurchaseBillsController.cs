@@ -2,20 +2,74 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
+using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Route("api/purchases")]
+[Route("api/v1/purchases")]
 public class PurchaseBillsController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IInvoiceOcrService _invoiceOcrService;
     private readonly ILogger<PurchaseBillsController> _logger;
 
-    public PurchaseBillsController(AppDbContext context, ILogger<PurchaseBillsController> logger)
+    public PurchaseBillsController(
+        AppDbContext context,
+        IInvoiceOcrService invoiceOcrService,
+        ILogger<PurchaseBillsController> logger)
     {
         _context = context;
+        _invoiceOcrService = invoiceOcrService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// POST /api/purchases/extract-from-image
+    /// Extracts purchase invoice data via Vision AI (Gemini) and performs strictly read-only supplier/catalog matching.
+    /// NEVER mutates inventory or supplier balances.
+    /// </summary>
+    [HttpPost("extract-from-image")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> ExtractFromImage(
+        IFormFile? file,
+        [FromForm] Guid? warehouseId = null,
+        CancellationToken ct = default)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { errorCode = "ERR_INVALID_FILE_FORMAT" });
+        }
+
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            return BadRequest(new { errorCode = "ERR_FILE_TOO_LARGE" });
+        }
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            var extracted = await _invoiceOcrService.ExtractAndMatchAsync(
+                ms.ToArray(),
+                file.ContentType,
+                file.FileName,
+                warehouseId,
+                ct);
+
+            return Ok(extracted);
+        }
+        catch (OcrExtractionException ex)
+        {
+            return StatusCode(ex.StatusCode, new { errorCode = ex.ErrorCode });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected failure during purchase invoice AI OCR extraction");
+            return StatusCode(500, new { errorCode = "ERR_OCR_EXTRACTION_FAILED" });
+        }
     }
 
     /// <summary>
@@ -69,12 +123,12 @@ public class PurchaseBillsController : ControllerBase
     {
         if (dto.Items == null || dto.Items.Count == 0)
         {
-            return BadRequest(new { message = "يجب أن تحتوي القائمة على مادة واحدة على الأقل." });
+            return BadRequest(new { errorCode = "ERR_PURCHASE_ITEMS_REQUIRED", message = "يجب أن تحتوي القائمة على مادة واحدة على الأقل." });
         }
 
         if (string.IsNullOrWhiteSpace(dto.SupplierRefNo))
         {
-            return BadRequest(new { message = "رقم وصل أو قائمة التاجر الورقية إلزامي للمطابقة." });
+            return BadRequest(new { errorCode = "ERR_SUPPLIER_REF_REQUIRED", message = "رقم وصل أو قائمة التاجر الورقية إلزامي للمطابقة." });
         }
 
         // Begin Atomic Database Transaction
@@ -82,10 +136,38 @@ public class PurchaseBillsController : ControllerBase
 
         try
         {
-            var supplier = await _context.Suppliers.FindAsync(dto.SupplierId);
+            Supplier? supplier = null;
+            if (dto.SupplierId.HasValue && dto.SupplierId.Value != Guid.Empty)
+            {
+                supplier = await _context.Suppliers.FindAsync(dto.SupplierId.Value);
+            }
+
+            if (supplier == null && !string.IsNullOrWhiteSpace(dto.NewSupplierName))
+            {
+                var trimmedSup = dto.NewSupplierName.Trim();
+                supplier = await _context.Suppliers
+                    .FirstOrDefaultAsync(s => s.CompanyName.ToLower() == trimmedSup.ToLower() && s.IsActive);
+
+                if (supplier == null)
+                {
+                    supplier = new Supplier
+                    {
+                        Id = Guid.NewGuid(),
+                        Code = $"SUP-{DateTime.UtcNow:yyMMdd}-{Random.Shared.Next(100, 999)}",
+                        CompanyName = trimmedSup,
+                        ContactPerson = trimmedSup,
+                        Phone = dto.NewSupplierPhone?.Trim(),
+                        CurrentBalance = 0.0000m,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.Suppliers.Add(supplier);
+                }
+            }
+
             if (supplier == null)
             {
-                return NotFound(new { message = "المورد المحدد غير موجود بالنظام." });
+                return NotFound(new { errorCode = "ERR_SUPPLIER_NOT_FOUND", message = "المورد المحدد غير موجود بالنظام." });
             }
 
             var warehouse = await _context.Warehouses
@@ -104,7 +186,7 @@ public class PurchaseBillsController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 BillNumber = billNumber,
-                SupplierId = dto.SupplierId,
+                SupplierId = supplier.Id,
                 SupplierRefNo = dto.SupplierRefNo.Trim(),
                 InvoiceDate = dto.InvoiceDate,
                 TargetWarehouseId = dto.TargetWarehouseId,
@@ -131,12 +213,12 @@ public class PurchaseBillsController : ControllerBase
                 Product? targetProduct = null;
 
                 // 1. Resolve or Create Product on the fly (Inline SKU Creation)
-                if (itemDto.ProductId.HasValue && itemDto.ProductId.Value != Guid.Empty)
+                if (!itemDto.IsNewProduct && itemDto.ProductId.HasValue && itemDto.ProductId.Value != Guid.Empty)
                 {
                     targetProduct = await _context.Products.FindAsync(itemDto.ProductId.Value);
                 }
 
-                if (targetProduct == null)
+                if (targetProduct == null && !itemDto.IsNewProduct)
                 {
                     // Check by Barcode or SKU
                     if (!string.IsNullOrWhiteSpace(itemDto.Barcode))
@@ -148,6 +230,8 @@ public class PurchaseBillsController : ControllerBase
                         targetProduct = await _context.Products.FirstOrDefaultAsync(p => p.Sku == itemDto.Sku.Trim());
                     }
                 }
+
+                int effectiveQty = Math.Max(1, (int)Math.Round(itemDto.Quantity, MidpointRounding.AwayFromZero));
 
                 bool isNewlyCreated = false;
                 if (targetProduct == null)
@@ -214,10 +298,10 @@ public class PurchaseBillsController : ControllerBase
                     ItemBarcode = targetProduct.Barcode,
                     ItemName = targetProduct.Name,
                     UnitOfMeasure = itemDto.UnitOfMeasure,
-                    Quantity = itemDto.Quantity,
+                    Quantity = effectiveQty,
                     UnitCost = itemDto.UnitCost,
                     SellingPrice = itemDto.SellingPrice,
-                    LineTotal = itemDto.Quantity * itemDto.UnitCost,
+                    LineTotal = Math.Round(itemDto.Quantity * itemDto.UnitCost, 4),
                     IsNewlyCreatedProduct = isNewlyCreated,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -233,14 +317,14 @@ public class PurchaseBillsController : ControllerBase
                     {
                         WarehouseId = dto.TargetWarehouseId,
                         ProductId = targetProduct.Id,
-                        Quantity = itemDto.Quantity,
+                        Quantity = effectiveQty,
                         LastCountedAt = DateTime.UtcNow
                     };
                     _context.WarehouseStocks.Add(stock);
                 }
                 else
                 {
-                    stock.Quantity += itemDto.Quantity;
+                    stock.Quantity += effectiveQty;
                     stock.LastCountedAt = DateTime.UtcNow;
                 }
 
@@ -263,7 +347,7 @@ public class PurchaseBillsController : ControllerBase
                     Id = Guid.NewGuid(),
                     MovementId = stockMovement.Id,
                     ProductId = targetProduct.Id,
-                    Quantity = itemDto.Quantity,
+                    Quantity = effectiveQty,
                     UnitCost = itemDto.UnitCost
                 };
                 _context.StockMovementItems.Add(movementItem);
@@ -277,8 +361,8 @@ public class PurchaseBillsController : ControllerBase
                     PurchaseBillId = purchaseBill.Id,
                     BatchReference = purchaseBill.BillNumber,
                     BatchDate = dto.InvoiceDate,
-                    InitialQuantity = itemDto.Quantity,
-                    RemainingQuantity = itemDto.Quantity,
+                    InitialQuantity = effectiveQty,
+                    RemainingQuantity = effectiveQty,
                     UnitCost = itemDto.UnitCost,
                     IsExhausted = false,
                     CreatedAt = DateTime.UtcNow

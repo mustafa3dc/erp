@@ -844,7 +844,7 @@ public class SupplierLedger : ITenantEntity
 
 // DTOs for Inbound Purchase Bill Processing
 public record CreatePurchaseBillDto(
-    Guid SupplierId,
+    Guid? SupplierId,
     string SupplierRefNo,
     DateTime InvoiceDate,
     Guid TargetWarehouseId,
@@ -857,7 +857,10 @@ public record CreatePurchaseBillDto(
     decimal BalanceDue,
     string? TreasuryAccountId,
     string? Notes,
-    List<PurchaseBillItemInputDto> Items
+    List<PurchaseBillItemInputDto> Items,
+    string? NewSupplierName = null,
+    string? NewSupplierPhone = null,
+    string? Currency = null
 );
 
 public record PurchaseBillItemInputDto(
@@ -867,7 +870,7 @@ public record PurchaseBillItemInputDto(
     string Name,
     string? CategoryName,
     string UnitOfMeasure,
-    int Quantity,
+    decimal Quantity,
     decimal UnitCost,
     decimal SellingPrice,
     decimal LineTotal,

@@ -55,6 +55,7 @@ catch
 }
 
 // Register Business Services
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IDiscountEngineService, DiscountEngineService>();
 builder.Services.AddScoped<ITenantFeatureService, TenantFeatureService>();
@@ -65,6 +66,7 @@ builder.Services.AddScoped<IPurchaseReturnService, PurchaseReturnService>();
 builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
+builder.Services.AddScoped<IInvoiceOcrService, GeminiInvoiceOcrService>();
 
 // JWT Authentication Configuration
 var jwtSecret = "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";

@@ -13,10 +13,13 @@ import {
   PurchaseInvoiceTransactionResult 
 } from '../../services/storageService';
 import CreatePurchaseInvoiceForm, { InitialPurchaseInvoicePrefill } from '../purchases/CreatePurchaseInvoiceForm';
+import PurchaseOcrUploadModal, { OcrReviewSessionData } from '../purchases/PurchaseOcrUploadModal';
+import PurchaseOcrReviewWorkspace from '../purchases/PurchaseOcrReviewWorkspace';
 import PrintBarcodeLabelsModal from '../modals/PrintBarcodeLabelsModal';
 import { getStoredPurchaseOrders, saveStoredPurchaseOrders } from '../../services/storageService';
 import { useSettings } from '../../context/settings-context';
 import { ModalBackdropPortal } from '../ui/dialog';
+import { getTranslation } from '../../lib/i18n';
 
 interface IncomingPurchasesViewProps {
   lang?: 'en' | 'ar';
@@ -72,6 +75,8 @@ export default function IncomingPurchasesView({
 
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>(() => getStoredPurchaseInvoices());
   const [isCreating, setIsCreating] = useState(() => !!prefillFromPO);
+  const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
+  const [ocrReviewSession, setOcrReviewSession] = useState<OcrReviewSessionData | null>(null);
   const [activePrefill, setActivePrefill] = useState<InitialPurchaseInvoicePrefill | null>(prefillFromPO || null);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoice | null>(null);
 
@@ -145,6 +150,30 @@ export default function IncomingPurchasesView({
   const totalCash = invoices.reduce((acc, it) => acc + (it.amountPaid || 0), 0);
   const totalDebt = invoices.reduce((acc, it) => acc + (it.balanceDue || 0), 0);
 
+  const closeOcrReview = () => {
+    if (ocrReviewSession?.fileUrl) {
+      URL.revokeObjectURL(ocrReviewSession.fileUrl);
+    }
+    setOcrReviewSession(null);
+  };
+
+  // If in OCR Side-by-Side review mode: render verification workspace
+  if (ocrReviewSession) {
+    return (
+      <PurchaseOcrReviewWorkspace
+        lang={isAr ? 'ar' : 'en'}
+        session={ocrReviewSession}
+        products={activeProducts}
+        warehouses={activeWarehouses}
+        onPosted={(result) => {
+          closeOcrReview();
+          handleInvoiceCreated(result);
+        }}
+        onCancel={closeOcrReview}
+      />
+    );
+  }
+
   // If in create mode: show full-width Create Form
   if (isCreating) {
     return (
@@ -188,15 +217,38 @@ export default function IncomingPurchasesView({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsCreating(true)}
-          className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{isAr ? 'تسجيل قائمة مشتريات جديدة' : 'New Purchase Bill'}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsOcrModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.scanInvoiceBtn')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsCreating(true)}
+            className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isAr ? 'تسجيل قائمة مشتريات جديدة' : 'New Purchase Bill'}</span>
+          </button>
+        </div>
       </div>
+
+      <PurchaseOcrUploadModal
+        isOpen={isOcrModalOpen}
+        onClose={() => setIsOcrModalOpen(false)}
+        lang={isAr ? 'ar' : 'en'}
+        products={activeProducts}
+        defaultWarehouseId={warehouseFilter !== 'ALL' ? warehouseFilter : activeWarehouses[0]?.id}
+        onExtracted={(session) => {
+          setIsOcrModalOpen(false);
+          setOcrReviewSession(session);
+        }}
+      />
 
       {/* KPI Cards (Full Width Grid) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">

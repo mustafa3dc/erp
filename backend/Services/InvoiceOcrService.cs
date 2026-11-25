@@ -420,17 +420,34 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         Guid? targetWarehouseId,
         CancellationToken ct)
     {
-        var suppliers = await _context.Suppliers
-            .AsNoTracking()
-            .Where(s => s.IsActive)
-            .Select(s => new { s.Id, s.CompanyName, s.ContactPerson, s.Code })
-            .ToListAsync(ct);
+        var suppliers = new List<(Guid Id, string CompanyName)>();
+        try
+        {
+            var supRows = await _context.Suppliers
+                .AsNoTracking()
+                .Where(s => s.IsActive)
+                .Select(s => new { s.Id, s.CompanyName })
+                .ToListAsync(ct);
+            suppliers.AddRange(supRows.Select(s => (s.Id, s.CompanyName)));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Read-only supplier lookup failed during OCR matching; returning unmatched supplier");
+        }
 
-        var products = await _context.Products
-            .AsNoTracking()
-            .Include(p => p.WarehouseStocks)
-            .Where(p => p.IsActive && !p.IsBundle)
-            .ToListAsync(ct);
+        var products = new List<Product>();
+        try
+        {
+            products = await _context.Products
+                .AsNoTracking()
+                .Include(p => p.WarehouseStocks)
+                .Where(p => p.IsActive && !p.IsBundle)
+                .ToListAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Read-only product lookup failed during OCR matching; falling back to client matching");
+        }
 
         // 1. Read-Only Supplier Matching
         Guid? matchedSupplierId = null;

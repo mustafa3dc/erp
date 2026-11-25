@@ -305,6 +305,17 @@ using (var scope = app.Services.CreateScope())
             else
             {
                 logger.LogInformation("Database schema is already initialized ({Count} tables verified).", count);
+                // Idempotently ensure incremental columns exist on existing databases
+                dbContext.Database.ExecuteSqlRaw(@"
+                    ALTER TABLE IF EXISTS products
+                        ADD COLUMN IF NOT EXISTS requires_serial_number BOOLEAN NOT NULL DEFAULT FALSE,
+                        ADD COLUMN IF NOT EXISTS warranty_months INT NOT NULL DEFAULT 0,
+                        ADD COLUMN IF NOT EXISTS is_bundle BOOLEAN NOT NULL DEFAULT FALSE;
+                    ALTER TABLE IF EXISTS customers
+                        ADD COLUMN IF NOT EXISTS tenant_id UUID,
+                        ADD COLUMN IF NOT EXISTS price_list_id UUID;
+                ");
+
                 // Ensure incremental Profit-Based Customer Loyalty schema upgrades are idempotently applied
                 string[] incrementalPaths =
                 {

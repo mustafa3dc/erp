@@ -2199,33 +2199,4 @@ public class LoyaltyTransaction : ITenantEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-[Table("ai_settings")]
-public class AiSettings : ITenantEntity
-{
-    [Key]
-    [Column("id")]
-    public Guid Id { get; set; } = Guid.NewGuid();
-
-    [Column("tenant_id")]
-    public Guid? TenantId { get; set; }
-
-    [MaxLength(500)]
-    [Column("gemini_api_key")]
-    public string GeminiApiKey { get; set; } = string.Empty;
-
-    [MaxLength(100)]
-    [Column("gemini_model")]
-    public string GeminiModel { get; set; } = "gemini-2.5-flash";
-
-    [MaxLength(150)]
-    [Column("updated_by")]
-    public string? UpdatedBy { get; set; }
-
-    [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-}
-
 

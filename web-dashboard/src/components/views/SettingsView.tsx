@@ -37,8 +37,7 @@ import {
   Languages,
   CheckCircle2,
   Award,
-  Sparkles,
-  KeyRound
+  Sparkles
 } from 'lucide-react';
 import {
   useSettings,
@@ -322,75 +321,6 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     settings.loyaltySettings || getStoredLoyaltySettings() || DEFAULT_LOYALTY_SETTINGS
   );
   const [isSavingLoyalty, setIsSavingLoyalty] = useState(false);
-
-  const [ocrStatus, setOcrStatus] = useState<{ isConfigured: boolean; maskedKey?: string | null; model: string }>({
-    isConfigured: false,
-    maskedKey: null,
-    model: 'gemini-2.5-flash'
-  });
-  const [ocrKeyInput, setOcrKeyInput] = useState('');
-  const [ocrModelInput, setOcrModelInput] = useState('gemini-2.5-flash');
-  const [isSavingOcrKey, setIsSavingOcrKey] = useState(false);
-
-  React.useEffect(() => {
-    const token = typeof window !== 'undefined'
-      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-      : null;
-    if (!token) return;
-    fetch('/api/purchases/ocr-settings', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => (res.ok ? res.json() : null))
-      .then((remote) => {
-        if (remote && typeof remote.isConfigured === 'boolean') {
-          setOcrStatus({
-            isConfigured: remote.isConfigured,
-            maskedKey: remote.maskedKey,
-            model: remote.model || 'gemini-2.5-flash'
-          });
-          setOcrModelInput(remote.model || 'gemini-2.5-flash');
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleSaveOcrKey = async () => {
-    const uiLang = isAr ? 'ar' : 'en';
-    if (!ocrKeyInput.trim()) {
-      toast.error(getTranslation(uiLang, 'ui.purchaseOcr.errApiKeyRequired'));
-      return;
-    }
-    setIsSavingOcrKey(true);
-    try {
-      const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-        : null;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/purchases/ocr-settings', {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ apiKey: ocrKeyInput.trim(), model: ocrModelInput.trim() || 'gemini-2.5-flash' })
-      });
-      if (!res.ok) {
-        toast.error(getTranslation(uiLang, 'ui.purchaseOcr.errApiKeySaveFailed'));
-        return;
-      }
-      const updated = await res.json();
-      setOcrStatus({
-        isConfigured: Boolean(updated.isConfigured),
-        maskedKey: updated.maskedKey,
-        model: updated.model || ocrModelInput
-      });
-      setOcrKeyInput('');
-      toast.success(getTranslation(uiLang, 'ui.purchaseOcr.keySavedToast'));
-    } catch {
-      toast.error(getTranslation(uiLang, 'ui.purchaseOcr.errApiKeySaveFailed'));
-    } finally {
-      setIsSavingOcrKey(false);
-    }
-  };
 
   React.useEffect(() => {
     const token = typeof window !== 'undefined'
@@ -1787,71 +1717,6 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               );
             })}
           </div>
-
-          <SectionCard
-            icon={<KeyRound className="w-4 h-4" />}
-            title={getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.configureKeyTitle')}
-          >
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <p className="text-xs text-muted-foreground m-0">
-                {getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.configureKeyHint')}
-              </p>
-              {ocrStatus.isConfigured && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 font-mono">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.keyConfiguredBadge').replace(
-                      '{masked}',
-                      ocrStatus.maskedKey || '****'
-                    )}
-                  </span>
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-              <div className="md:col-span-2">
-                <FieldRow label={getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.apiKeyPlaceholder')}>
-                  <input
-                    type="password"
-                    dir="ltr"
-                    className={`${INPUT_CLS} font-mono`}
-                    value={ocrKeyInput}
-                    onChange={(e) => setOcrKeyInput(e.target.value)}
-                    placeholder={ocrStatus.maskedKey || 'AQ.... / AIza...'}
-                  />
-                </FieldRow>
-              </div>
-              <div>
-                <FieldRow label={getTranslation(isAr ? 'ar' : 'en', 'ui.purchaseOcr.modelLabel')}>
-                  <input
-                    type="text"
-                    dir="ltr"
-                    className={`${INPUT_CLS} font-mono`}
-                    value={ocrModelInput}
-                    onChange={(e) => setOcrModelInput(e.target.value)}
-                  />
-                </FieldRow>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={isSavingOcrKey}
-                onClick={handleSaveOcrKey}
-                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
-              >
-                {isSavingOcrKey ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>
-                  {getTranslation(
-                    isAr ? 'ar' : 'en',
-                    isSavingOcrKey ? 'ui.purchaseOcr.savingKeyBtn' : 'ui.purchaseOcr.saveAndActivateKeyBtn'
-                  )}
-                </span>
-              </button>
-            </div>
-          </SectionCard>
         </div>
       )}
 

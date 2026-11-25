@@ -21,13 +21,6 @@ public sealed class OcrExtractionException : Exception
     }
 }
 
-public sealed record OcrConfigStatusDto(
-    bool IsConfigured,
-    string? MaskedKey,
-    string Model,
-    string Source
-);
-
 public interface IInvoiceOcrService
 {
     Task<ExtractedPurchaseInvoiceResponseDto> ExtractAndMatchAsync(
@@ -36,9 +29,6 @@ public interface IInvoiceOcrService
         string fileName,
         Guid? targetWarehouseId = null,
         CancellationToken ct = default);
-
-    Task<OcrConfigStatusDto> GetConfigStatusAsync(CancellationToken ct = default);
-    Task<OcrConfigStatusDto> SaveConfigAsync(string apiKey, string? model, string actorName, CancellationToken ct = default);
 }
 
 public class GeminiInvoiceOcrService : IInvoiceOcrService
@@ -81,141 +71,6 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         _redisDb = redis?.GetDatabase();
     }
 
-    public async Task<OcrConfigStatusDto> GetConfigStatusAsync(CancellationToken ct = default)
-    {
-        var (apiKey, model, source) = await ResolveEffectiveCredentialsAsync(ct);
-        return new OcrConfigStatusDto(
-            IsConfigured: !string.IsNullOrWhiteSpace(apiKey),
-            MaskedKey: MaskKey(apiKey),
-            Model: model,
-            Source: source
-        );
-    }
-
-    public async Task<OcrConfigStatusDto> SaveConfigAsync(
-        string apiKey,
-        string? model,
-        string actorName,
-        CancellationToken ct = default)
-    {
-        var cleanKey = apiKey?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(cleanKey))
-        {
-            throw new OcrExtractionException("ERR_OCR_API_KEY_REQUIRED", StatusCodes.Status400BadRequest);
-        }
-
-        var cleanModel = string.IsNullOrWhiteSpace(model) ? "gemini-2.5-flash" : model.Trim();
-        await EnsureAiSettingsTableAsync(ct);
-
-        var tenantId = _tenantProvider.CurrentTenantId;
-        var existing = await _context.AiSettings
-            .FirstOrDefaultAsync(a => a.TenantId == tenantId, ct);
-
-        var now = DateTime.UtcNow;
-        if (existing == null)
-        {
-            existing = new AiSettings
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                GeminiApiKey = cleanKey,
-                GeminiModel = cleanModel,
-                UpdatedBy = actorName,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            _context.AiSettings.Add(existing);
-        }
-        else
-        {
-            existing.GeminiApiKey = cleanKey;
-            existing.GeminiModel = cleanModel;
-            existing.UpdatedBy = actorName;
-            existing.UpdatedAt = now;
-        }
-
-        await _context.SaveChangesAsync(ct);
-        return new OcrConfigStatusDto(true, MaskKey(cleanKey), cleanModel, "database");
-    }
-
-    private async Task<(string? ApiKey, string Model, string Source)> ResolveEffectiveCredentialsAsync(CancellationToken ct)
-    {
-        var configModel = _configuration["Gemini:Model"]?.Trim();
-        var defaultModel = string.IsNullOrWhiteSpace(configModel) ? "gemini-2.5-flash" : configModel;
-
-        var configKey = _configuration["Gemini:ApiKey"]?.Trim();
-        if (!string.IsNullOrWhiteSpace(configKey))
-        {
-            return (configKey, defaultModel, "env");
-        }
-
-        var envKey = (Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY"))?.Trim();
-        if (!string.IsNullOrWhiteSpace(envKey))
-        {
-            return (envKey, defaultModel, "env");
-        }
-
-        try
-        {
-            await EnsureAiSettingsTableAsync(ct);
-            var tenantId = _tenantProvider.CurrentTenantId;
-            var dbSetting = await _context.AiSettings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.GeminiApiKey != "", ct);
-
-            if (dbSetting == null && tenantId.HasValue)
-            {
-                dbSetting = await _context.AiSettings
-                    .AsNoTracking()
-                    .IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(a => a.TenantId == null && a.GeminiApiKey != "", ct);
-            }
-
-            if (dbSetting != null && !string.IsNullOrWhiteSpace(dbSetting.GeminiApiKey))
-            {
-                var model = string.IsNullOrWhiteSpace(dbSetting.GeminiModel) ? defaultModel : dbSetting.GeminiModel.Trim();
-                return (dbSetting.GeminiApiKey.Trim(), model, "database");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not query ai_settings table");
-        }
-
-        return (null, defaultModel, "none");
-    }
-
-    private async Task EnsureAiSettingsTableAsync(CancellationToken ct)
-    {
-        try
-        {
-            const string sql = @"
-                CREATE TABLE IF NOT EXISTS ai_settings (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-                    gemini_api_key VARCHAR(500) NOT NULL DEFAULT '',
-                    gemini_model VARCHAR(100) NOT NULL DEFAULT 'gemini-2.5-flash',
-                    updated_by VARCHAR(150),
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_settings_tenant ON ai_settings(tenant_id);";
-            await _context.Database.ExecuteSqlRawAsync(sql, ct);
-        }
-        catch
-        {
-            // Ignore DDL race conditions across concurrent requests
-        }
-    }
-
-    private static string? MaskKey(string? key)
-    {
-        if (string.IsNullOrWhiteSpace(key)) return null;
-        var k = key.Trim();
-        return k.Length <= 8 ? "****" : $"{k[..5]}••••{k[^4..]}";
-    }
-
     public async Task<ExtractedPurchaseInvoiceResponseDto> ExtractAndMatchAsync(
         byte[] fileBytes,
         string contentType,
@@ -225,13 +80,24 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
     {
         ValidateFile(fileBytes, contentType, fileName);
 
-        var (apiKey, model, _) = await ResolveEffectiveCredentialsAsync(ct);
+        var apiKey = _configuration["Gemini:ApiKey"]?.Trim();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new OcrExtractionException("ERR_OCR_SERVICE_NOT_CONFIGURED", StatusCodes.Status503ServiceUnavailable);
+            apiKey = (Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+                ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
+                ?? Environment.GetEnvironmentVariable("Gemini__ApiKey"))?.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new OcrExtractionException("ERR_AI_SCAN_UNAVAILABLE", StatusCodes.Status503ServiceUnavailable);
         }
 
         var normalizedMime = NormalizeMimeType(contentType, fileName);
+        var model = _configuration["Gemini:Model"]?.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            model = "gemini-2.5-flash";
+        }
 
         // Cache key by content SHA-256 + tenant to eliminate duplicate Vision LLM spend on retries
         var contentHash = Convert.ToHexString(SHA256.HashData(fileBytes)).ToLowerInvariant();

@@ -190,6 +190,28 @@ app.MapGet("/health", () => Results.Ok(new
     version = "2.0.0" 
 }));
 
+// Config Status Endpoint — shows which env vars are loaded (no secrets exposed)
+app.MapGet("/api/config/status", (IConfiguration config) =>
+{
+    var geminiKey = config["Gemini:ApiKey"]?.Trim();
+    if (string.IsNullOrWhiteSpace(geminiKey))
+    {
+        geminiKey = (Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
+            ?? Environment.GetEnvironmentVariable("Gemini__ApiKey"))?.Trim();
+    }
+
+    return Results.Ok(new
+    {
+        gemini_key_configured = !string.IsNullOrWhiteSpace(geminiKey),
+        gemini_key_prefix = string.IsNullOrWhiteSpace(geminiKey) ? "MISSING" : geminiKey[..Math.Min(6, geminiKey.Length)] + "...",
+        gemini_model = config["Gemini:Model"] ?? "not set",
+        env_GEMINI_API_KEY = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_API_KEY")) ? "SET" : "NOT SET",
+        env_Gemini__ApiKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("Gemini__ApiKey")) ? "SET" : "NOT SET",
+        config_Gemini_ApiKey = !string.IsNullOrWhiteSpace(config["Gemini:ApiKey"]) ? "SET" : "NOT SET",
+    });
+}).AllowAnonymous();
+
 // Fallback to index.html for React SPA Routes (e.g. /dashboard, /inventory, /pos)
 app.MapFallback(async context =>
 {

@@ -17,8 +17,8 @@ import {
   Search,
   Check,
   Lock,
-  ChevronDown,
-  Info
+  Info,
+  Warehouse as WarehouseIcon
 } from 'lucide-react';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -26,26 +26,34 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { 
   getStoredInvoices, 
+  getStoredWarehouses,
   getInvoiceReturnableItems, 
   ReturnableInvoiceItem,
   validateRmaReturn
 } from '../../services/storageService';
 import { useSettings } from '../../context/settings-context';
 import { getCurrencySymbol } from '../../lib/currencyUtils';
-import { SalesInvoice } from '../../types/warehouse';
+import { getTranslation } from '../../lib/i18n';
+import { localizeWarehouse } from '../../lib/localeHelpers';
+import { SalesInvoice, Warehouse } from '../../types/warehouse';
 
 export interface ReturnRequestData {
   id: string;
+  backendRmaId?: string;
   rmaNumber: string;
   originalInvoiceNo: string;
   customerName: string;
   customerPhone: string;
+  productId?: string;
   productName: string;
   sku: string;
   serialNumber: string;
+  warehouseId?: string;
+  warehouseName?: string;
   returnReason: string;
   warrantyStatus: 'VALID_UNDER_WARRANTY' | 'EXPIRED' | 'VOID_PHYSICAL_DAMAGE';
   decision: 'PENDING_INSPECTION' | 'APPROVED_RESTOCKED' | 'SENT_TO_MAINTENANCE' | 'REJECTED';
+  isRestocked?: boolean;
   returnQuantity: number;
   refundAmount: number;
   currency: string;
@@ -56,21 +64,28 @@ interface NewReturnModalProps {
   isOpen: boolean;
   onClose: () => void;
   lang?: 'en' | 'ar';
-  onSubmit: (data: ReturnRequestData) => void;
+  warehouses?: Warehouse[];
+  onSubmit: (data: ReturnRequestData) => void | Promise<void>;
 }
 
 export default function NewReturnModal({
   isOpen,
   onClose,
   lang = 'ar',
+  warehouses: propWarehouses,
   onSubmit
 }: NewReturnModalProps) {
   if (!isOpen) return null;
   const isAr = lang === 'ar';
+  const tr = (key: string, fallback?: string) => getTranslation(lang, `ui.rma.${key}`, fallback);
   const { financialSettings, formatMoney } = useSettings();
   const defaultCurrencySymbol = financialSettings.baseCurrency.symbol;
 
   const invoices = getStoredInvoices();
+  const availableWarehouses = useMemo(() => {
+    const list = propWarehouses && propWarehouses.length > 0 ? propWarehouses : getStoredWarehouses();
+    return list.filter(w => (w as any).isActive !== false && w.status !== 'maintenance');
+  }, [propWarehouses]);
 
   // RMA Identification
   const [rmaNumber, setRmaNumber] = useState(() => `RMA-${Math.floor(10000 + Math.random() * 90000)}`);
@@ -80,6 +95,9 @@ export default function NewReturnModal({
   const [isInvoiceComboboxOpen, setIsInvoiceComboboxOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<SalesInvoice | null>(null);
   const [selectedInvoiceNo, setSelectedInvoiceNo] = useState('');
+
+  // Target Warehouse Selection (Pre-filled from Invoice)
+  const [targetWarehouseId, setTargetWarehouseId] = useState<string>(() => availableWarehouses[0]?.id || '');
 
   // Customer Details (Strictly Read-Only from Invoice)
   const [customerName, setCustomerName] = useState('');
@@ -95,9 +113,10 @@ export default function NewReturnModal({
 
   // Warranty & Operational Decision
   const [warrantyStatus, setWarrantyStatus] = useState<'VALID_UNDER_WARRANTY' | 'EXPIRED' | 'VOID_PHYSICAL_DAMAGE'>('VALID_UNDER_WARRANTY');
-  const [decision, setDecision] = useState<'PENDING_INSPECTION' | 'APPROVED_RESTOCKED' | 'SENT_TO_MAINTENANCE' | 'REJECTED'>('PENDING_INSPECTION');
+  const [decision, setDecision] = useState<'PENDING_INSPECTION' | 'APPROVED_RESTOCKED' | 'SENT_TO_MAINTENANCE' | 'REJECTED'>('APPROVED_RESTOCKED');
   const [returnReason, setReturnReason] = useState('');
   const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const comboboxRef = useRef<HTMLDivElement>(null);
 
@@ -129,13 +148,27 @@ export default function NewReturnModal({
   const handleSelectInvoice = (inv: SalesInvoice) => {
     setSelectedInvoice(inv);
     setSelectedInvoiceNo(inv.invoiceNo);
-    setInvoiceSearchQuery(`${inv.invoiceNo} — ${inv.customerName || (isAr ? 'عميل نقدي' : 'Cash Customer')}`);
+    setInvoiceSearchQuery(`${inv.invoiceNo} — ${inv.customerName || tr('cashCustomerFallback')}`);
     setIsInvoiceComboboxOpen(false);
     setFormError('');
 
     // Auto-fill customer details as Read-Only
-    setCustomerName(inv.customerName || (isAr ? 'عميل نقدي' : 'Cash Customer'));
+    setCustomerName(inv.customerName || tr('cashCustomerFallback'));
     setCustomerPhone(inv.customerPhone && inv.customerPhone !== '—' ? inv.customerPhone : '0770xxxxxxx');
+
+    // Auto-fill target restock warehouse from original Sales Invoice
+    const matchedWh = availableWarehouses.find(
+      w =>
+        w.nameAr === inv.warehouseName ||
+        w.nameEn === inv.warehouseName ||
+        w.id === inv.warehouseName ||
+        w.code === inv.warehouseName
+    );
+    if (matchedWh) {
+      setTargetWarehouseId(matchedWh.id);
+    } else if (availableWarehouses.length > 0 && !targetWarehouseId) {
+      setTargetWarehouseId(availableWarehouses[0].id);
+    }
 
     // Load returnables strictly from this invoice
     const items = getInvoiceReturnableItems(inv.invoiceNo);
@@ -161,6 +194,9 @@ export default function NewReturnModal({
     setSerialNumber(item.serialNumber || (item.sku ? `SN-${item.sku.replace(/\D/g, '') || '94012'}` : ''));
     setReturnQuantity(1);
     setRefundAmount(item.unitPrice * 1);
+    if (item.warehouseId && availableWarehouses.some(w => w.id === item.warehouseId)) {
+      setTargetWarehouseId(item.warehouseId);
+    }
     
     // Auto-calculate statutory warranty status based on invoice purchase date
     setWarrantyStatus(item.isUnderWarranty ? 'VALID_UNDER_WARRANTY' : 'EXPIRED');
@@ -200,40 +236,50 @@ export default function NewReturnModal({
     return defaultCurrencySymbol;
   }, [selectedItem, defaultCurrencySymbol, isAr]);
 
+  const resolvedTargetWarehouse = useMemo(() => {
+    return availableWarehouses.find(w => w.id === targetWarehouseId) || availableWarehouses[0];
+  }, [availableWarehouses, targetWarehouseId]);
+
   // Strict Form Validation
   const isFormValid = Boolean(
     selectedInvoiceNo &&
     selectedItem &&
+    (resolvedTargetWarehouse?.id || selectedInvoice?.warehouseName) &&
     returnQuantity > 0 &&
     returnQuantity <= (selectedItem?.remainingReturnableQty || 0) &&
     selectedItem.remainingReturnableQty > 0 &&
     customerName.trim()
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     if (!selectedInvoiceNo) {
-      setFormError(isAr ? 'يرجى اختيار الفاتورة الأصلية أولاً.' : 'Please select an original linked invoice.');
+      setFormError(tr('errNoInvoice'));
       return;
     }
 
     if (!selectedItem || !selectedItemSku) {
-      setFormError(isAr ? 'يرجى اختيار الصنف المراد إرجاعه من بنود الفاتورة.' : 'Please select a returnable product from invoice items.');
+      setFormError(tr('errNoItem'));
+      return;
+    }
+
+    if (!resolvedTargetWarehouse?.id && !selectedInvoice?.warehouseName) {
+      setFormError(tr('errNoWarehouse'));
       return;
     }
 
     if (returnQuantity <= 0) {
-      setFormError(isAr ? 'يجب تحديد كمية إرجاع صحيحة (أكبر من صفر).' : 'Return quantity must be greater than zero.');
+      setFormError(tr('errQtyZero'));
       return;
     }
 
     if (returnQuantity > selectedItem.remainingReturnableQty) {
       setFormError(
-        isAr 
-          ? `الكمية المطلوبة (${returnQuantity}) تتجاوز المتاح للإرجاع من الفاتورة (${selectedItem.remainingReturnableQty} قطعة).`
-          : `Requested quantity (${returnQuantity}) exceeds invoice returnable balance (${selectedItem.remainingReturnableQty}).`
+        tr('errQtyExceeded')
+          .replace('{qty}', String(returnQuantity))
+          .replace('{max}', String(selectedItem.remainingReturnableQty))
       );
       return;
     }
@@ -241,7 +287,7 @@ export default function NewReturnModal({
     // Call storage validation rule
     const val = validateRmaReturn(selectedInvoiceNo, selectedItemSku, returnQuantity);
     if (!val.isValid) {
-      setFormError(val.message || (isAr ? 'خطأ في التحقق من بنود الفاتورة.' : 'Invalid return items'));
+      setFormError(val.message || tr('errNoItem'));
       return;
     }
 
@@ -251,19 +297,30 @@ export default function NewReturnModal({
       originalInvoiceNo: selectedInvoiceNo,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim() || '—',
+      productId: selectedItem.productId,
       productName: selectedItem.productName,
       sku: selectedItem.sku,
       serialNumber: serialNumber.trim() || 'N/A',
-      returnReason: returnReason.trim() || (isAr ? 'إرجاع ومطابقة من نقطة البيع' : 'Standard POS Return'),
+      warehouseId: resolvedTargetWarehouse?.id,
+      warehouseName: resolvedTargetWarehouse
+        ? localizeWarehouse(resolvedTargetWarehouse.nameAr, lang)
+        : (selectedInvoice?.warehouseName || tr('unassignedWarehouse')),
+      returnReason: returnReason.trim() || tr('defaultReturnReason'),
       warrantyStatus,
       decision,
+      isRestocked: decision === 'APPROVED_RESTOCKED',
       returnQuantity,
       refundAmount: Number(refundAmount) || 0,
       currency: selectedItem.currency || 'IQD',
       date: new Date().toISOString().split('T')[0]
     };
 
-    onSubmit(payload);
+    try {
+      setIsSubmitting(true);
+      await onSubmit(payload);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -292,7 +349,7 @@ export default function NewReturnModal({
             <div>
               <div className="flex items-center gap-2.5">
                 <h3 className="text-base sm:text-lg font-bold text-foreground m-0 leading-tight">
-                  {isAr ? 'تسجيل طلب إرجاع وضمان جديد (RMA)' : 'New Return & Warranty Request (RMA)'}
+                  {tr('modalTitle')}
                 </h3>
                 <span 
                   className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-mono font-bold bg-primary/10 text-primary border border-primary/20 tracking-wider"
@@ -302,9 +359,7 @@ export default function NewReturnModal({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground m-0 mt-1 leading-normal">
-                {isAr
-                  ? 'إرجاع مرتبط حصراً ببنود الفاتورة الأصلية والتحقق الآلي من سريان الضمان'
-                  : 'Strict invoice-linked return workflow with automated warranty inspection'}
+                {tr('modalSubtitle')}
               </p>
             </div>
           </div>
@@ -315,7 +370,7 @@ export default function NewReturnModal({
             size="icon"
             onClick={onClose}
             className="w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-            title={isAr ? 'إغلاق' : 'Close'}
+            title={tr('closeBtn')}
           >
             <X className="w-5 h-5" />
           </Button>
@@ -335,16 +390,16 @@ export default function NewReturnModal({
               </div>
             )}
 
-            {/* SECTION 1: Original Invoice & Customer Info (Auto-Suggest & Read-Only) */}
+            {/* SECTION 1: Original Invoice, Target Warehouse & Customer Info */}
             <div className="rounded-xl border border-border/80 bg-card p-4 space-y-3.5 shadow-2xs">
               <div className="flex items-center justify-between pb-2 border-b border-border/50">
                 <div className="flex items-center gap-2 text-xs font-bold text-foreground/90">
                   <FileText className="w-4 h-4 text-primary" />
-                  <span>{isAr ? 'بيانات الفاتورة والعميل المرجع (ربط تلقائي)' : 'Linked Invoice & Customer Identity'}</span>
+                  <span>{tr('sectionInvoiceTitle')}</span>
                 </div>
                 <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
                   <Lock className="w-3 h-3 text-muted-foreground/80" />
-                  <span>{isAr ? 'بيانات العميل مقفلة ومطابقة للفاتورة' : 'Customer locked to invoice'}</span>
+                  <span>{tr('customerLockedNote')}</span>
                 </span>
               </div>
 
@@ -352,9 +407,9 @@ export default function NewReturnModal({
                 {/* 1. Original Invoice Searchable Combobox */}
                 <div className="space-y-1.5 relative" ref={comboboxRef}>
                   <Label htmlFor="rma-invoice-combobox" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'الفاتورة الأصلية (بحث برقم الفاتورة أو العميل)' : 'Original Invoice (Search Invoice or Customer)'} *</span>
+                    <span>{tr('invoiceLabel')} *</span>
                     <span className="text-[10px] text-primary font-bold">
-                      {isAr ? 'بحث سريع' : 'Fast Combobox'}
+                      {tr('fastCombobox')}
                     </span>
                   </Label>
                   <div className="relative">
@@ -367,7 +422,7 @@ export default function NewReturnModal({
                         setIsInvoiceComboboxOpen(true);
                       }}
                       onFocus={() => setIsInvoiceComboboxOpen(true)}
-                      placeholder={isAr ? 'ابحث برقم الفاتورة (INV) أو اسم العميل أو الهاتف...' : 'Type Invoice #, Customer or Phone...'}
+                      placeholder={tr('invoicePlaceholder')}
                       className="h-10.5 bg-background border-border/80 px-3.5 pe-10 text-xs sm:text-sm font-medium"
                     />
                     <Search className="w-4 h-4 absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -393,7 +448,7 @@ export default function NewReturnModal({
                                 <span className="text-[10px] text-muted-foreground">{inv.date}</span>
                               </div>
                               <div className="text-xs text-muted-foreground truncate mt-0.5">
-                                <span>{inv.customerName || (isAr ? 'عميل نقدي' : 'Cash Customer')}</span>
+                                <span>{inv.customerName || tr('cashCustomerFallback')}</span>
                                 {inv.customerPhone && <span className="mx-1.5" dir="ltr">({inv.customerPhone})</span>}
                               </div>
                             </div>
@@ -402,14 +457,14 @@ export default function NewReturnModal({
                                 {formatMoney(inv.total)}
                               </span>
                               <span className="block text-[10px] text-muted-foreground">
-                                {inv.items ? `${inv.items.length} ${isAr ? 'أصناف' : 'items'}` : (isAr ? 'فاتورة بيع' : 'Sale')}
+                                {inv.items ? `${inv.items.length} ${tr('itemsWord')}` : tr('saleWord')}
                               </span>
                             </div>
                           </div>
                         ))
                       ) : (
                         <div className="p-3 text-center text-xs text-muted-foreground">
-                          {isAr ? 'لم يتم العثور على فواتير مطابقة' : 'No matching invoices found'}
+                          {tr('noInvoicesFound')}
                         </div>
                       )}
                     </div>
@@ -419,9 +474,9 @@ export default function NewReturnModal({
                 {/* 2. RMA Number (Auto-Generated Unique Identifier) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-code" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'رقم طلب الإرجاع (RMA #)' : 'RMA Number'} *</span>
+                    <span>{tr('rmaNumberLabel')} *</span>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                      {isAr ? 'معرّف معتمد' : 'Authorized Token'}
+                      {tr('authorizedToken')}
                     </span>
                   </Label>
                   <div className="relative">
@@ -440,13 +495,13 @@ export default function NewReturnModal({
                 {/* 3. Customer Name (Strictly Read-Only) */}
                 <div className="space-y-1.5">
                   <span className="text-xs font-semibold text-foreground/90 block">
-                    {isAr ? 'اسم العميل (من الفاتورة)' : 'Customer Name (Invoice Linked)'} *
+                    {tr('customerNameLabel')} *
                   </span>
                   <div className="relative">
                     <Input
                       value={customerName}
                       readOnly
-                      placeholder={isAr ? 'سيتم تعبئة اسم العميل تلقائياً عند اختيار الفاتورة...' : 'Auto-filled upon selecting invoice...'}
+                      placeholder={tr('customerNamePlaceholder')}
                       className="h-10.5 bg-muted/40 border-border/80 px-3.5 pe-10 text-xs sm:text-sm text-foreground font-medium cursor-not-allowed"
                     />
                     <User className="w-4 h-4 absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
@@ -456,18 +511,47 @@ export default function NewReturnModal({
                 {/* 4. Customer Phone (Strictly Read-Only, dir="ltr") */}
                 <div className="space-y-1.5">
                   <span className="text-xs font-semibold text-foreground/90 block">
-                    {isAr ? 'رقم هاتف العميل (من الفاتورة)' : 'Customer Phone (Invoice Linked)'}
+                    {tr('customerPhoneLabel')}
                   </span>
                   <div className="relative">
                     <Input
                       value={customerPhone}
                       readOnly
                       dir="ltr"
-                      placeholder={isAr ? '—' : '—'}
+                      placeholder="—"
                       className="font-mono h-10.5 bg-muted/40 border-border/80 px-3.5 pe-10 text-xs sm:text-sm text-foreground cursor-not-allowed"
                     />
                     <Phone className="w-4 h-4 absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
                   </div>
+                </div>
+
+                {/* 5. Target Restock Warehouse (Pre-filled from Invoice) */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="rma-warehouse-select" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <WarehouseIcon className="w-3.5 h-3.5 text-primary" />
+                      <span>{tr('targetWarehouseLabel')} *</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      {tr('targetWarehouseHint')}
+                    </span>
+                  </Label>
+                  <select
+                    id="rma-warehouse-select"
+                    value={targetWarehouseId}
+                    onChange={(e) => setTargetWarehouseId(e.target.value)}
+                    className="flex h-10.5 w-full rounded-lg border border-border/80 bg-background px-3.5 py-2 text-xs sm:text-sm font-semibold text-foreground shadow-xs focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
+                  >
+                    {availableWarehouses.length === 0 ? (
+                      <option value="">{tr('selectWarehousePlaceholder')}</option>
+                    ) : (
+                      availableWarehouses.map(wh => (
+                        <option key={wh.id} value={wh.id}>
+                          {localizeWarehouse(wh.nameAr, lang)} ({wh.code})
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
               </div>
             </div>
@@ -477,11 +561,11 @@ export default function NewReturnModal({
               <div className="flex items-center justify-between pb-2 border-b border-border/50">
                 <div className="flex items-center gap-2 text-xs font-bold text-foreground/90">
                   <Package className="w-4 h-4 text-primary" />
-                  <span>{isAr ? 'بيانات الصنف المرتجع والضمان (محصور ببنود الفاتورة)' : 'Invoice Line Items & Warranty Status'}</span>
+                  <span>{tr('sectionItemTitle')}</span>
                 </div>
                 {selectedItem && (
                   <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                    {isAr ? `المتاح للإرجاع: ${selectedItem.remainingReturnableQty} قطعة` : `Available to Return: ${selectedItem.remainingReturnableQty}`}
+                    {tr('availableToReturnBadge').replace('{qty}', String(selectedItem.remainingReturnableQty))}
                   </span>
                 )}
               </div>
@@ -490,9 +574,9 @@ export default function NewReturnModal({
                 {/* 1. Cascade Line Item Selector */}
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="rma-product-select" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'الصنف المراد إرجاعه من الفاتورة' : 'Invoice Sold Line Item'} *</span>
+                    <span>{tr('selectProductLabel')} *</span>
                     <span className="text-[10px] text-muted-foreground font-normal">
-                      {selectedInvoiceNo ? (isAr ? 'مستخلص من بنود الفاتورة' : 'Filtered to invoice') : (isAr ? 'اختر الفاتورة أولاً' : 'Select invoice first')}
+                      {selectedInvoiceNo ? tr('filteredToInvoice') : tr('selectInvoiceFirstHint')}
                     </span>
                   </Label>
                   <select
@@ -504,10 +588,10 @@ export default function NewReturnModal({
                   >
                     <option value="">
                       {!selectedInvoiceNo 
-                        ? (isAr ? '— يرجى اختيار الفاتورة الأصلية أولاً لتفعيل الأصناف —' : '— Please select linked invoice first —')
+                        ? tr('selectInvoiceOptionPlaceholder')
                         : returnableItems.length === 0
-                        ? (isAr ? '— لا توجد أصناف قابلة للإرجاع في هذه الفاتورة —' : '— No returnable items on this invoice —')
-                        : (isAr ? 'اختر الصنف المراد إرجاعه من بنود الفاتورة...' : 'Select invoice item to return...')}
+                        ? tr('noReturnablesOption')
+                        : tr('chooseReturnItemOption')}
                     </option>
                     {returnableItems.map((it) => (
                       <option 
@@ -517,8 +601,8 @@ export default function NewReturnModal({
                       >
                         {it.productName} — [{it.sku}] 
                         {it.remainingReturnableQty > 0 
-                          ? ` (المتاح للإرجاع: ${it.remainingReturnableQty} قطعة) — سعر البيع: ${it.unitPrice.toLocaleString()} ${activeCurrencySymbol}`
-                          : ` (تم استرداد كامل الكمية سابقاً)`}
+                          ? ` (${tr('availableToReturnBadge').replace('{qty}', String(it.remainingReturnableQty))}) — ${it.unitPrice.toLocaleString()} ${activeCurrencySymbol}`
+                          : tr('alreadyFullyReturnedOption')}
                       </option>
                     ))}
                   </select>
@@ -527,10 +611,10 @@ export default function NewReturnModal({
                 {/* 2. Return Quantity with Quota Validation */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-qty" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'الكمية المراد إرجاعها' : 'Return Quantity'} *</span>
+                    <span>{tr('returnQtyLabel')} *</span>
                     {selectedItem && (
                       <span className="text-[10px] text-muted-foreground font-mono">
-                        {isAr ? `الحد الأقصى: ${selectedItem.remainingReturnableQty}` : `Max: ${selectedItem.remainingReturnableQty}`}
+                        {tr('maxLabel').replace('{qty}', String(selectedItem.remainingReturnableQty))}
                       </span>
                     )}
                   </Label>
@@ -547,7 +631,7 @@ export default function NewReturnModal({
                       className="font-mono font-bold text-xs sm:text-sm h-10.5 bg-background border-border/80 px-3.5 pe-10 disabled:opacity-50"
                     />
                     <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
-                      {isAr ? 'قطعة' : 'pcs'}
+                      {tr('pcsUnit')}
                     </span>
                   </div>
                 </div>
@@ -555,7 +639,7 @@ export default function NewReturnModal({
                 {/* 3. Refund Amount (Computed: Qty × Unit Price with Invoice Currency) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-amount" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'مبلغ الاسترداد المقدر' : 'Estimated Refund'} *</span>
+                    <span>{tr('estimatedRefundLabel')} *</span>
                     <span className="text-xs text-primary font-bold">
                       {activeCurrencySymbol}
                     </span>
@@ -577,7 +661,7 @@ export default function NewReturnModal({
                 {/* 4. Serial Number (S/N) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-serial" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'الرقم التسلسلي (S/N)' : 'Serial Number (S/N)'} *</span>
+                    <span>{tr('serialLabel')} *</span>
                     <span className="text-[10px] text-muted-foreground font-mono">
                       BARCODE
                     </span>
@@ -599,9 +683,9 @@ export default function NewReturnModal({
                 {/* 5. Automated Warranty Validity Status */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-warranty" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{isAr ? 'حالة سريان الضمان' : 'Warranty Validity'} *</span>
+                    <span>{tr('warrantyLabel')} *</span>
                     <span className="text-[10px] text-muted-foreground">
-                      {isAr ? 'مقارنة تلقائية بتاريخ الشراء' : 'Automated inspection'}
+                      {tr('warrantyAutoNote')}
                     </span>
                   </Label>
                   <select
@@ -611,13 +695,13 @@ export default function NewReturnModal({
                     className="flex h-10.5 w-full rounded-lg border border-border/80 bg-background px-3.5 py-2 text-xs sm:text-sm font-semibold text-foreground shadow-xs focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
                   >
                     <option value="VALID_UNDER_WARRANTY">
-                      {isAr ? 'ساري المفعول (ضمن فترة الضمان القانوني)' : 'Valid under warranty'}
+                      {tr('warrantyOptValid')}
                     </option>
                     <option value="EXPIRED">
-                      {isAr ? 'منتهي الصلاحية (خارج فترة الضمان)' : 'Warranty expired'}
+                      {tr('warrantyOptExpired')}
                     </option>
                     <option value="VOID_PHYSICAL_DAMAGE">
-                      {isAr ? 'لاغٍ بسبب كسر أو سوء استخدام فيزيائي' : 'Void - Physical / liquid damage'}
+                      {tr('warrantyOptVoid')}
                     </option>
                   </select>
                 </div>
@@ -630,14 +714,14 @@ export default function NewReturnModal({
               <div className="rounded-xl border border-border/80 bg-card p-4 space-y-2.5 shadow-2xs flex flex-col">
                 <Label htmlFor="rma-reason" className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5 pb-2 border-b border-border/50">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  <span>{isAr ? 'سبب طلب الإرجاع والملاحظات الفنية' : 'Return Reason & Technical Notes'} *</span>
+                  <span>{tr('reasonLabel')} *</span>
                 </Label>
                 <textarea
                   id="rma-reason"
                   value={returnReason}
                   onChange={(e) => setReturnReason(e.target.value)}
                   required
-                  placeholder={isAr ? 'صف العطل، حالة التغليف، والأسباب الفنية للإرجاع بالتفصيل...' : 'Describe fault, packaging condition, or reason for return...'}
+                  placeholder={tr('reasonPlaceholder')}
                   className="w-full flex-1 min-h-[96px] rounded-lg border border-border/80 bg-background p-3 text-xs sm:text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors resize-none shadow-xs"
                 />
               </div>
@@ -647,10 +731,10 @@ export default function NewReturnModal({
                 <div className="flex items-center justify-between text-xs font-bold text-foreground/90 pb-2 border-b border-border/50">
                   <div className="flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-primary" />
-                    <span>{isAr ? 'القرار الفوري والمسار التشغيلي' : 'Immediate RMA Operational Decision'}</span>
+                    <span>{tr('decisionSectionTitle')}</span>
                   </div>
                   <span className="text-[10px] text-muted-foreground font-normal">
-                    {isAr ? 'اختر مسار المعالجة' : 'Select workflow'}
+                    {tr('selectWorkflowHint')}
                   </span>
                 </div>
 
@@ -677,13 +761,11 @@ export default function NewReturnModal({
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-4 h-4 text-primary shrink-0" />
                         <span className="text-xs sm:text-sm font-bold text-foreground truncate">
-                          {isAr ? 'قيد الفحص والمطابقة' : 'Pending Inspection'}
+                          {tr('decisionPendingTitle')}
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
-                        {isAr
-                          ? 'إرسال الصنف للمعاينة الفنية والمطابقة المخزنية'
-                          : 'Send item to technical inspection and warehouse verification'}
+                        {tr('decisionPendingDesc')}
                       </p>
                     </div>
                   </div>
@@ -710,13 +792,11 @@ export default function NewReturnModal({
                       <div className="flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="text-xs sm:text-sm font-bold text-foreground truncate">
-                          {isAr ? 'قبول فوري وإرجاع للمخزن' : 'Immediate Restock & Credit'}
+                          {tr('decisionRestockTitle')}
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
-                        {isAr
-                          ? 'إعادة القطعة للمخزن فوراً وقيد إشعار دائن للعميل'
-                          : 'Return item to warehouse immediately & issue credit note'}
+                        {tr('decisionRestockDesc')}
                       </p>
                     </div>
                   </div>
@@ -733,10 +813,10 @@ export default function NewReturnModal({
                   <Info className="w-3.5 h-3.5 text-amber-500" />
                   <span>
                     {!selectedInvoiceNo 
-                      ? (isAr ? 'اختر الفاتورة الأصلية للمتابعة' : 'Select linked invoice to proceed') 
+                      ? tr('footerSelectInvoice')
                       : !selectedItem 
-                      ? (isAr ? 'اختر الصنف المراد إرجاعه' : 'Select item to return') 
-                      : (isAr ? 'تحقق من صحة كمية الإرجاع' : 'Check return quantity')}
+                      ? tr('footerSelectItem')
+                      : tr('footerCheckQty')}
                   </span>
                 </>
               )}
@@ -749,20 +829,20 @@ export default function NewReturnModal({
                 onClick={onClose}
                 className="h-10 px-5 text-xs sm:text-sm font-semibold rounded-lg"
               >
-                {isAr ? 'إلغاء' : 'Cancel'}
+                {tr('cancelBtn')}
               </Button>
 
               <Button
                 type="submit"
-                disabled={!isFormValid}
+                disabled={!isFormValid || isSubmitting}
                 className={`h-10 px-6 text-xs sm:text-sm font-bold text-primary-foreground shadow-sm flex items-center gap-2 rounded-lg transition-all ${
-                  isFormValid 
+                  isFormValid && !isSubmitting
                     ? 'bg-primary hover:bg-primary/90 cursor-pointer' 
                     : 'bg-muted-foreground/30 text-muted-foreground cursor-not-allowed opacity-60'
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isAr ? 'حفظ وإصدار طلب الـ RMA' : 'Create RMA Request'}</span>
+                <span>{isSubmitting ? tr('processingBtn') : tr('submitBtn')}</span>
               </Button>
             </div>
           </div>

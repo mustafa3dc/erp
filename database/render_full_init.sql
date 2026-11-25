@@ -1228,6 +1228,35 @@ CREATE INDEX IF NOT EXISTS idx_sales_invoices_dispense_mode ON sales_invoices(di
 ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS shift_id VARCHAR(100);
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_shift_id ON sales_invoices(shift_id);
 
+CREATE TABLE IF NOT EXISTS rma_return_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    rma_number VARCHAR(50) NOT NULL,
+    invoice_id UUID NOT NULL REFERENCES sales_invoices(id) ON DELETE RESTRICT,
+    invoice_number VARCHAR(100) NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    sku VARCHAR(100) NOT NULL DEFAULT '',
+    product_name VARCHAR(200) NOT NULL DEFAULT '',
+    serial_number VARCHAR(100) NOT NULL DEFAULT '',
+    customer_name VARCHAR(150) NOT NULL DEFAULT '',
+    customer_phone VARCHAR(50) NOT NULL DEFAULT '',
+    return_quantity INT NOT NULL DEFAULT 1,
+    refund_amount NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,
+    currency VARCHAR(10) NOT NULL DEFAULT 'IQD',
+    warranty_status VARCHAR(50) NOT NULL DEFAULT 'VALID_UNDER_WARRANTY',
+    decision VARCHAR(50) NOT NULL DEFAULT 'PENDING_INSPECTION',
+    warehouse_id UUID REFERENCES warehouses(id) ON DELETE SET NULL,
+    restocked_at TIMESTAMPTZ,
+    restocked_by VARCHAR(150),
+    return_reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE IF EXISTS rma_return_requests ADD COLUMN IF NOT EXISTS warehouse_id UUID REFERENCES warehouses(id) ON DELETE SET NULL;
+ALTER TABLE IF EXISTS rma_return_requests ADD COLUMN IF NOT EXISTS restocked_at TIMESTAMPTZ;
+ALTER TABLE IF EXISTS rma_return_requests ADD COLUMN IF NOT EXISTS restocked_by VARCHAR(150);
+CREATE INDEX IF NOT EXISTS idx_rma_return_requests_invoice_id ON rma_return_requests(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_rma_return_requests_warehouse_id ON rma_return_requests(warehouse_id);
+
 -- 3. Sales Invoice Items: Explicit Source Location Attribution
 ALTER TABLE IF EXISTS sales_invoice_items 
 ADD COLUMN IF NOT EXISTS source_warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT;

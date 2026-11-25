@@ -2191,6 +2191,8 @@ export interface ReturnableInvoiceItem {
   productName: string;
   sku: string;
   serialNumber: string;
+  warehouseId?: string;
+  warehouseName?: string;
   soldQty: number;
   alreadyReturnedQty: number;
   remainingReturnableQty: number;
@@ -2210,6 +2212,15 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
   const invoices = getStoredInvoices();
   const invoice = invoices.find(i => i.invoiceNo === invoiceNoOrId || i.id === invoiceNoOrId);
   if (!invoice) return [];
+
+  const warehouses = getStoredWarehouses();
+  const matchedWarehouse = warehouses.find(
+    w =>
+      w.nameAr === invoice.warehouseName ||
+      w.nameEn === invoice.warehouseName ||
+      w.id === invoice.warehouseName ||
+      w.code === invoice.warehouseName
+  ) || warehouses.find(w => (w as any).isActive !== false) || warehouses[0];
 
   const existingRmas = getStoredRMA();
   const now = new Date();
@@ -2243,6 +2254,8 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
         productName: item.nameAr || item.nameEn || 'صنف مباع',
         sku: item.sku,
         serialNumber: (item as any).serialNumber || '',
+        warehouseId: matchedWarehouse?.id,
+        warehouseName: invoice.warehouseName || matchedWarehouse?.nameAr || matchedWarehouse?.nameEn || '',
         soldQty,
         alreadyReturnedQty: returnedQty,
         remainingReturnableQty: remaining,
@@ -2268,6 +2281,8 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
     productName: invoice.customerName ? `مشتريات ${invoice.customerName}` : 'بضاعة الفاتورة',
     sku: 'SKU-INVOICE',
     serialNumber: '',
+    warehouseId: matchedWarehouse?.id,
+    warehouseName: invoice.warehouseName || matchedWarehouse?.nameAr || matchedWarehouse?.nameEn || '',
     soldQty: fallbackSold,
     alreadyReturnedQty: singleReturned,
     remainingReturnableQty: fallbackRemaining,
@@ -2311,6 +2326,141 @@ export function validateRmaReturn(
   }
 
   return { isValid: true };
+}
+
+export interface SalesReturnRestockRequest {
+  rmaId: string;
+  rmaNumber: string;
+  invoiceNo: string;
+  productId?: string;
+  sku: string;
+  productName: string;
+  returnQuantity: number;
+  warehouseId?: string;
+  warehouseName?: string;
+  customerName?: string;
+  serialNumber?: string;
+  operator?: string;
+}
+
+export interface SalesReturnRestockResult {
+  updatedProducts: Product[];
+  createdTransactions: TransactionDetail[];
+  restockedWarehouseName: string;
+}
+
+/**
+ * Atomically increments local warehouse inventory upon Sales Return (RMA) approval/restock:
+ * - Expands Product Bundles into underlying physical component SKUs.
+ * - Restores Serial/IMEI status back from Sold to InStock when present.
+ * - Logs an Inbound SalesReturn TransactionDetail audit movement.
+ */
+export function executeSalesReturnRestock(req: SalesReturnRestockRequest): SalesReturnRestockResult {
+  const storedProducts = getStoredProducts();
+  const updatedProducts = [...storedProducts];
+  const storedBundles = getStoredProductBundles();
+  const warehouses = getStoredWarehouses();
+
+  const resolvedWarehouse =
+    warehouses.find(w => req.warehouseId && (w.id === req.warehouseId || w.code === req.warehouseId)) ||
+    warehouses.find(w => req.warehouseName && (w.nameAr === req.warehouseName || w.nameEn === req.warehouseName)) ||
+    warehouses.find(w => (w as any).isActive !== false) ||
+    warehouses[0];
+
+  const effectiveWarehouseName = resolvedWarehouse?.nameAr || req.warehouseName || 'المستودع الرئيسي';
+  const matchedProduct = updatedProducts.find(
+    p => (req.productId && p.id === req.productId) || (req.sku && p.sku === req.sku)
+  );
+
+  const qty = Math.max(1, Number(req.returnQuantity) || 1);
+  const bundleComponents = matchedProduct
+    ? storedBundles.filter(b => b.parentProductId === matchedProduct.id)
+    : [];
+  const isBundle = Boolean(matchedProduct?.isBundle) || bundleComponents.length > 0;
+
+  const restockTargets: Array<{ product: Product | undefined; qty: number }> = isBundle
+    ? bundleComponents.map(bc => ({
+        product: updatedProducts.find(
+          p => !p.isBundle && (p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku))
+        ),
+        qty: Math.ceil((Number(bc.quantity) || 1) * qty)
+      }))
+    : [{ product: matchedProduct, qty }];
+
+  const newTransactions: TransactionDetail[] = [];
+  const nowStr = new Date().toISOString().split('T')[0];
+
+  for (const target of restockTargets) {
+    if (!target.product || target.product.isBundle) continue;
+    const pIndex = updatedProducts.findIndex(p => p.id === target.product!.id);
+    if (pIndex < 0) continue;
+
+    const prod = updatedProducts[pIndex];
+    const prevStock = Number(prod.currentStock) || 0;
+    const newStock = prevStock + target.qty;
+
+    updatedProducts[pIndex] = {
+      ...prod,
+      currentStock: newStock,
+      status: newStock <= 0 ? 'out_of_stock' : newStock <= (prod.minStockAlert || 5) ? 'low' : 'available',
+      updatedAt: nowStr
+    };
+
+    const nowIso = new Date().toISOString();
+    newTransactions.push({
+      id: getNextTransactionId(newTransactions.length),
+      timestamp: nowIso,
+      movementDate: nowIso,
+      createdAt: nowIso,
+      date: nowIso,
+      type: 'Inbound',
+      status: 'SalesReturn',
+      sku: prod.sku,
+      productName: isBundle ? `${prod.nameAr} (${req.productName})` : prod.nameAr,
+      qty: target.qty,
+      unit: prod.unit || 'قطعة',
+      unitCost: prod.costPrice,
+      location: effectiveWarehouseName,
+      fromLocation: req.customerName || req.invoiceNo,
+      toLocation: effectiveWarehouseName,
+      referenceNo: req.rmaNumber,
+      operator: req.operator || 'مسؤول المرتجعات'
+    });
+  }
+
+  // Restore Product Serial / IMEI status from Sold back to InStock
+  if (req.serialNumber && req.serialNumber !== 'N/A') {
+    const cleanSerial = req.serialNumber.trim().toLowerCase();
+    const serials = getStoredProductSerials();
+    let changed = false;
+    const updatedSerials = serials.map(s => {
+      if (s.serialNumber.trim().toLowerCase() === cleanSerial) {
+        changed = true;
+        return {
+          ...s,
+          status: 'InStock' as const,
+          warehouseId: resolvedWarehouse?.id || s.warehouseId,
+          warehouseName: effectiveWarehouseName
+        };
+      }
+      return s;
+    });
+    if (changed) {
+      saveStoredProductSerials(updatedSerials);
+    }
+  }
+
+  if (newTransactions.length > 0) {
+    saveStoredProducts(updatedProducts);
+    const existingTxs = getStoredTransactions();
+    saveStoredTransactions([...newTransactions, ...existingTxs]);
+  }
+
+  return {
+    updatedProducts,
+    createdTransactions: newTransactions,
+    restockedWarehouseName: effectiveWarehouseName
+  };
 }
 
 export function getStoredDeliveries(): any[] {

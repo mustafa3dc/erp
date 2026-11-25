@@ -1939,7 +1939,13 @@ function DashboardApp() {
 
         {/* View 8: Returns & Warranty */}
         {activeNav === 'Returns & Warranty' && (
-          <ReturnsWarrantyView lang={lang} />
+          <ReturnsWarrantyView
+            lang={lang}
+            warehouses={warehouses}
+            setProducts={setProducts}
+            setTransactions={setTransactions}
+            currentUser={currentUser}
+          />
         )}
 
         {/* View 9: Delivery & Logistics */}

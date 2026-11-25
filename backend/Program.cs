@@ -63,6 +63,7 @@ builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<IPriceListService, PriceListService>();
 builder.Services.AddScoped<IPurchaseReturnService, PurchaseReturnService>();
 builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
+builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 
 // JWT Authentication Configuration
 var jwtSecret = "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";

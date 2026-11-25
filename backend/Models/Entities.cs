@@ -1173,6 +1173,17 @@ public class RmaReturnRequest : ITenantEntity
     [Column("decision")]
     public string Decision { get; set; } = "PENDING_INSPECTION";
 
+    [Column("warehouse_id")]
+    public Guid? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
+    [Column("restocked_at")]
+    public DateTime? RestockedAt { get; set; }
+
+    [MaxLength(150)]
+    [Column("restocked_by")]
+    public string? RestockedBy { get; set; }
+
     [Column("return_reason")]
     public string ReturnReason { get; set; } = string.Empty;
 

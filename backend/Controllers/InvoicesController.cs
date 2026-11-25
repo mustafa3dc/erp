@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
+using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
@@ -16,13 +18,24 @@ namespace ERP.Warehouse.Api.Controllers;
 public class InvoicesController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ISalesReturnService _salesReturnService;
     private readonly ILogger<InvoicesController> _logger;
 
-    public InvoicesController(AppDbContext context, ILogger<InvoicesController> logger)
+    public InvoicesController(
+        AppDbContext context,
+        ISalesReturnService salesReturnService,
+        ILogger<InvoicesController> logger)
     {
         _context = context;
+        _salesReturnService = salesReturnService;
         _logger = logger;
     }
+
+    private string CurrentActorName =>
+        User.FindFirst(ClaimTypes.Name)?.Value
+        ?? User.FindFirst("username")?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? "System";
 
     /// <summary>
     /// GET /api/invoices
@@ -120,6 +133,7 @@ public class InvoicesController : ControllerBase
             var isUnderWarranty = now <= warrantyExpiresAt;
 
             var returnableItems = new List<ReturnableInvoiceItemDto>();
+            var warehousesMap = await _context.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
 
             foreach (var item in invoice.Items)
             {
@@ -128,6 +142,8 @@ public class InvoicesController : ControllerBase
                     .Sum(r => r.ReturnQuantity);
 
                 var remainingQty = Math.Max(0, item.Quantity - returnedQty);
+                var itemWarehouseId = item.SourceWarehouseId ?? invoice.WarehouseId;
+                warehousesMap.TryGetValue(itemWarehouseId, out var itemWarehouseName);
 
                 returnableItems.Add(new ReturnableInvoiceItemDto
                 {
@@ -136,6 +152,8 @@ public class InvoicesController : ControllerBase
                     ProductName = item.Product?.Name ?? "صنف مبيعات",
                     Sku = item.Product?.Sku ?? "SKU-GEN",
                     SerialNumber = item.Product?.Barcode ?? string.Empty,
+                    WarehouseId = itemWarehouseId,
+                    WarehouseName = itemWarehouseName ?? string.Empty,
                     SoldQty = item.Quantity,
                     AlreadyReturnedQty = returnedQty,
                     RemainingReturnableQty = remainingQty,
@@ -160,143 +178,59 @@ public class InvoicesController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/invoices/returns
+    /// Lists all recorded Sales Return (RMA) requests with warehouse and restock audit details.
+    /// </summary>
+    [HttpGet("returns")]
+    public async Task<ActionResult<IEnumerable<RmaReturnResponseDto>>> GetReturns([FromQuery] string? decision)
+    {
+        var items = await _salesReturnService.GetReturnsAsync(decision);
+        return Ok(items);
+    }
+
+    /// <summary>
     /// POST /api/invoices/{invoiceId}/returns
     /// Validates and records an RMA return request strictly bound to the invoice line items.
+    /// Atomically increments warehouse inventory &amp; serial status inside ACID transaction when Decision is APPROVED_RESTOCKED.
     /// </summary>
     [HttpPost("{invoiceId}/returns")]
     public async Task<ActionResult<RmaReturnResponseDto>> CreateInvoiceReturn(
         [FromRoute] string invoiceId,
         [FromBody] CreateInvoiceReturnRequestDto request)
     {
-        try
+        var result = await _salesReturnService.CreateInvoiceReturnAsync(invoiceId, request, CurrentActorName);
+        if (!result.Success)
         {
-            SalesInvoice? invoice = null;
-            if (Guid.TryParse(invoiceId, out var idGuid))
+            return StatusCode(result.StatusCode, new
             {
-                invoice = await _context.SalesInvoices
-                    .Include(i => i.Items)
-                    .ThenInclude(it => it.Product)
-                    .FirstOrDefaultAsync(i => i.Id == idGuid);
-            }
-
-            if (invoice == null)
-            {
-                invoice = await _context.SalesInvoices
-                    .Include(i => i.Items)
-                    .ThenInclude(it => it.Product)
-                    .FirstOrDefaultAsync(i => i.InvoiceNumber == invoiceId);
-            }
-
-            if (invoice == null)
-            {
-                return NotFound(new 
-                { 
-                    errorCode = "ERR_INVOICE_NOT_FOUND", 
-                    message = $"الفاتورة ({invoiceId}) غير موجودة." 
-                });
-            }
-
-            // 1. Mandatory Validation Rule: Product must exist in invoice line items
-            var invoiceItem = invoice.Items.FirstOrDefault(it => 
-                it.ProductId == request.ProductId || 
-                (!string.IsNullOrEmpty(request.Sku) && it.Product?.Sku == request.Sku));
-
-            if (invoiceItem == null)
-            {
-                return BadRequest(new 
-                { 
-                    errorCode = "ERR_PRODUCT_NOT_IN_INVOICE", 
-                    message = "مرفوض رقابياً: الصنف المحدد غير موجود ضمن بنود هذه الفاتورة الأصلية." 
-                });
-            }
-
-            // 2. Mandatory Validation Rule: Quantity cannot exceed remaining returnable quantity
-            var productSku = invoiceItem.Product?.Sku;
-            var alreadyReturnedQty = await _context.RmaReturnRequests
-                .Where(r => (r.InvoiceId == invoice.Id || r.InvoiceNumber == invoice.InvoiceNumber) 
-                            && (r.ProductId == invoiceItem.ProductId || (productSku != null && r.Sku == productSku))
-                            && r.Decision != "REJECTED")
-                .SumAsync(r => r.ReturnQuantity);
-
-            var remainingReturnable = Math.Max(0, invoiceItem.Quantity - alreadyReturnedQty);
-
-            if (request.ReturnQuantity <= 0)
-            {
-                return BadRequest(new 
-                { 
-                    errorCode = "ERR_INVALID_RETURN_QUANTITY", 
-                    message = "يجب تحديد كمية إرجاع صحيحة (أكبر من صفر)." 
-                });
-            }
-
-            if (request.ReturnQuantity > remainingReturnable)
-            {
-                return BadRequest(new 
-                { 
-                    errorCode = "ERR_RETURN_QTY_EXCEEDED", 
-                    message = $"الكمية المراد إرجاعها ({request.ReturnQuantity}) تتجاوز الكمية المتبقية القابلة للإرجاع ({remainingReturnable} قطعة)." 
-                });
-            }
-
-            // 3. Compute Refund & Warranty Analysis
-            var unitPrice = invoiceItem.UnitPrice;
-            var totalRefund = request.ReturnQuantity * unitPrice;
-            var warrantyExpiresAt = invoice.CreatedAt.AddMonths(12);
-            var isUnderWarranty = DateTime.UtcNow <= warrantyExpiresAt;
-            var calculatedWarrantyStatus = isUnderWarranty ? "VALID_UNDER_WARRANTY" : "EXPIRED";
-
-            var rmaNumber = string.IsNullOrWhiteSpace(request.RmaNumber) 
-                ? $"RMA-{DateTime.UtcNow:yyMMdd}-{Random.Shared.Next(1000, 9999)}" 
-                : request.RmaNumber.Trim();
-
-            var rmaRecord = new RmaReturnRequest
-            {
-                RmaNumber = rmaNumber,
-                InvoiceId = invoice.Id,
-                InvoiceNumber = invoice.InvoiceNumber,
-                ProductId = invoiceItem.ProductId,
-                Sku = invoiceItem.Product?.Sku ?? request.Sku,
-                ProductName = invoiceItem.Product?.Name ?? "صنف مرتجع",
-                SerialNumber = request.SerialNumber?.Trim() ?? string.Empty,
-                CustomerName = string.IsNullOrWhiteSpace(request.CustomerName) ? (invoice.CashierName ?? "عميل الفاتورة") : request.CustomerName.Trim(),
-                CustomerPhone = request.CustomerPhone?.Trim() ?? "—",
-                ReturnQuantity = request.ReturnQuantity,
-                RefundAmount = totalRefund,
-                Currency = request.Currency ?? "IQD",
-                WarrantyStatus = string.IsNullOrWhiteSpace(request.WarrantyStatus) ? calculatedWarrantyStatus : request.WarrantyStatus,
-                Decision = string.IsNullOrWhiteSpace(request.Decision) ? "PENDING_INSPECTION" : request.Decision,
-                ReturnReason = request.ReturnReason?.Trim() ?? string.Empty,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.RmaReturnRequests.Add(rmaRecord);
-            await _context.SaveChangesAsync();
-
-            return Ok(new RmaReturnResponseDto
-            {
-                RmaId = rmaRecord.Id,
-                RmaNumber = rmaRecord.RmaNumber,
-                InvoiceNumber = rmaRecord.InvoiceNumber,
-                ProductName = rmaRecord.ProductName,
-                Sku = rmaRecord.Sku,
-                ReturnQuantity = rmaRecord.ReturnQuantity,
-                RefundAmount = rmaRecord.RefundAmount,
-                Currency = rmaRecord.Currency,
-                WarrantyStatus = rmaRecord.WarrantyStatus,
-                Decision = rmaRecord.Decision,
-                RemainingReturnableQty = remainingReturnable - request.ReturnQuantity,
-                CreatedAt = rmaRecord.CreatedAt
+                errorCode = result.ErrorCode ?? "ERR_CREATE_RMA_FAILED",
+                message = result.Message ?? "حدث خطأ أثناء تسجيل طلب الإرجاع."
             });
         }
-        catch (Exception ex)
+
+        return Ok(result.Data);
+    }
+
+    /// <summary>
+    /// POST /api/invoices/returns/{rmaId}/approve
+    /// Approves a pending RMA request and atomically restores returned inventory stock (including bundles &amp; serials).
+    /// </summary>
+    [HttpPost("returns/{rmaId:guid}/approve")]
+    public async Task<ActionResult<RmaReturnResponseDto>> ApproveInvoiceReturn(
+        [FromRoute] Guid rmaId,
+        [FromBody] ApproveSalesReturnRequestDto? request = null)
+    {
+        var result = await _salesReturnService.ApproveAndRestockReturnAsync(rmaId, request, CurrentActorName);
+        if (!result.Success)
         {
-            _logger.LogError(ex, "Failed to create return for invoice {InvoiceId}", invoiceId);
-            return StatusCode(500, new 
-            { 
-                errorCode = "ERR_CREATE_RMA_FAILED", 
-                message = "حدث خطأ أثناء تسجيل طلب الإرجاع." 
+            return StatusCode(result.StatusCode, new
+            {
+                errorCode = result.ErrorCode ?? "ERR_APPROVE_RMA_FAILED",
+                message = result.Message ?? "حدث خطأ أثناء اعتماد المرتجع وإرجاع البضاعة للمستودع."
             });
         }
+
+        return Ok(result.Data);
     }
 }
 
@@ -319,6 +253,8 @@ public class ReturnableInvoiceItemDto
     public string ProductName { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string SerialNumber { get; set; } = string.Empty;
+    public Guid WarehouseId { get; set; }
+    public string WarehouseName { get; set; } = string.Empty;
     public int SoldQty { get; set; }
     public int AlreadyReturnedQty { get; set; }
     public int RemainingReturnableQty { get; set; }
@@ -337,10 +273,17 @@ public class CreateInvoiceReturnRequestDto
     public string? CustomerName { get; set; }
     public string? CustomerPhone { get; set; }
     public int ReturnQuantity { get; set; } = 1;
+    public Guid? WarehouseId { get; set; }
     public string? ReturnReason { get; set; }
     public string? WarrantyStatus { get; set; }
     public string? Decision { get; set; }
     public string? Currency { get; set; }
+}
+
+public class ApproveSalesReturnRequestDto
+{
+    public Guid? WarehouseId { get; set; }
+    public string? Notes { get; set; }
 }
 
 public class RmaReturnResponseDto
@@ -348,13 +291,23 @@ public class RmaReturnResponseDto
     public Guid RmaId { get; set; }
     public string RmaNumber { get; set; } = string.Empty;
     public string InvoiceNumber { get; set; } = string.Empty;
+    public Guid ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
+    public string SerialNumber { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerPhone { get; set; } = string.Empty;
     public int ReturnQuantity { get; set; }
     public decimal RefundAmount { get; set; }
     public string Currency { get; set; } = "IQD";
     public string WarrantyStatus { get; set; } = "VALID_UNDER_WARRANTY";
     public string Decision { get; set; } = "PENDING_INSPECTION";
+    public Guid? WarehouseId { get; set; }
+    public string? WarehouseName { get; set; }
+    public bool IsRestocked { get; set; }
+    public DateTime? RestockedAt { get; set; }
+    public string? RestockedBy { get; set; }
+    public string ReturnReason { get; set; } = string.Empty;
     public int RemainingReturnableQty { get; set; }
     public DateTime CreatedAt { get; set; }
 }

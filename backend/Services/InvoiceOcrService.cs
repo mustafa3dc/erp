@@ -195,14 +195,15 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
             {
                 new
                 {
+                    role = "user",
                     parts = new object[]
                     {
                         new { text = promptText },
                         new
                         {
-                            inline_data = new
+                            inlineData = new
                             {
-                                mime_type = mimeType,
+                                mimeType,
                                 data = Convert.ToBase64String(fileBytes)
                             }
                         }
@@ -250,28 +251,52 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(25);
 
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent?key={Uri.EscapeDataString(apiKey)}";
-        using var httpContent = new StringContent(JsonSerializer.Serialize(requestPayload), Encoding.UTF8, "application/json");
+        var escapedModel = Uri.EscapeDataString(model);
+        var escapedKey = Uri.EscapeDataString(apiKey);
+        var vertexExpressUrl = $"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent?key={escapedKey}";
+        var aiStudioUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}";
 
-        HttpResponseMessage response;
-        try
+        var endpointsToTry = apiKey.StartsWith("AQ.", StringComparison.Ordinal)
+            ? new[] { vertexExpressUrl, aiStudioUrl }
+            : new[] { aiStudioUrl };
+
+        var serializedPayload = JsonSerializer.Serialize(requestPayload);
+        HttpResponseMessage? response = null;
+        string? lastErrBody = null;
+
+        foreach (var url in endpointsToTry)
         {
-            response = await client.PostAsync(url, httpContent, ct);
-        }
-        catch (TaskCanceledException)
-        {
-            throw new OcrExtractionException("ERR_OCR_TIMEOUT", StatusCodes.Status504GatewayTimeout);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Gemini HTTP call failed");
-            throw new OcrExtractionException("ERR_OCR_UPSTREAM_FAILED", StatusCodes.Status502BadGateway);
+            using var httpContent = new StringContent(serializedPayload, Encoding.UTF8, "application/json");
+            try
+            {
+                response = await client.PostAsync(url, httpContent, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                throw new OcrExtractionException("ERR_OCR_TIMEOUT", StatusCodes.Status504GatewayTimeout);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Gemini HTTP call failed");
+                throw new OcrExtractionException("ERR_OCR_UPSTREAM_FAILED", StatusCodes.Status502BadGateway);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                break;
+            }
+
+            lastErrBody = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("Gemini OCR endpoint returned {Status}: {Body}", response.StatusCode, lastErrBody);
+
+            if ((int)response.StatusCode is not (400 or 401 or 403 or 404))
+            {
+                break;
+            }
         }
 
-        if (!response.IsSuccessStatusCode)
+        if (response == null || !response.IsSuccessStatusCode)
         {
-            var errBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogWarning("Gemini OCR non-success response {Status}: {Body}", response.StatusCode, errBody);
             throw new OcrExtractionException("ERR_OCR_UPSTREAM_FAILED", StatusCodes.Status502BadGateway);
         }
 

@@ -36,6 +36,8 @@ import {
   Loader2,
   Languages,
   CheckCircle2,
+  Award,
+  Sparkles
 } from 'lucide-react';
 import {
   useSettings,
@@ -46,9 +48,13 @@ import {
   SUPPORTED_LANGUAGES,
   SecondaryCurrencyConfig,
   ScaleSettings,
+  LoyaltySettings,
 } from '../../context/settings-context';
-import { Warehouse as WarehouseType } from '../../types/warehouse';
+import { getTranslation } from '../../lib/i18n';
 import {
+  DEFAULT_LOYALTY_SETTINGS,
+  getStoredLoyaltySettings,
+  saveStoredLoyaltySettings,
   getStoredWarehouses,
   resetToCleanSlate,
   getStoredProducts,
@@ -59,6 +65,7 @@ import {
   safeSet,
   KEYS,
 } from '../../services/storageService';
+import { Warehouse as WarehouseType } from '../../types/warehouse';
 import { updateTenantFeatures } from '../../services/tenantService';
 import { useTenantFeatures } from '../../hooks/useAuth';
 import { toast } from 'sonner';
@@ -222,7 +229,7 @@ function StatusBadge({
 
 // ─── Tab IDs ──────────────────────────────────────────────────────────────────
 
-type TabId = 'company_identity' | 'financial_currency' | 'pos_hardware' | 'active_modules';
+type TabId = 'company_identity' | 'financial_currency' | 'pos_hardware' | 'loyalty_program' | 'active_modules';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -308,6 +315,74 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     itemCodeLength: 5,
     weightUnit: 'KG',
     directScaleBaudRate: 9600,
+  };
+
+  const [loyaltyForm, setLoyaltyForm] = useState<LoyaltySettings>(() =>
+    settings.loyaltySettings || getStoredLoyaltySettings() || DEFAULT_LOYALTY_SETTINGS
+  );
+  const [isSavingLoyalty, setIsSavingLoyalty] = useState(false);
+
+  React.useEffect(() => {
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+      : null;
+    if (!token) return;
+    fetch('/api/loyalty/settings', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then((remote) => {
+        if (remote && typeof remote.profitUnitAmount === 'number') {
+          const synced: LoyaltySettings = {
+            isLoyaltyEnabled: Boolean(remote.isLoyaltyEnabled),
+            profitUnitAmount: Number(remote.profitUnitAmount) || 1000,
+            pointsEarnedPerUnit: Number(remote.pointsEarnedPerUnit) || 10,
+            pointsRedemptionUnit: Number(remote.pointsRedemptionUnit) || 100,
+            currencyValuePerUnit: Number(remote.currencyValuePerUnit) || 1000,
+            minRedeemablePoints: Number(remote.minRedeemablePoints) || 500
+          };
+          setLoyaltyForm(synced);
+          saveStoredLoyaltySettings(synced);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveLoyaltySettings = async () => {
+    if (
+      loyaltyForm.profitUnitAmount <= 0 ||
+      loyaltyForm.pointsEarnedPerUnit < 0 ||
+      loyaltyForm.pointsRedemptionUnit <= 0 ||
+      loyaltyForm.currencyValuePerUnit < 0 ||
+      loyaltyForm.minRedeemablePoints < 0
+    ) {
+      toast.error(getTranslation(effectiveLanguage === 'en' ? 'en' : 'ar', 'ui.loyalty.invalidConfigError'));
+      return;
+    }
+
+    setIsSavingLoyalty(true);
+    try {
+      saveStoredLoyaltySettings(loyaltyForm);
+      await updateSetting('loyaltySettings', loyaltyForm);
+
+      const token = typeof window !== 'undefined'
+        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+        : null;
+      if (token) {
+        await fetch('/api/loyalty/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(loyaltyForm)
+        }).catch(() => {});
+      }
+
+      toast.success(getTranslation(effectiveLanguage === 'en' ? 'en' : 'ar', 'ui.loyalty.saveSuccessToast'));
+    } finally {
+      setIsSavingLoyalty(false);
+    }
   };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -510,6 +585,12 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
       icon: <Printer className="w-4 h-4" />,
       labelAr: 'نقاط البيع والأجهزة',
       labelEn: 'POS & Hardware',
+    },
+    {
+      id: 'loyalty_program',
+      icon: <Award className="w-4 h-4" />,
+      labelAr: getTranslation('ar', 'ui.loyalty.tabTitle'),
+      labelEn: getTranslation('en', 'ui.loyalty.tabTitle'),
     },
     {
       id: 'active_modules',
@@ -1394,7 +1475,137 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
         </div>
       )}
 
-      {/* ── TAB 4: Active Modules ─────────────────────────────────────────── */}
+      {/* ── TAB 4: Profit-Based Loyalty Program ───────────────────────────── */}
+      {activeTab === 'loyalty_program' && (() => {
+        const uiLang = isAr ? 'ar' : 'en';
+        const lTr = (k: string) => getTranslation(uiLang, `ui.loyalty.${k}`);
+        const previewProfit = (Number(loyaltyForm.profitUnitAmount) || 1000) * 5;
+        const previewEarned = Math.floor((previewProfit / Math.max(1, Number(loyaltyForm.profitUnitAmount) || 1)) * (Number(loyaltyForm.pointsEarnedPerUnit) || 0));
+        const currLabel = settings.baseCurrency || 'IQD';
+        const redeemExamplePts = Number(loyaltyForm.pointsRedemptionUnit) || 100;
+        const redeemExampleVal = Number(loyaltyForm.currencyValuePerUnit) || 1000;
+        const minPts = Number(loyaltyForm.minRedeemablePoints) || 0;
+
+        return (
+          <div className="space-y-5">
+            <SectionCard
+              icon={<Award className="w-4 h-4" />}
+              title={lTr('sectionTitle')}
+            >
+              <p className="text-xs text-muted-foreground leading-relaxed m-0">
+                {lTr('sectionSubtitle')}
+              </p>
+
+              <SwitchRow
+                title={lTr('enabledLabel')}
+                description={lTr('enabledDesc')}
+                checked={loyaltyForm.isLoyaltyEnabled}
+                onToggle={() => setLoyaltyForm(prev => ({ ...prev, isLoyaltyEnabled: !prev.isLoyaltyEnabled }))}
+                isAr={isAr}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                <div className="p-4 rounded-xl border border-slate-200/80 dark:border-border bg-slate-50/40 dark:bg-muted/20 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-primary">
+                    <Sparkles className="w-4 h-4" />
+                    <span>{lTr('earningRuleTitle')}</span>
+                  </div>
+                  <FieldRow label={`${lTr('profitUnitAmountLabel')} (${currLabel})`}>
+                    <input
+                      type="number"
+                      min={1}
+                      step="1"
+                      className={`${INPUT_CLS} font-mono tabular-nums`}
+                      value={loyaltyForm.profitUnitAmount}
+                      onChange={(e) => setLoyaltyForm(prev => ({ ...prev, profitUnitAmount: Math.max(0, Number(e.target.value) || 0) }))}
+                    />
+                  </FieldRow>
+                  <FieldRow label={lTr('pointsEarnedPerUnitLabel')}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      className={`${INPUT_CLS} font-mono tabular-nums`}
+                      value={loyaltyForm.pointsEarnedPerUnit}
+                      onChange={(e) => setLoyaltyForm(prev => ({ ...prev, pointsEarnedPerUnit: Math.max(0, Number(e.target.value) || 0) }))}
+                    />
+                  </FieldRow>
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-200/80 dark:border-border bg-slate-50/40 dark:bg-muted/20 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+                    <Coins className="w-4 h-4" />
+                    <span>{lTr('redemptionRuleTitle')}</span>
+                  </div>
+                  <FieldRow label={lTr('pointsRedemptionUnitLabel')}>
+                    <input
+                      type="number"
+                      min={1}
+                      step="1"
+                      className={`${INPUT_CLS} font-mono tabular-nums`}
+                      value={loyaltyForm.pointsRedemptionUnit}
+                      onChange={(e) => setLoyaltyForm(prev => ({ ...prev, pointsRedemptionUnit: Math.max(0, Number(e.target.value) || 0) }))}
+                    />
+                  </FieldRow>
+                  <FieldRow label={`${lTr('currencyValuePerUnitLabel')} (${currLabel})`}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      className={`${INPUT_CLS} font-mono tabular-nums`}
+                      value={loyaltyForm.currencyValuePerUnit}
+                      onChange={(e) => setLoyaltyForm(prev => ({ ...prev, currencyValuePerUnit: Math.max(0, Number(e.target.value) || 0) }))}
+                    />
+                  </FieldRow>
+                  <FieldRow label={lTr('minRedeemablePointsLabel')}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      className={`${INPUT_CLS} font-mono tabular-nums`}
+                      value={loyaltyForm.minRedeemablePoints}
+                      onChange={(e) => setLoyaltyForm(prev => ({ ...prev, minRedeemablePoints: Math.max(0, Number(e.target.value) || 0) }))}
+                    />
+                  </FieldRow>
+                </div>
+              </div>
+
+              {/* Live Calculation Preview */}
+              <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/25 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
+                  <Calculator className="w-4 h-4" />
+                  <span>{lTr('livePreviewTitle')}</span>
+                </div>
+                <p className="text-xs text-foreground m-0 tabular-nums">
+                  • {lTr('livePreviewEarnExample')
+                    .replace('{profit}', `${previewProfit.toLocaleString('en-US')} ${currLabel}`)
+                    .replace('{points}', previewEarned.toLocaleString('en-US'))}
+                </p>
+                <p className="text-xs text-muted-foreground m-0 tabular-nums">
+                  • {lTr('livePreviewRedeemExample')
+                    .replace('{points}', redeemExamplePts.toLocaleString('en-US'))
+                    .replace('{value}', `${redeemExampleVal.toLocaleString('en-US')} ${currLabel}`)
+                    .replace('{min}', minPts.toLocaleString('en-US'))}
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  disabled={isSavingLoyalty}
+                  onClick={handleSaveLoyaltySettings}
+                  className="inline-flex items-center gap-2 h-10 px-5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {isSavingLoyalty ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{lTr('saveSettingsBtn')}</span>
+                </button>
+              </div>
+            </SectionCard>
+          </div>
+        );
+      })()}
+
+      {/* ── TAB 5: Active Modules ─────────────────────────────────────────── */}
       {activeTab === 'active_modules' && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">

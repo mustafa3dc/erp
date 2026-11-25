@@ -59,8 +59,13 @@ import {
   getEffectiveProductStock,
   validateCartStockWithBundles,
   getMaxAllowedCartQuantity,
-  getStoredCustomers
+  getStoredCustomers,
+  getStoredLoyaltySettings,
+  calculateLoyaltyCurrencyEquivalent,
+  calculateProfitBasedEarnedPoints,
+  resolveProductUnitCost
 } from '../../services/storageService';
+import LoyaltyCheckoutWidget from '../LoyaltyCheckoutWidget';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
@@ -358,6 +363,9 @@ export default function PosTerminalView({
     dispenseMode?: 'IN_STORE' | 'WAREHOUSE_DISPATCH';
     targetWarehouseName?: string;
     receiptNotice?: string;
+    loyaltyPointsEarned?: number;
+    loyaltyPointsRedeemed?: number;
+    loyaltyDiscountAmount?: number;
     installmentDetails?: {
       downPayment: number;
       remainingAmount: number;
@@ -387,6 +395,14 @@ export default function PosTerminalView({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(undefined);
   const [customersList, setCustomersList] = useState<any[]>(() => getStoredCustomers());
   const [customerErrorHighlight, setCustomerErrorHighlight] = useState<boolean>(false);
+  const [redeemPoints, setRedeemPoints] = useState<number>(0);
+
+  const loyaltySettings = useMemo(() => settings.loyaltySettings || getStoredLoyaltySettings(), [settings.loyaltySettings]);
+  const selectedCustomerObj = useMemo(() => {
+    if (!selectedCustomerId) return null;
+    return customersList.find(c => c && c.id === selectedCustomerId) || null;
+  }, [selectedCustomerId, customersList]);
+  const isWalkInCustomer = !selectedCustomerObj || Boolean(selectedCustomerObj.isDefaultCashCustomer) || selectedCustomerId === 'CUST-WALKIN';
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -666,6 +682,8 @@ export default function PosTerminalView({
   const {
     subtotal,
     totalDiscount,
+    loyaltyDiscountAmount,
+    estimatedEarnedPoints,
     subtotalAfterDiscount,
     taxRatePercent,
     tax,
@@ -676,7 +694,27 @@ export default function PosTerminalView({
   } = useMemo(() => {
     const sub = cart.reduce((sum, item) => sum + (resolveQuantityUnitPrice(item.product, item.quantity).unitPrice * item.quantity), 0);
     const disc = cart.reduce((sum, item) => sum + (getDiscountAmountPerUnit(item) * item.quantity), 0);
-    const subAfter = Math.max(0, sub - disc);
+    const subAfterItemDiscounts = Math.max(0, sub - disc);
+
+    let appliedLoyaltyDiscount = 0;
+    if (redeemPoints > 0 && loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer) {
+      const rawDiscount = calculateLoyaltyCurrencyEquivalent(redeemPoints, loyaltySettings);
+      appliedLoyaltyDiscount = Math.min(rawDiscount, subAfterItemDiscounts);
+    }
+
+    const subAfter = Math.max(0, subAfterItemDiscounts - appliedLoyaltyDiscount);
+
+    // Profit-Based Loyalty Points Preview (registered customers only)
+    let estEarned = 0;
+    if (loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer && cart.length > 0) {
+      const lineProfits = cart.reduce((sum, item) => {
+        const effSell = getEffectiveUnitPrice(item);
+        const unitCost = resolveProductUnitCost(item.product, products, storedBundles);
+        return sum + (effSell - unitCost) * item.quantity;
+      }, 0);
+      const realizedProfit = Math.max(0, lineProfits - appliedLoyaltyDiscount);
+      estEarned = calculateProfitBasedEarnedPoints(realizedProfit, loyaltySettings);
+    }
 
     // Dynamic Tax from Company Settings (0% if tax is not enabled)
     const isTaxOn = (settings as any)?.isTaxEnabled ?? false;
@@ -700,6 +738,8 @@ export default function PosTerminalView({
     return {
       subtotal: sub,
       totalDiscount: disc,
+      loyaltyDiscountAmount: appliedLoyaltyDiscount,
+      estimatedEarnedPoints: estEarned,
       subtotalAfterDiscount: subAfter,
       taxRatePercent: ratePct,
       tax: taxAmt,
@@ -708,7 +748,7 @@ export default function PosTerminalView({
       isIqdBase: iqdBase,
       totalIqd: totIqd
     };
-  }, [cart, exchangeRate, settings, isIraqTenant, currencySymbol]);
+  }, [cart, exchangeRate, settings, isIraqTenant, currencySymbol, redeemPoints, loyaltySettings, isWalkInCustomer, products, storedBundles]);
 
   const handleCheckout = (
     method: 'CASH' | 'CARD' | 'ZAIN_CASH' | 'QI_CARD' | 'INSTALLMENT' | string,
@@ -808,7 +848,8 @@ export default function PosTerminalView({
         subtotal,
         totalDiscount,
         taxAmount: tax,
-        grandTotal
+        grandTotal: grandTotal + loyaltyDiscountAmount,
+        redeemPoints
       });
 
       // 3. Instant UI State Update (Cache Invalidation & Real-time deduction)
@@ -901,6 +942,9 @@ export default function PosTerminalView({
         receiptNotice: isWarehouseDispatch 
           ? (isAr ? 'قيد التجهيز من المخزن - يرجى مراجعة أمين المخزن للاستلام' : 'Pending Warehouse Dispatch - Please claim at warehouse')
           : (isAr ? 'مستلمة ومصروفة من المحل' : 'Dispensed and received in-store'),
+        loyaltyPointsEarned: result.loyaltyPointsEarned,
+        loyaltyPointsRedeemed: result.loyaltyPointsRedeemed,
+        loyaltyDiscountAmount: result.loyaltyDiscountAmount,
         installmentDetails: createdInstallmentDetails,
         warehouse: {
           id: selectedWarehouse?.id,
@@ -919,6 +963,7 @@ export default function PosTerminalView({
       const checkoutCustomerName = resolvedInputCustomerName;
       setSelectedCustomerId(undefined);
       setPosCustomerName('');
+      setRedeemPoints(0);
       setCustomerErrorHighlight(false);
       const warehouseLabel = isAr ? selectedWarehouse.nameAr : (selectedWarehouse.nameEn || selectedWarehouse.nameAr);
       showPaymentToast(
@@ -950,6 +995,7 @@ export default function PosTerminalView({
             cashierId: activeShift.terminalId,
             cashierName: effectiveCashierName,
             paymentMethod: method,
+            redeemPoints,
             items: cart.map(it => ({
               productId: it.product.id,
               quantity: it.quantity,
@@ -986,6 +1032,22 @@ export default function PosTerminalView({
       } else if (err.message?.includes('ERR_CREDIT_LIMIT_EXCEEDED')) {
         setCustomerErrorHighlight(true);
         const msg = getTranslation(lang, 'ui.customerPicker.creditLimitExceeded').replace('{limit}', '');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('ERR_BELOW_MIN_REDEEM_POINTS')) {
+        const msg = getTranslation(lang, 'ui.loyalty.belowMinThresholdError').replace('{min}', String(loyaltySettings.minRedeemablePoints));
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('ERR_INSUFFICIENT_LOYALTY_POINTS')) {
+        const msg = getTranslation(lang, 'ui.loyalty.insufficientPointsError');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('ERR_LOYALTY_DISABLED')) {
+        const msg = getTranslation(lang, 'ui.loyalty.loyaltyDisabledError');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('ERR_LOYALTY_WALKIN_NOT_ALLOWED')) {
+        const msg = getTranslation(lang, 'ui.loyalty.walkInNotAllowedError');
         setStockError(msg);
         showPaymentToast(msg, 4000);
       } else if (err.message?.includes('INVALID_WAREHOUSE') || err.message?.includes('المستودع المحدد غير موجود أو تم تعطيله')) {
@@ -1563,12 +1625,26 @@ export default function PosTerminalView({
               onChange={({ customerId, customerName }) => {
                 setSelectedCustomerId(customerId);
                 setPosCustomerName(customerName);
+                setRedeemPoints(0);
                 setCustomerErrorHighlight(false);
               }}
               isCreditMode={isInstallmentModalOpen}
               highlightError={customerErrorHighlight}
               compact
               inputId="pos-customer-combobox"
+            />
+            <LoyaltyCheckoutWidget
+              lang={lang}
+              customer={selectedCustomerObj}
+              isWalkIn={isWalkInCustomer}
+              loyaltySettings={loyaltySettings}
+              maxDiscountCap={Math.max(0, subtotal - totalDiscount)}
+              appliedRedeemPoints={redeemPoints}
+              appliedDiscountAmount={loyaltyDiscountAmount}
+              onApplyRedeemPoints={setRedeemPoints}
+              estimatedEarnedPoints={estimatedEarnedPoints}
+              formatMoney={formatMoney}
+              compact
             />
           </div>
 
@@ -1959,7 +2035,23 @@ export default function PosTerminalView({
             {totalDiscount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#059669', marginBottom: '4px', fontWeight: 600 }}>
                 <span>{isAr ? 'إجمالي الخصم التفاوضي:' : 'Negotiated Discounts:'}</span>
-                <span>-{formatMoney(totalDiscount)}</span>
+                <span className="tabular-nums">-{formatMoney(totalDiscount)}</span>
+              </div>
+            )}
+
+            {loyaltyDiscountAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#d97706', marginBottom: '4px', fontWeight: 700 }}>
+                <span className="tabular-nums">{getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', redeemPoints.toLocaleString('en-US'))}:</span>
+                <span className="tabular-nums">-{formatMoney(loyaltyDiscountAmount)}</span>
+              </div>
+            )}
+
+            {estimatedEarnedPoints > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: '#059669', marginBottom: '4px', fontWeight: 700 }}>
+                <span>{getTranslation(lang, 'ui.loyalty.pointsEarnedSummary')}:</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', estimatedEarnedPoints.toLocaleString('en-US'))}
+                </span>
               </div>
             )}
 
@@ -2297,7 +2389,31 @@ export default function PosTerminalView({
               {lastCompletedOrder.totalDiscount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ef4444', marginBottom: '4px' }}>
                   <span>{isAr ? 'إجمالي التخفيض المعتمد:' : 'Total Discount:'}</span>
-                  <span>-{formatMoney(lastCompletedOrder.totalDiscount)}</span>
+                  <span className="tabular-nums">-{formatMoney(lastCompletedOrder.totalDiscount)}</span>
+                </div>
+              )}
+              {(lastCompletedOrder.loyaltyDiscountAmount || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#d97706', marginBottom: '4px', fontWeight: 700 }}>
+                  <span className="tabular-nums">
+                    {getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', String(lastCompletedOrder.loyaltyPointsRedeemed || 0))}:
+                  </span>
+                  <span className="tabular-nums">-{formatMoney(lastCompletedOrder.loyaltyDiscountAmount || 0)}</span>
+                </div>
+              )}
+              {(lastCompletedOrder.loyaltyPointsEarned || 0) > 0 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  padding: '4px 10px',
+                  marginBottom: '6px',
+                  borderRadius: '6px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#059669',
+                  fontSize: '11.5px',
+                  fontWeight: 800
+                }} className="tabular-nums">
+                  {getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', String(lastCompletedOrder.loyaltyPointsEarned || 0))}
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800 }}>

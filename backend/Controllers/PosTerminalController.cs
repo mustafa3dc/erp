@@ -131,6 +131,14 @@ public class PosTerminalController : ControllerBase
         {
             var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
                 ? "ERR_NO_ACTIVE_SHIFT"
+                : ex.Message.Contains("ERR_INSUFFICIENT_LOYALTY_POINTS")
+                ? "ERR_INSUFFICIENT_LOYALTY_POINTS"
+                : ex.Message.Contains("ERR_BELOW_MIN_REDEEM_POINTS")
+                ? "ERR_BELOW_MIN_REDEEM_POINTS"
+                : ex.Message.Contains("ERR_LOYALTY_DISABLED")
+                ? "ERR_LOYALTY_DISABLED"
+                : ex.Message.Contains("ERR_LOYALTY_WALKIN_NOT_ALLOWED")
+                ? "ERR_LOYALTY_WALKIN_NOT_ALLOWED"
                 : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")

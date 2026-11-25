@@ -28,16 +28,19 @@ public class SalesReturnService : ISalesReturnService
     private readonly IConnectionMultiplexer? _redis;
     private readonly IDatabase? _redisDb;
     private readonly ILogger<SalesReturnService> _logger;
+    private readonly ILoyaltyService? _loyaltyService;
 
     public SalesReturnService(
         AppDbContext context,
         ILogger<SalesReturnService> logger,
-        IConnectionMultiplexer? redis = null)
+        IConnectionMultiplexer? redis = null,
+        ILoyaltyService? loyaltyService = null)
     {
         _context = context;
         _logger = logger;
         _redis = redis;
         _redisDb = _redis?.GetDatabase();
+        _loyaltyService = loyaltyService;
     }
 
     public async Task<List<RmaReturnResponseDto>> GetReturnsAsync(string? decision = null)
@@ -206,9 +209,16 @@ public class SalesReturnService : ISalesReturnService
 
             _context.RmaReturnRequests.Add(rmaRecord);
 
+            decimal reversedPoints = 0m;
             if (shouldRestockNow)
             {
                 await ApplyAtomicRestockAsync(rmaRecord, targetWarehouse, physicalRestockPlan, effectiveActor);
+                if (_loyaltyService != null)
+                {
+                    var returnedUnitCost = CalculateReturnedUnitCost(returnedProduct, invoiceItem);
+                    reversedPoints = await _loyaltyService.ReversePointsForReturnInTransactionAsync(
+                        invoice, invoiceItem, rmaRecord, returnedUnitCost, effectiveActor);
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -223,7 +233,7 @@ public class SalesReturnService : ISalesReturnService
             {
                 Success = true,
                 StatusCode = 200,
-                Data = MapToDto(rmaRecord, remainingReturnable - request.ReturnQuantity, targetWarehouse.Name)
+                Data = MapToDto(rmaRecord, remainingReturnable - request.ReturnQuantity, targetWarehouse.Name, reversedPoints)
             };
         }
         catch (Exception ex)
@@ -251,6 +261,7 @@ public class SalesReturnService : ISalesReturnService
         var rmaRecord = await _context.RmaReturnRequests
             .Include(r => r.Invoice)
                 .ThenInclude(i => i!.Items)
+                    .ThenInclude(it => it.Product)
             .FirstOrDefaultAsync(r => r.Id == rmaId);
 
         if (rmaRecord == null)
@@ -351,6 +362,14 @@ public class SalesReturnService : ISalesReturnService
 
             await ApplyAtomicRestockAsync(rmaRecord, targetWarehouse, physicalRestockPlan, effectiveActor);
 
+            decimal reversedPoints = 0m;
+            if (_loyaltyService != null && rmaRecord.Invoice != null && invoiceItem != null)
+            {
+                var returnedUnitCost = CalculateReturnedUnitCost(returnedProduct, invoiceItem);
+                reversedPoints = await _loyaltyService.ReversePointsForReturnInTransactionAsync(
+                    rmaRecord.Invoice, invoiceItem, rmaRecord, returnedUnitCost, effectiveActor);
+            }
+
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -360,7 +379,7 @@ public class SalesReturnService : ISalesReturnService
             {
                 Success = true,
                 StatusCode = 200,
-                Data = MapToDto(rmaRecord, 0, targetWarehouse.Name)
+                Data = MapToDto(rmaRecord, 0, targetWarehouse.Name, reversedPoints)
             };
         }
         catch (Exception ex)
@@ -621,7 +640,16 @@ public class SalesReturnService : ISalesReturnService
         }
     }
 
-    private static RmaReturnResponseDto MapToDto(RmaReturnRequest r, int remainingQty, string? warehouseName)
+    private static decimal CalculateReturnedUnitCost(Product returnedProduct, SalesInvoiceItem invoiceItem)
+    {
+        if (returnedProduct.IsBundle && returnedProduct.BundleComponents.Count > 0)
+        {
+            return returnedProduct.BundleComponents.Sum(bc => (bc.ComponentProduct?.CostPrice ?? 0m) * bc.Quantity);
+        }
+        return invoiceItem.UnitCostPrice > 0m ? invoiceItem.UnitCostPrice : returnedProduct.CostPrice;
+    }
+
+    private static RmaReturnResponseDto MapToDto(RmaReturnRequest r, int remainingQty, string? warehouseName, decimal reversedPoints = 0m)
     {
         return new RmaReturnResponseDto
         {
@@ -646,6 +674,7 @@ public class SalesReturnService : ISalesReturnService
             RestockedBy = r.RestockedBy,
             ReturnReason = r.ReturnReason,
             RemainingReturnableQty = Math.Max(0, remainingQty),
+            LoyaltyPointsReversed = reversedPoints,
             CreatedAt = r.CreatedAt
         };
     }

@@ -125,6 +125,10 @@ export interface SalesInvoice {
   dueDate?: string;
   operator?: string;
   notes?: string;
+  loyaltyPointsEarned?: number;
+  loyaltyPointsRedeemed?: number;
+  loyaltyDiscountAmount?: number;
+  realizedProfit?: number;
 }
 
 export interface PosProduct {

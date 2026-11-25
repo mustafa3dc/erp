@@ -35,9 +35,14 @@ import {
   getEffectiveProductStock,
   getStoredCustomers,
   resolveOrCreateLocalCustomer,
-  getStoredTreasuryAccounts
+  getStoredTreasuryAccounts,
+  getStoredLoyaltySettings,
+  calculateLoyaltyCurrencyEquivalent,
+  calculateProfitBasedEarnedPoints,
+  resolveProductUnitCost
 } from '../../services/storageService';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
+import LoyaltyCheckoutWidget from '../LoyaltyCheckoutWidget';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
 
@@ -112,8 +117,13 @@ export default function CreateInvoiceModal({
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
   const [itemQty, setItemQty] = useState<number>(1);
   const [discount, setDiscount] = useState<number>(0);
+  const [redeemPoints, setRedeemPoints] = useState<number>(0);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const loyaltySettings = settings.loyaltySettings || getStoredLoyaltySettings();
+  const selectedCustomerObj = selectedCustomerId ? (customersList.find(c => c && c.id === selectedCustomerId) || null) : null;
+  const isWalkInCustomer = !selectedCustomerObj || Boolean(selectedCustomerObj.isDefaultCashCustomer) || selectedCustomerId === 'CUST-WALKIN';
 
   // Sync prop warehouses
   useEffect(() => {
@@ -298,7 +308,23 @@ export default function CreateInvoiceModal({
   const isDiscountExceedingSubtotal = discount > subtotal;
   const isDiscountBlocked = isDiscountExceedingSubtotal || isFloorBreached;
 
-  const taxableAmount = Math.max(0, subtotal - Math.min(discount, subtotal));
+  const manualDiscount = Math.min(discount, subtotal);
+  const maxRedeemDiscountCap = Math.max(0, subtotal - manualDiscount);
+  const loyaltyDiscountAmount = (redeemPoints > 0 && loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer)
+    ? Math.min(calculateLoyaltyCurrencyEquivalent(redeemPoints, loyaltySettings), maxRedeemDiscountCap)
+    : 0;
+  const estimatedEarnedPoints = (loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer && lineItems.length > 0)
+    ? (() => {
+        const lineProfits = lineItems.reduce((sum, item) => {
+          const prod = products.find(p => p.id === item.productId);
+          const unitCost = resolveProductUnitCost(prod, products, storedBundles);
+          return sum + (Number(item.unitPrice) - unitCost) * Number(item.quantity);
+        }, 0);
+        return calculateProfitBasedEarnedPoints(Math.max(0, lineProfits - manualDiscount - loyaltyDiscountAmount), loyaltySettings);
+      })()
+    : 0;
+
+  const taxableAmount = Math.max(0, subtotal - manualDiscount - loyaltyDiscountAmount);
   const taxRate = taxRatePercent / 100;
   const tax = applyTax ? taxableAmount * taxRate : 0;
   const total = Math.max(0, taxableAmount + tax);
@@ -437,9 +463,12 @@ export default function CreateInvoiceModal({
       items: lineItems,
       itemsCount: totalUnits,
       subtotal,
-      discount,
+      discount: manualDiscount + loyaltyDiscountAmount,
       tax,
       total,
+      loyaltyPointsEarned: estimatedEarnedPoints,
+      loyaltyPointsRedeemed: redeemPoints,
+      loyaltyDiscountAmount,
       paymentMethod,
       status: paymentMethod === 'credit' ? 'credit' : 'paid',
       date: new Date().toISOString().split('T')[0],
@@ -542,6 +571,7 @@ export default function CreateInvoiceModal({
                 onChange={({ customerId, customerName: nextName, customer }) => {
                   setSelectedCustomerId(customerId);
                   setCustomerName(nextName);
+                  setRedeemPoints(0);
                   setErrorMsg(null);
                   if (customer) {
                     setCustomerPhone(customer.phone && customer.phone !== '—' ? customer.phone : '');
@@ -555,6 +585,19 @@ export default function CreateInvoiceModal({
                 highlightError={Boolean(errorMsg && paymentMethod === 'credit' && !customerName.trim() && !selectedCustomerId)}
                 compact
                 inputId="modal-smart-customer"
+              />
+              <LoyaltyCheckoutWidget
+                lang={lang}
+                customer={selectedCustomerObj}
+                isWalkIn={isWalkInCustomer}
+                loyaltySettings={loyaltySettings}
+                maxDiscountCap={maxRedeemDiscountCap}
+                appliedRedeemPoints={redeemPoints}
+                appliedDiscountAmount={loyaltyDiscountAmount}
+                onApplyRedeemPoints={setRedeemPoints}
+                estimatedEarnedPoints={estimatedEarnedPoints}
+                formatMoney={formatCurrency}
+                compact
               />
             </div>
 
@@ -1050,10 +1093,22 @@ export default function CreateInvoiceModal({
                 <span className="calc-label">{isAr ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
                 <span className="calc-val">{formatCurrency(subtotal)}</span>
               </div>
-              {discount > 0 && (
+              {manualDiscount > 0 && (
                 <div className="calc-row discount">
                   <span className="calc-label">{isAr ? 'الخصم الممنوح:' : 'Discount:'}</span>
-                  <span className="calc-val discount-val">-{formatCurrency(Math.min(discount, subtotal))}</span>
+                  <span className="calc-val discount-val tabular-nums">-{formatCurrency(manualDiscount)}</span>
+                </div>
+              )}
+              {loyaltyDiscountAmount > 0 && (
+                <div className="calc-row discount">
+                  <span className="calc-label tabular-nums">{getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', redeemPoints.toLocaleString('en-US'))}:</span>
+                  <span className="calc-val discount-val tabular-nums">-{formatCurrency(loyaltyDiscountAmount)}</span>
+                </div>
+              )}
+              {estimatedEarnedPoints > 0 && (
+                <div className="calc-row" style={{ color: '#059669', fontWeight: 700 }}>
+                  <span className="calc-label">{getTranslation(lang, 'ui.loyalty.pointsEarnedSummary')}:</span>
+                  <span className="calc-val tabular-nums">{getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', estimatedEarnedPoints.toLocaleString('en-US'))}</span>
                 </div>
               )}
               {applyTax && taxRatePercent > 0 && (

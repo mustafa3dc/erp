@@ -146,7 +146,9 @@ import {
   saveStoredUsers,
   getStoredActiveShift,
   recordShiftSale,
-  getStoredProductBundles
+  getStoredProductBundles,
+  applyLocalCheckoutLoyalty,
+  resolveProductUnitCost
 } from './services/storageService';
 import './App.css';
 
@@ -894,10 +896,47 @@ function DashboardApp() {
       return;
     }
 
+    const storedBundlesForLoyalty = getStoredProductBundles();
+    const lineProfitsSum = (newInvoice.items || []).reduce((sum, it) => {
+      const prod = products.find(p => p.id === it.productId || p.sku === it.sku);
+      const unitCost = resolveProductUnitCost(prod, products, storedBundlesForLoyalty);
+      return sum + (Number(it.unitPrice) - unitCost) * Number(it.quantity);
+    }, 0);
+
+    const requestedRedeemPts = Number(newInvoice.loyaltyPointsRedeemed) || 0;
+    const loyaltyDiscountAlreadyApplied = Number(newInvoice.loyaltyDiscountAmount) || 0;
+    const otherInvoiceDisc = Math.max(0, (Number(newInvoice.discount) || 0) - loyaltyDiscountAlreadyApplied);
+
+    let loyaltyOutcome = {
+      pointsEarned: Number(newInvoice.loyaltyPointsEarned) || 0,
+      pointsRedeemed: requestedRedeemPts,
+      loyaltyDiscountAmount: loyaltyDiscountAlreadyApplied,
+      realizedProfit: Math.max(0, lineProfitsSum - (Number(newInvoice.discount) || 0)),
+      balanceAfter: 0
+    };
+    try {
+      loyaltyOutcome = applyLocalCheckoutLoyalty({
+        customerId: newInvoice.customerId,
+        customerName: newInvoice.customerName,
+        isDefaultCashCustomer: !newInvoice.customerId || newInvoice.customerId === 'CUST-WALKIN',
+        invoiceId: newInvoice.id,
+        invoiceNo: newInvoice.invoiceNo,
+        lineProfitsSum,
+        invoiceLevelDiscount: otherInvoiceDisc,
+        maxRedeemCap: Math.max(0, (Number(newInvoice.subtotal) || 0) - otherInvoiceDisc),
+        requestedRedeemPoints: requestedRedeemPts,
+        operator: effectiveOperator
+      });
+    } catch {}
+
     const finalizedInvoice: SalesInvoice = {
       ...newInvoice,
       shiftId: newInvoice.shiftId || liveShift.id,
       sourceModule: 'STANDARD_INVOICE',
+      loyaltyPointsEarned: loyaltyOutcome.pointsEarned,
+      loyaltyPointsRedeemed: loyaltyOutcome.pointsRedeemed,
+      loyaltyDiscountAmount: loyaltyOutcome.loyaltyDiscountAmount,
+      realizedProfit: loyaltyOutcome.realizedProfit,
       operator: effectiveOperator
     };
 
@@ -1071,6 +1110,8 @@ function DashboardApp() {
             cashierId: currentUser?.username || 'ADMIN',
             cashierName: effectiveOperator,
             paymentMethod: (finalizedInvoice.paymentMethod || 'CASH').toUpperCase(),
+            invoiceDiscountAmount: Math.max(0, (Number(finalizedInvoice.discount) || 0) - (Number(finalizedInvoice.loyaltyDiscountAmount) || 0)),
+            redeemPoints: Number(finalizedInvoice.loyaltyPointsRedeemed) || 0,
             items: (finalizedInvoice.items || [])
               .filter(it => uuidRegex.test(it.productId))
               .map(it => ({

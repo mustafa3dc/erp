@@ -167,7 +167,10 @@ export default function ReturnsWarrantyView({
     if (setTransactions && restockResult.createdTransactions.length > 0) {
       setTransactions(prev => [...restockResult.createdTransactions, ...prev]);
     }
-    return restockResult.restockedWarehouseName;
+    return {
+      restockedWarehouseName: restockResult.restockedWarehouseName,
+      reversedLoyaltyPoints: restockResult.reversedLoyaltyPoints
+    };
   };
 
   const handleApproveRestock = async (id: string) => {
@@ -198,7 +201,7 @@ export default function ReturnsWarrantyView({
         }
       }
 
-      const resolvedWhName = applyLocalRestock(target);
+      const { restockedWarehouseName: resolvedWhName, reversedLoyaltyPoints } = applyLocalRestock(target);
       const updated = returnsList.map(r =>
         r.id === id
           ? {
@@ -211,7 +214,11 @@ export default function ReturnsWarrantyView({
       );
       setReturnsList(updated);
       saveStoredRMA(updated);
-      showToast(tr('restockApprovedToast'));
+      showToast(
+        reversedLoyaltyPoints > 0
+          ? `${tr('restockApprovedToast')} — ${getTranslation(lang, 'ui.loyalty.reversedOnReturnToast').replace('{points}', reversedLoyaltyPoints.toLocaleString('en-US'))}`
+          : tr('restockApprovedToast')
+      );
     } finally {
       setProcessingRmaId(null);
     }
@@ -259,8 +266,11 @@ export default function ReturnsWarrantyView({
 
     const shouldRestockNow = newReturn.decision === 'APPROVED_RESTOCKED';
     let resolvedWhName = newReturn.warehouseName;
+    let reversedLoyaltyPoints = 0;
     if (shouldRestockNow) {
-      resolvedWhName = applyLocalRestock(newReturn);
+      const resInfo = applyLocalRestock(newReturn);
+      resolvedWhName = resInfo.restockedWarehouseName;
+      reversedLoyaltyPoints = resInfo.reversedLoyaltyPoints;
     }
 
     const savedRecord: ReturnRequest = {
@@ -275,8 +285,11 @@ export default function ReturnsWarrantyView({
     saveStoredRMA(next);
     setIsReturnModalOpen(false);
 
+    const baseToast = (shouldRestockNow ? tr('createdAndRestockedToast') : tr('createdPendingToast')).replace('{rma}', newReturn.rmaNumber);
     showToast(
-      (shouldRestockNow ? tr('createdAndRestockedToast') : tr('createdPendingToast')).replace('{rma}', newReturn.rmaNumber)
+      reversedLoyaltyPoints > 0
+        ? `${baseToast} — ${getTranslation(lang, 'ui.loyalty.reversedOnReturnToast').replace('{points}', reversedLoyaltyPoints.toLocaleString('en-US'))}`
+        : baseToast
     );
   };
 

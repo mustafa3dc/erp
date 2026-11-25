@@ -373,6 +373,18 @@ public class SalesInvoice : ITenantEntity
     [Column("total_amount")]
     public decimal TotalAmount { get; set; }
 
+    [Column("loyalty_points_earned", TypeName = "numeric(18, 4)")]
+    public decimal LoyaltyPointsEarned { get; set; } = 0.0000m;
+
+    [Column("loyalty_points_redeemed", TypeName = "numeric(18, 4)")]
+    public decimal LoyaltyPointsRedeemed { get; set; } = 0.0000m;
+
+    [Column("loyalty_discount_amount", TypeName = "numeric(18, 4)")]
+    public decimal LoyaltyDiscountAmount { get; set; } = 0.0000m;
+
+    [Column("realized_profit", TypeName = "numeric(18, 4)")]
+    public decimal RealizedProfit { get; set; } = 0.0000m;
+
     [Column("payment_status")]
     public string PaymentStatus { get; set; } = "PAID";
 
@@ -425,6 +437,9 @@ public class SalesInvoiceItem : ITenantEntity
 
     [Column("total_price")]
     public decimal TotalPrice { get; set; }
+
+    [Column("unit_cost_price", TypeName = "numeric(18, 4)")]
+    public decimal UnitCostPrice { get; set; } = 0.0000m;
 
     [Column("was_manager_override")]
     public bool WasManagerOverride { get; set; } = false;
@@ -1333,6 +1348,9 @@ public class Customer : ITenantEntity
     [Column("current_balance")]
     public decimal CurrentBalance { get; set; } = 0.0000m;
 
+    [Column("loyalty_points_balance", TypeName = "numeric(18, 4)")]
+    public decimal LoyaltyPointsBalance { get; set; } = 0.0000m;
+
     [Column("price_list_id")]
     public Guid? PriceListId { get; set; }
     public PriceList? PriceList { get; set; }
@@ -2076,6 +2094,106 @@ public class AuditLog : ITenantEntity
 
     [Column("timestamp")]
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
+}
+
+// ============================================================================
+// Profit-Based Customer Loyalty & Points System
+// ============================================================================
+
+public static class LoyaltyTransactionTypes
+{
+    public const string Earned = "Earned";
+    public const string Redeemed = "Redeemed";
+    public const string ReversedOnReturn = "ReversedOnReturn";
+    public const string ManualAdjustment = "ManualAdjustment";
+}
+
+[Table("loyalty_settings")]
+public class LoyaltySettings : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("is_loyalty_enabled")]
+    public bool IsLoyaltyEnabled { get; set; } = true;
+
+    [Column("profit_unit_amount", TypeName = "numeric(18, 4)")]
+    public decimal ProfitUnitAmount { get; set; } = 1000.0000m;
+
+    [Column("points_earned_per_unit", TypeName = "numeric(18, 4)")]
+    public decimal PointsEarnedPerUnit { get; set; } = 10.0000m;
+
+    [Column("points_redemption_unit", TypeName = "numeric(18, 4)")]
+    public decimal PointsRedemptionUnit { get; set; } = 100.0000m;
+
+    [Column("currency_value_per_unit", TypeName = "numeric(18, 4)")]
+    public decimal CurrencyValuePerUnit { get; set; } = 1000.0000m;
+
+    [Column("min_redeemable_points", TypeName = "numeric(18, 4)")]
+    public decimal MinRedeemablePoints { get; set; } = 500.0000m;
+
+    [MaxLength(150)]
+    [Column("updated_by")]
+    public string? UpdatedBy { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("loyalty_transactions")]
+public class LoyaltyTransaction : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("customer_id")]
+    public Guid CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [Column("invoice_id")]
+    public Guid? InvoiceId { get; set; }
+    public SalesInvoice? Invoice { get; set; }
+
+    [Column("return_id")]
+    public Guid? ReturnId { get; set; }
+    public RmaReturnRequest? ReturnRequest { get; set; }
+
+    [Required]
+    [MaxLength(40)]
+    [Column("type")]
+    public string Type { get; set; } = LoyaltyTransactionTypes.Earned;
+
+    [Column("points_change", TypeName = "numeric(18, 4)")]
+    public decimal PointsChange { get; set; }
+
+    [Column("profit_basis", TypeName = "numeric(18, 4)")]
+    public decimal ProfitBasis { get; set; } = 0.0000m;
+
+    [Column("balance_after", TypeName = "numeric(18, 4)")]
+    public decimal BalanceAfter { get; set; }
+
+    [MaxLength(500)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Required]
+    [MaxLength(150)]
+    [Column("created_by")]
+    public string CreatedBy { get; set; } = "System";
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 

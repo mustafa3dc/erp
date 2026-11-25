@@ -39,9 +39,14 @@ import {
   getStoredProductBundles,
   getEffectiveProductStock,
   resolveOrCreateLocalCustomer,
-  getStoredTreasuryAccounts
+  getStoredTreasuryAccounts,
+  getStoredLoyaltySettings,
+  calculateLoyaltyCurrencyEquivalent,
+  calculateProfitBasedEarnedPoints,
+  resolveProductUnitCost
 } from '../../services/storageService';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
+import LoyaltyCheckoutWidget from '../LoyaltyCheckoutWidget';
 import { getTranslation } from '../../lib/i18n';
 import { useSettings } from '../../context/settings-context';
 import { Button } from '../ui/button';
@@ -155,8 +160,13 @@ export default function CreateInvoiceView({
   const [guarantorName, setGuarantorName] = useState<string>('');
   const [guarantorPhone, setGuarantorPhone] = useState<string>('');
   const [discount, setDiscount] = useState<number>(0);
+  const [redeemPoints, setRedeemPoints] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
+
+  const loyaltySettings = settings.loyaltySettings || getStoredLoyaltySettings();
+  const selectedCustomerObj = selectedCustomerId ? (customersList.find(c => c && c.id === selectedCustomerId) || null) : null;
+  const isWalkInCustomer = !selectedCustomerObj || Boolean(selectedCustomerObj.isDefaultCashCustomer) || selectedCustomerId === 'CUST-WALKIN';
 
   // Automatically reset payment method to cash if user is not in Iraq and had electronic selected
   useEffect(() => {
@@ -337,8 +347,25 @@ export default function CreateInvoiceView({
   const subtotal = lineItems.reduce((acc, i) => acc + i.total, 0);
   const totalUnits = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
+  const manualDiscount = Math.min(discount, subtotal);
+  const maxRedeemDiscountCap = Math.max(0, subtotal - manualDiscount);
+  const loyaltyDiscountAmount = (redeemPoints > 0 && loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer)
+    ? Math.min(calculateLoyaltyCurrencyEquivalent(redeemPoints, loyaltySettings), maxRedeemDiscountCap)
+    : 0;
+
+  const estimatedEarnedPoints = (loyaltySettings.isLoyaltyEnabled && !isWalkInCustomer && lineItems.length > 0)
+    ? (() => {
+        const lineProfits = lineItems.reduce((sum, item) => {
+          const prod = products.find(p => p.id === item.productId);
+          const unitCost = resolveProductUnitCost(prod, products, storedBundles);
+          return sum + (Number(item.unitPrice) - unitCost) * Number(item.quantity);
+        }, 0);
+        return calculateProfitBasedEarnedPoints(Math.max(0, lineProfits - manualDiscount - loyaltyDiscountAmount), loyaltySettings);
+      })()
+    : 0;
+
   // Financial safety validation
-  const taxableAmount = Math.max(0, subtotal - Math.min(discount, subtotal));
+  const taxableAmount = Math.max(0, subtotal - manualDiscount - loyaltyDiscountAmount);
   const taxRate = taxRatePercent / 100;
   const taxAmount = applyTax ? taxableAmount * taxRate : 0;
   const grandTotal = Math.max(0, taxableAmount + taxAmount);
@@ -496,9 +523,12 @@ export default function CreateInvoiceView({
       items: lineItems,
       itemsCount: totalUnits,
       subtotal,
-      discount,
+      discount: manualDiscount + loyaltyDiscountAmount,
       tax: taxAmount,
       total: grandTotal,
+      loyaltyPointsEarned: estimatedEarnedPoints,
+      loyaltyPointsRedeemed: redeemPoints,
+      loyaltyDiscountAmount,
       paymentMethod: paymentMethod === 'electronic' ? 'card' : paymentMethod,
       installmentContractId,
       status: paymentMethod === 'credit' ? 'credit' : 'paid',
@@ -638,6 +668,7 @@ export default function CreateInvoiceView({
                   onChange={({ customerId, customerName: nextName, customer }) => {
                     setSelectedCustomerId(customerId);
                     setCustomerName(nextName);
+                    setRedeemPoints(0);
                     if (customer) {
                       setCustomerPhone(customer.phone && customer.phone !== '—' ? customer.phone : '');
                       setCustomerAddress(customer.city || customer.address || '');
@@ -649,6 +680,18 @@ export default function CreateInvoiceView({
                   isCreditMode={paymentMethod === 'credit' || paymentMethod === 'installment'}
                   highlightError={Boolean(formError && (paymentMethod === 'credit' || paymentMethod === 'installment') && !customerName.trim() && !selectedCustomerId)}
                   inputId="invoice-smart-customer"
+                />
+                <LoyaltyCheckoutWidget
+                  lang={lang}
+                  customer={selectedCustomerObj}
+                  isWalkIn={isWalkInCustomer}
+                  loyaltySettings={loyaltySettings}
+                  maxDiscountCap={maxRedeemDiscountCap}
+                  appliedRedeemPoints={redeemPoints}
+                  appliedDiscountAmount={loyaltyDiscountAmount}
+                  onApplyRedeemPoints={setRedeemPoints}
+                  estimatedEarnedPoints={estimatedEarnedPoints}
+                  formatMoney={formatMoney}
                 />
               </div>
 
@@ -1137,10 +1180,26 @@ export default function CreateInvoiceView({
                   <span className="font-mono font-semibold text-foreground">{formatMoney(subtotal)}</span>
                 </div>
 
-                {discount > 0 && (
+                {manualDiscount > 0 && (
                   <div className="flex justify-between text-amber-600 dark:text-amber-400 font-medium">
                     <span>{isAr ? 'الخصم الممنوح:' : 'Discount:'}</span>
-                    <span className="font-mono font-bold">-{formatMoney(discount)}</span>
+                    <span className="font-mono font-bold tabular-nums">-{formatMoney(manualDiscount)}</span>
+                  </div>
+                )}
+
+                {loyaltyDiscountAmount > 0 && (
+                  <div className="flex justify-between text-amber-600 dark:text-amber-400 font-bold">
+                    <span className="tabular-nums">{getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', redeemPoints.toLocaleString('en-US'))}:</span>
+                    <span className="font-mono tabular-nums">-{formatMoney(loyaltyDiscountAmount)}</span>
+                  </div>
+                )}
+
+                {estimatedEarnedPoints > 0 && (
+                  <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-bold">
+                    <span>{getTranslation(lang, 'ui.loyalty.pointsEarnedSummary')}:</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-[10.5px] tabular-nums">
+                      {getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', estimatedEarnedPoints.toLocaleString('en-US'))}
+                    </span>
                   </div>
                 )}
 

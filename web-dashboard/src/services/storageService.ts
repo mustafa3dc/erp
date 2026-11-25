@@ -80,6 +80,8 @@ export const KEYS = {
   get PRODUCT_BUNDLES() { return getScopedKey('product_bundles'); },
   get PURCHASE_RETURNS() { return getScopedKey('purchase_returns'); },
   get PRODUCT_SERIALS() { return getScopedKey('product_serials'); },
+  get LOYALTY_SETTINGS() { return getScopedKey('loyalty_settings'); },
+  get LOYALTY_TRANSACTIONS() { return getScopedKey('loyalty_transactions'); },
 };
 
 
@@ -1150,6 +1152,7 @@ export interface PosSaleTransactionRequest {
   totalDiscount: number;
   taxAmount: number;
   grandTotal: number;
+  redeemPoints?: number;
 }
 
 export interface PosSaleTransactionResult {
@@ -1157,6 +1160,9 @@ export interface PosSaleTransactionResult {
   updatedProducts: Product[];
   createdTransactions: TransactionDetail[];
   dispatchOrder?: WarehouseDispatchOrder;
+  loyaltyPointsEarned: number;
+  loyaltyPointsRedeemed: number;
+  loyaltyDiscountAmount: number;
 }
 
 /**
@@ -1347,6 +1353,25 @@ export function executePosSaleTransaction(
       : 'cash';
 
   const invoiceId = `INV-${Date.now()}`;
+  const realizedProfitBeforeLoyalty = req.items.reduce((sum, it) => {
+    const unitCost = resolveProductUnitCost(it.product, updatedProducts, storedBundles);
+    return sum + (Number(it.unitPrice) - unitCost) * Number(it.quantity);
+  }, 0);
+
+  const loyaltyOutcome = applyLocalCheckoutLoyalty({
+    customerId: resolvedCustomer.customerId,
+    customerName: resolvedCustomer.customerName,
+    isDefaultCashCustomer: resolvedCustomer.isDefaultCashCustomer,
+    invoiceId,
+    invoiceNo: req.invoiceNumber,
+    lineProfitsSum: realizedProfitBeforeLoyalty,
+    invoiceLevelDiscount: 0,
+    maxRedeemCap: Math.max(0, req.subtotal - req.totalDiscount),
+    requestedRedeemPoints: Number(req.redeemPoints) || 0,
+    operator: req.cashierName || req.cashierId || 'الكاشير'
+  });
+
+  const netGrandTotal = Math.max(0, req.grandTotal - loyaltyOutcome.loyaltyDiscountAmount);
   let dispatchOrder: WarehouseDispatchOrder | undefined;
 
   if (isWarehouseDispatch) {
@@ -1418,8 +1443,12 @@ export function executePosSaleTransaction(
     itemsCount: req.items.reduce((sum, it) => sum + it.quantity, 0),
     subtotal: req.subtotal,
     tax: req.taxAmount,
-    discount: req.totalDiscount,
-    total: req.grandTotal,
+    discount: req.totalDiscount + loyaltyOutcome.loyaltyDiscountAmount,
+    total: netGrandTotal,
+    loyaltyPointsEarned: loyaltyOutcome.pointsEarned,
+    loyaltyPointsRedeemed: loyaltyOutcome.pointsRedeemed,
+    loyaltyDiscountAmount: loyaltyOutcome.loyaltyDiscountAmount,
+    realizedProfit: loyaltyOutcome.realizedProfit,
     paymentMethod: mappedPaymentMethod as any,
     status: 'paid',
     date: nowStr,
@@ -1449,13 +1478,16 @@ export function executePosSaleTransaction(
   saveStoredInvoices([salesInvoice, ...currentInvoices]);
 
   // 5. Update Cashier Shift Sales (strictly isolated to resolvedShiftId)
-  recordShiftSale(req.paymentMethod, req.grandTotal, resolvedShiftId);
+  recordShiftSale(req.paymentMethod, netGrandTotal, resolvedShiftId);
 
   return {
     invoice: salesInvoice,
     updatedProducts,
     createdTransactions: newTransactions,
-    dispatchOrder
+    dispatchOrder,
+    loyaltyPointsEarned: loyaltyOutcome.pointsEarned,
+    loyaltyPointsRedeemed: loyaltyOutcome.pointsRedeemed,
+    loyaltyDiscountAmount: loyaltyOutcome.loyaltyDiscountAmount
   };
 }
 
@@ -1838,6 +1870,7 @@ export function resetToCleanSlate(): void {
   safeSet(KEYS.TRANSFERS, []);
   safeSet(KEYS.PO_LIST, []);
   safeSet(KEYS.SHIFTS_HISTORY, []);
+  safeSet(KEYS.LOYALTY_TRANSACTIONS, []);
 
   if (typeof window !== 'undefined') {
     localStorage.removeItem(KEYS.ACTIVE_SHIFT);
@@ -2345,6 +2378,370 @@ export function resolveOrCreateLocalCustomer(input: CustomerResolutionInput): Cu
   };
 }
 
+// ============================================================================
+// Profit-Based Customer Loyalty Engine (Frontend Sync & Offline Mirror)
+// ============================================================================
+
+export interface LoyaltySettingsConfig {
+  isLoyaltyEnabled: boolean;
+  profitUnitAmount: number;
+  pointsEarnedPerUnit: number;
+  pointsRedemptionUnit: number;
+  currencyValuePerUnit: number;
+  minRedeemablePoints: number;
+}
+
+export type LoyaltyTransactionType = 'Earned' | 'Redeemed' | 'ReversedOnReturn' | 'ManualAdjustment';
+
+export interface LoyaltyTransactionRecord {
+  id: string;
+  customerId: string;
+  customerName: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  returnId?: string;
+  rmaNumber?: string;
+  type: LoyaltyTransactionType;
+  pointsChange: number;
+  profitBasis: number;
+  balanceAfter: number;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsConfig = {
+  isLoyaltyEnabled: true,
+  profitUnitAmount: 1000,
+  pointsEarnedPerUnit: 10,
+  pointsRedemptionUnit: 100,
+  currencyValuePerUnit: 1000,
+  minRedeemablePoints: 500
+};
+
+export function getStoredLoyaltySettings(): LoyaltySettingsConfig {
+  const stored = safeGet<Partial<LoyaltySettingsConfig> | null>(KEYS.LOYALTY_SETTINGS, null);
+  if (stored && typeof stored.profitUnitAmount === 'number') {
+    return { ...DEFAULT_LOYALTY_SETTINGS, ...stored };
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      const prefsRaw = localStorage.getItem('zilox_user_preferences');
+      if (prefsRaw) {
+        const parsed = JSON.parse(prefsRaw);
+        if (parsed?.loyaltySettings) {
+          return { ...DEFAULT_LOYALTY_SETTINGS, ...parsed.loyaltySettings };
+        }
+      }
+    }
+  } catch {}
+  return { ...DEFAULT_LOYALTY_SETTINGS };
+}
+
+export function saveStoredLoyaltySettings(config: LoyaltySettingsConfig): void {
+  safeSet(KEYS.LOYALTY_SETTINGS, config);
+  try {
+    if (typeof window !== 'undefined') {
+      const prefsRaw = localStorage.getItem('zilox_user_preferences');
+      const parsed = prefsRaw ? JSON.parse(prefsRaw) : {};
+      parsed.loyaltySettings = config;
+      localStorage.setItem('zilox_user_preferences', JSON.stringify(parsed));
+    }
+  } catch {}
+}
+
+export function getStoredLoyaltyTransactions(): LoyaltyTransactionRecord[] {
+  return safeGet<LoyaltyTransactionRecord[]>(KEYS.LOYALTY_TRANSACTIONS, []);
+}
+
+export function saveStoredLoyaltyTransactions(txs: LoyaltyTransactionRecord[]): void {
+  safeSet(KEYS.LOYALTY_TRANSACTIONS, txs);
+}
+
+export function resolveProductUnitCost(
+  product: Partial<Product> | undefined,
+  allProducts: Product[],
+  storedBundles: ProductBundleItem[]
+): number {
+  if (!product) return 0;
+  const bundleComps = storedBundles.filter(b => b.parentProductId === product.id);
+  if (product.isBundle || bundleComps.length > 0) {
+    const bundleCost = bundleComps.reduce((sum, bc) => {
+      const compProd = allProducts.find(p => p.id === bc.childProductId || (bc.childProductSku && p.sku === bc.childProductSku));
+      const unitCost = Number(compProd?.costPrice ?? bc.componentSellingPrice ?? 0) || 0;
+      return sum + unitCost * (Number(bc.quantity) || 1);
+    }, 0);
+    if (bundleCost > 0) return bundleCost;
+  }
+  return Number(product.costPrice) || 0;
+}
+
+export function calculateProfitBasedEarnedPoints(realizedProfit: number, settings: LoyaltySettingsConfig): number {
+  if (!settings.isLoyaltyEnabled || realizedProfit <= 0 || settings.profitUnitAmount <= 0 || settings.pointsEarnedPerUnit <= 0) {
+    return 0;
+  }
+  return Math.floor((realizedProfit / settings.profitUnitAmount) * settings.pointsEarnedPerUnit);
+}
+
+export function calculateLoyaltyCurrencyEquivalent(points: number, settings: LoyaltySettingsConfig): number {
+  if (points <= 0 || settings.pointsRedemptionUnit <= 0 || settings.currencyValuePerUnit <= 0) {
+    return 0;
+  }
+  return Math.round(((points / settings.pointsRedemptionUnit) * settings.currencyValuePerUnit) * 10000) / 10000;
+}
+
+export interface LocalCheckoutLoyaltyInput {
+  customerId?: string;
+  customerName?: string;
+  isDefaultCashCustomer?: boolean;
+  invoiceId: string;
+  invoiceNo: string;
+  lineProfitsSum: number;
+  invoiceLevelDiscount: number;
+  maxRedeemCap: number;
+  requestedRedeemPoints: number;
+  operator: string;
+}
+
+export interface LocalCheckoutLoyaltyOutput {
+  pointsEarned: number;
+  pointsRedeemed: number;
+  loyaltyDiscountAmount: number;
+  realizedProfit: number;
+  balanceAfter: number;
+}
+
+export function applyLocalCheckoutLoyalty(input: LocalCheckoutLoyaltyInput): LocalCheckoutLoyaltyOutput {
+  const settings = getStoredLoyaltySettings();
+  const customers = getStoredCustomers();
+  const isWalkIn = Boolean(
+    input.isDefaultCashCustomer ||
+    !input.customerId ||
+    input.customerId === 'CUST-WALKIN' ||
+    input.customerId === 'WALK_IN'
+  );
+
+  const custIdx = !isWalkIn ? customers.findIndex(c => c && c.id === input.customerId) : -1;
+  const customer = custIdx >= 0 ? customers[custIdx] : null;
+  let currentBalance = Number(customer?.loyaltyPointsBalance ?? customer?.loyaltyPoints ?? 0) || 0;
+
+  let redeemedPoints = 0;
+  let loyaltyDiscountAmount = 0;
+  const reqRedeem = Math.max(0, Number(input.requestedRedeemPoints) || 0);
+
+  if (reqRedeem > 0) {
+    if (!settings.isLoyaltyEnabled) {
+      throw new Error('ERR_LOYALTY_DISABLED');
+    }
+    if (isWalkIn || !customer) {
+      throw new Error('ERR_LOYALTY_WALKIN_NOT_ALLOWED');
+    }
+    if (currentBalance < settings.minRedeemablePoints) {
+      throw new Error('ERR_BELOW_MIN_REDEEM_POINTS');
+    }
+    if (reqRedeem > currentBalance) {
+      throw new Error('ERR_INSUFFICIENT_LOYALTY_POINTS');
+    }
+
+    if (settings.pointsRedemptionUnit > 0 && settings.currencyValuePerUnit > 0 && input.maxRedeemCap > 0) {
+      const requestedDiscount = calculateLoyaltyCurrencyEquivalent(reqRedeem, settings);
+      loyaltyDiscountAmount = Math.min(requestedDiscount, Math.max(0, input.maxRedeemCap));
+      redeemedPoints = requestedDiscount > 0 && loyaltyDiscountAmount < requestedDiscount
+        ? Math.round(((loyaltyDiscountAmount / settings.currencyValuePerUnit) * settings.pointsRedemptionUnit) * 10000) / 10000
+        : Math.round(reqRedeem * 10000) / 10000;
+      redeemedPoints = Math.min(redeemedPoints, currentBalance);
+    }
+  }
+
+  const realizedProfit = Math.round(Math.max(0, input.lineProfitsSum - (Number(input.invoiceLevelDiscount) || 0) - loyaltyDiscountAmount) * 10000) / 10000;
+  const pointsEarned = (settings.isLoyaltyEnabled && !isWalkIn && customer)
+    ? calculateProfitBasedEarnedPoints(realizedProfit, settings)
+    : 0;
+
+  const newEntries: LoyaltyTransactionRecord[] = [];
+  const nowIso = new Date().toISOString();
+
+  if (customer && (redeemedPoints > 0 || pointsEarned > 0)) {
+    if (redeemedPoints > 0) {
+      currentBalance = Math.round((currentBalance - redeemedPoints) * 10000) / 10000;
+      newEntries.push({
+        id: `LOY-${Date.now()}-R`,
+        customerId: customer.id,
+        customerName: customer.name,
+        invoiceId: input.invoiceId,
+        invoiceNumber: input.invoiceNo,
+        type: 'Redeemed',
+        pointsChange: -redeemedPoints,
+        profitBasis: 0,
+        balanceAfter: currentBalance,
+        notes: `${redeemedPoints} pts`,
+        createdBy: input.operator,
+        createdAt: nowIso
+      });
+    }
+
+    if (pointsEarned > 0) {
+      currentBalance = Math.round((currentBalance + pointsEarned) * 10000) / 10000;
+      newEntries.push({
+        id: `LOY-${Date.now()}-E`,
+        customerId: customer.id,
+        customerName: customer.name,
+        invoiceId: input.invoiceId,
+        invoiceNumber: input.invoiceNo,
+        type: 'Earned',
+        pointsChange: pointsEarned,
+        profitBasis: realizedProfit,
+        balanceAfter: currentBalance,
+        createdBy: input.operator,
+        createdAt: new Date(Date.now() + 1).toISOString()
+      });
+    }
+
+    customers[custIdx] = {
+      ...customer,
+      loyaltyPoints: currentBalance,
+      loyaltyPointsBalance: currentBalance
+    };
+    saveStoredCustomers(customers);
+    saveStoredLoyaltyTransactions([...newEntries.reverse(), ...getStoredLoyaltyTransactions()]);
+  }
+
+  return {
+    pointsEarned,
+    pointsRedeemed: redeemedPoints,
+    loyaltyDiscountAmount,
+    realizedProfit,
+    balanceAfter: currentBalance
+  };
+}
+
+export function reverseLocalLoyaltyOnReturn(params: {
+  rmaId: string;
+  rmaNumber: string;
+  invoiceNo: string;
+  productId?: string;
+  sku: string;
+  returnQuantity: number;
+  operator: string;
+}): number {
+  const existingLedger = getStoredLoyaltyTransactions();
+  if (existingLedger.some(tx => tx.returnId === params.rmaId && tx.type === 'ReversedOnReturn')) {
+    return 0;
+  }
+
+  const invoices = getStoredInvoices();
+  const invoice = invoices.find(inv => inv.invoiceNo === params.invoiceNo || inv.id === params.invoiceNo);
+  if (!invoice || !invoice.customerId || invoice.customerId === 'CUST-WALKIN' || !(Number(invoice.loyaltyPointsEarned) > 0)) {
+    return 0;
+  }
+
+  const customers = getStoredCustomers();
+  const custIdx = customers.findIndex(c => c && c.id === invoice.customerId);
+  if (custIdx < 0 || customers[custIdx].isDefaultCashCustomer) {
+    return 0;
+  }
+
+  const customer = customers[custIdx];
+  const earnedOnInvoice = Number(invoice.loyaltyPointsEarned) || 0;
+  const previouslyReversed = existingLedger
+    .filter(tx => tx.invoiceNumber === invoice.invoiceNo && tx.type === 'ReversedOnReturn')
+    .reduce((sum, tx) => sum + Math.abs(Number(tx.pointsChange) || 0), 0);
+  const remainingEarned = Math.max(0, earnedOnInvoice - previouslyReversed);
+  if (remainingEarned <= 0) return 0;
+
+  const products = getStoredProducts();
+  const bundles = getStoredProductBundles();
+  const invoiceItem = (invoice.items || []).find(
+    it => (params.productId && it.productId === params.productId) || (params.sku && it.sku === params.sku)
+  );
+  const matchedProd = products.find(p => p.id === (invoiceItem?.productId || params.productId) || p.sku === params.sku);
+  const returnedUnitCost = resolveProductUnitCost(matchedProd, products, bundles);
+  const returnedUnitSell = Number(invoiceItem?.unitPrice ?? matchedProd?.sellingPrice ?? 0);
+  const returnedProfit = Math.max(0, (returnedUnitSell - returnedUnitCost) * (Number(params.returnQuantity) || 1));
+
+  const totalLineProfits = (invoice.items || []).reduce((sum, it) => {
+    const p = products.find(pr => pr.id === it.productId || pr.sku === it.sku);
+    const uc = resolveProductUnitCost(p, products, bundles);
+    return sum + Math.max(0, (Number(it.unitPrice) - uc) * Number(it.quantity));
+  }, 0);
+
+  let pointsToReverse = totalLineProfits > 0
+    ? Math.floor((returnedProfit / totalLineProfits) * earnedOnInvoice)
+    : 0;
+  if (pointsToReverse <= 0) {
+    const settings = getStoredLoyaltySettings();
+    pointsToReverse = calculateProfitBasedEarnedPoints(returnedProfit, settings);
+  }
+  pointsToReverse = Math.min(pointsToReverse, remainingEarned);
+  if (pointsToReverse <= 0) return 0;
+
+  const currentBalance = Number(customer.loyaltyPointsBalance ?? customer.loyaltyPoints ?? 0) || 0;
+  const nextBalance = Math.round((currentBalance - pointsToReverse) * 10000) / 10000;
+
+  customers[custIdx] = {
+    ...customer,
+    loyaltyPoints: nextBalance,
+    loyaltyPointsBalance: nextBalance
+  };
+  saveStoredCustomers(customers);
+
+  const txEntry: LoyaltyTransactionRecord = {
+    id: `LOY-${Date.now()}-REV`,
+    customerId: customer.id,
+    customerName: customer.name,
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNo,
+    returnId: params.rmaId,
+    rmaNumber: params.rmaNumber,
+    type: 'ReversedOnReturn',
+    pointsChange: -pointsToReverse,
+    profitBasis: returnedProfit,
+    balanceAfter: nextBalance,
+    notes: params.rmaNumber,
+    createdBy: params.operator,
+    createdAt: new Date().toISOString()
+  };
+
+  saveStoredLoyaltyTransactions([txEntry, ...existingLedger]);
+  return pointsToReverse;
+}
+
+export function adjustCustomerLoyaltyPointsLocally(params: {
+  customerId: string;
+  pointsChange: number;
+  notes?: string;
+  operator: string;
+}): LoyaltyTransactionRecord {
+  const customers = getStoredCustomers();
+  const idx = customers.findIndex(c => c && c.id === params.customerId);
+  if (idx < 0) throw new Error('ERR_CUSTOMER_NOT_FOUND');
+  if (customers[idx].isDefaultCashCustomer) throw new Error('ERR_LOYALTY_WALKIN_NOT_ALLOWED');
+
+  const currentBalance = Number(customers[idx].loyaltyPointsBalance ?? customers[idx].loyaltyPoints ?? 0) || 0;
+  const nextBalance = Math.round((currentBalance + params.pointsChange) * 10000) / 10000;
+  customers[idx] = {
+    ...customers[idx],
+    loyaltyPoints: nextBalance,
+    loyaltyPointsBalance: nextBalance
+  };
+  saveStoredCustomers(customers);
+
+  const entry: LoyaltyTransactionRecord = {
+    id: `LOY-${Date.now()}-ADJ`,
+    customerId: customers[idx].id,
+    customerName: customers[idx].name,
+    type: 'ManualAdjustment',
+    pointsChange: Math.round(params.pointsChange * 10000) / 10000,
+    profitBasis: 0,
+    balanceAfter: nextBalance,
+    notes: params.notes || 'Manual adjustment',
+    createdBy: params.operator,
+    createdAt: new Date().toISOString()
+  };
+  saveStoredLoyaltyTransactions([entry, ...getStoredLoyaltyTransactions()]);
+  return entry;
+}
+
 export function getStoredRMA(): any[] {
   const existing = safeGet<any[] | null>(KEYS.RMA, null);
   return existing || [];
@@ -2516,6 +2913,7 @@ export interface SalesReturnRestockResult {
   updatedProducts: Product[];
   createdTransactions: TransactionDetail[];
   restockedWarehouseName: string;
+  reversedLoyaltyPoints: number;
 }
 
 /**
@@ -2625,10 +3023,21 @@ export function executeSalesReturnRestock(req: SalesReturnRestockRequest): Sales
     saveStoredTransactions([...newTransactions, ...existingTxs]);
   }
 
+  const reversedLoyaltyPoints = reverseLocalLoyaltyOnReturn({
+    rmaId: req.rmaId,
+    rmaNumber: req.rmaNumber,
+    invoiceNo: req.invoiceNo,
+    productId: req.productId,
+    sku: req.sku,
+    returnQuantity: qty,
+    operator: req.operator || 'مسؤول المرتجعات'
+  });
+
   return {
     updatedProducts,
     createdTransactions: newTransactions,
-    restockedWarehouseName: effectiveWarehouseName
+    restockedWarehouseName: effectiveWarehouseName,
+    reversedLoyaltyPoints
   };
 }
 

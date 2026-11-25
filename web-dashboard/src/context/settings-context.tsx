@@ -57,6 +57,15 @@ export interface ScaleSettings {
   directScaleBaudRate?: number; // 9600 for serial scale
 }
 
+export interface LoyaltySettings {
+  isLoyaltyEnabled: boolean;
+  profitUnitAmount: number;
+  pointsEarnedPerUnit: number;
+  pointsRedemptionUnit: number;
+  currencyValuePerUnit: number;
+  minRedeemablePoints: number;
+}
+
 export interface UserSettings {
   language: SupportedLanguage;
   theme: SupportedTheme;
@@ -88,6 +97,8 @@ export interface UserSettings {
   paperWidth?: '80mm' | '58mm';
   autoPrintReceipt?: boolean;
   openCashDrawerOnCashSale?: boolean;
+  // Tab 4: Profit-Based Loyalty
+  loyaltySettings?: LoyaltySettings;
 }
 
 export const CURRENCY_REGISTRY: Record<string, { code: string; nameAr: string; nameEn: string; symbolAr: string; symbolEn: string; defaultRateVsUsd: number }> = {
@@ -170,7 +181,15 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoRoundCash: true,
   paperWidth: '80mm',
   autoPrintReceipt: true,
-  openCashDrawerOnCashSale: true
+  openCashDrawerOnCashSale: true,
+  loyaltySettings: {
+    isLoyaltyEnabled: true,
+    profitUnitAmount: 1000,
+    pointsEarnedPerUnit: 10,
+    pointsRedemptionUnit: 100,
+    currencyValuePerUnit: 1000,
+    minRedeemablePoints: 500
+  }
 };
 
 // Cookie Helpers

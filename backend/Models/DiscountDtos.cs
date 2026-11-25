@@ -115,6 +115,8 @@ public class CreatePosInvoiceRequest
     public InvoiceSource Source { get; set; } = InvoiceSource.POS;
     public Guid? TreasuryAccountId { get; set; }
     public string PaymentMethod { get; set; } = "CASH"; // CASH, CARD
+    public decimal InvoiceDiscountAmount { get; set; } = 0.0000m;
+    public decimal RedeemPoints { get; set; } = 0.0000m;
     public List<PosInvoiceItemRequest> Items { get; set; } = new();
 }
 
@@ -149,6 +151,11 @@ public class PosInvoiceResponse
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public InvoiceSource Source { get; set; } = InvoiceSource.POS;
     public Guid? TreasuryAccountId { get; set; }
+    public decimal LoyaltyPointsEarned { get; set; } = 0.0000m;
+    public decimal LoyaltyPointsRedeemed { get; set; } = 0.0000m;
+    public decimal LoyaltyDiscountAmount { get; set; } = 0.0000m;
+    public decimal RealizedProfit { get; set; } = 0.0000m;
+    public decimal CustomerLoyaltyPointsBalanceAfter { get; set; } = 0.0000m;
     public DateTime CreatedAt { get; set; }
     public int DiscounterItemsCount { get; set; }
     public int OverriddenItemsCount { get; set; }

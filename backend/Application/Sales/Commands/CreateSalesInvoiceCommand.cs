@@ -28,7 +28,9 @@ public sealed record CreateSalesInvoiceCommand(
     List<SalesItemRequestDto> Items,
     string? ShiftId = null,
     Guid? TreasuryAccountId = null,
-    InvoiceSource Source = InvoiceSource.StandardInvoice
+    InvoiceSource Source = InvoiceSource.StandardInvoice,
+    decimal RedeemPoints = 0.0000m,
+    decimal InvoiceDiscountAmount = 0.0000m
 ) : Inventory.Commands.IRequest<Result<PosInvoiceResponse>>;
 
 public sealed class CreateSalesInvoiceCommandHandler 
@@ -58,6 +60,8 @@ public sealed class CreateSalesInvoiceCommandHandler
                 Source = cmd.Source,
                 TreasuryAccountId = cmd.TreasuryAccountId,
                 PaymentMethod = cmd.PaymentMethod,
+                InvoiceDiscountAmount = cmd.InvoiceDiscountAmount,
+                RedeemPoints = cmd.RedeemPoints,
                 Items = cmd.Items.ConvertAll(i => new PosInvoiceItemRequest
                 {
                     ProductId = i.ProductId,
@@ -75,6 +79,14 @@ public sealed class CreateSalesInvoiceCommandHandler
         {
             var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
                 ? "ERR_NO_ACTIVE_SHIFT"
+                : ex.Message.Contains("ERR_INSUFFICIENT_LOYALTY_POINTS")
+                ? "ERR_INSUFFICIENT_LOYALTY_POINTS"
+                : ex.Message.Contains("ERR_BELOW_MIN_REDEEM_POINTS")
+                ? "ERR_BELOW_MIN_REDEEM_POINTS"
+                : ex.Message.Contains("ERR_LOYALTY_DISABLED")
+                ? "ERR_LOYALTY_DISABLED"
+                : ex.Message.Contains("ERR_LOYALTY_WALKIN_NOT_ALLOWED")
+                ? "ERR_LOYALTY_WALKIN_NOT_ALLOWED"
                 : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")

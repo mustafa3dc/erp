@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
+using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
@@ -13,10 +14,12 @@ namespace ERP.Warehouse.Api.Controllers;
 public class CustomersController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ILoyaltyService _loyaltyService;
 
-    public CustomersController(AppDbContext context)
+    public CustomersController(AppDbContext context, ILoyaltyService loyaltyService)
     {
         _context = context;
+        _loyaltyService = loyaltyService;
     }
 
     [HttpGet]
@@ -49,12 +52,26 @@ public class CustomersController : ControllerBase
                 c.Email,
                 c.CreditLimit,
                 c.CurrentBalance,
+                c.LoyaltyPointsBalance,
                 c.IsDefaultCashCustomer,
                 c.CreatedAt
             })
             .ToListAsync();
 
         return Ok(items);
+    }
+
+    [HttpGet("{customerId:guid}/loyalty")]
+    public async Task<ActionResult<CustomerLoyaltySummaryDto>> GetCustomerLoyalty(
+        [FromRoute] Guid customerId,
+        CancellationToken ct)
+    {
+        var summary = await _loyaltyService.GetCustomerLoyaltySummaryAsync(customerId, ct);
+        if (summary == null)
+        {
+            return NotFound(new { errorCode = "ERR_CUSTOMER_NOT_FOUND" });
+        }
+        return Ok(summary);
     }
 
     [HttpPost]
@@ -75,6 +92,7 @@ public class CustomersController : ControllerBase
             Phone = dto.Phone?.Trim(),
             Email = dto.Email?.Trim(),
             CreditLimit = dto.CreditLimit ?? 0m,
+            LoyaltyPointsBalance = 0.0000m,
             IsDefaultCashCustomer = false,
             IsActive = true,
             CreatedBy = User.Identity?.Name ?? "System",
@@ -93,6 +111,7 @@ public class CustomersController : ControllerBase
             customer.Phone,
             customer.CreditLimit,
             customer.CurrentBalance,
+            customer.LoyaltyPointsBalance,
             customer.IsDefaultCashCustomer,
             customer.CreatedAt
         });

@@ -58,6 +58,8 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseReturnItem> PurchaseReturnItems => Set<PurchaseReturnItem>();
     public DbSet<ProductSerial> ProductSerials => Set<ProductSerial>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<LoyaltySettings> LoyaltySettings => Set<LoyaltySettings>();
+    public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -229,6 +231,7 @@ public class AppDbContext : DbContext
             entity.HasIndex(c => new { c.TenantId, c.Code });
             entity.Property(c => c.CreditLimit).HasColumnType("numeric(18, 4)");
             entity.Property(c => c.CurrentBalance).HasColumnType("numeric(18, 4)");
+            entity.Property(c => c.LoyaltyPointsBalance).HasColumnType("numeric(18, 4)");
 
             entity.HasOne(c => c.PriceList)
                 .WithMany()
@@ -455,6 +458,42 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(al => new { al.TenantId, al.EntityName, al.EntityId });
             entity.HasIndex(al => al.Timestamp);
+        });
+
+        // Profit-Based Customer Loyalty Configurations
+        modelBuilder.Entity<LoyaltySettings>(entity =>
+        {
+            entity.HasIndex(ls => ls.TenantId).IsUnique();
+            entity.Property(ls => ls.ProfitUnitAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(ls => ls.PointsEarnedPerUnit).HasColumnType("numeric(18, 4)");
+            entity.Property(ls => ls.PointsRedemptionUnit).HasColumnType("numeric(18, 4)");
+            entity.Property(ls => ls.CurrencyValuePerUnit).HasColumnType("numeric(18, 4)");
+            entity.Property(ls => ls.MinRedeemablePoints).HasColumnType("numeric(18, 4)");
+        });
+
+        modelBuilder.Entity<LoyaltyTransaction>(entity =>
+        {
+            entity.HasIndex(lt => new { lt.TenantId, lt.CustomerId, lt.CreatedAt });
+            entity.HasIndex(lt => lt.InvoiceId);
+            entity.HasIndex(lt => lt.ReturnId);
+            entity.Property(lt => lt.PointsChange).HasColumnType("numeric(18, 4)");
+            entity.Property(lt => lt.ProfitBasis).HasColumnType("numeric(18, 4)");
+            entity.Property(lt => lt.BalanceAfter).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(lt => lt.Customer)
+                .WithMany()
+                .HasForeignKey(lt => lt.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(lt => lt.Invoice)
+                .WithMany()
+                .HasForeignKey(lt => lt.InvoiceId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(lt => lt.ReturnRequest)
+                .WithMany()
+                .HasForeignKey(lt => lt.ReturnId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

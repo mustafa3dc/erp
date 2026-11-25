@@ -12,6 +12,7 @@ public class DiscountEngineService : IDiscountEngineService
     private readonly AppDbContext _context;
     private readonly ILogger<DiscountEngineService> _logger;
     private readonly IDatabase? _redisDb;
+    private readonly ILoyaltyService? _loyaltyService;
 
     // Standardized generic error message (Strict Cost Masking: Never leak CostPrice or Margins)
     private const string ErrorCodeLimitExceeded = "ERR_DISCOUNT_EXCEEDED_LIMIT";
@@ -20,11 +21,13 @@ public class DiscountEngineService : IDiscountEngineService
     public DiscountEngineService(
         AppDbContext context,
         ILogger<DiscountEngineService> logger,
-        IConnectionMultiplexer? redis = null)
+        IConnectionMultiplexer? redis = null,
+        ILoyaltyService? loyaltyService = null)
     {
         _context = context;
         _logger = logger;
         _redisDb = redis?.GetDatabase();
+        _loyaltyService = loyaltyService;
     }
 
     /// <summary>
@@ -401,6 +404,7 @@ public class DiscountEngineService : IDiscountEngineService
 
             decimal calculatedSubtotal = 0;
             decimal calculatedTotalDiscount = 0;
+            decimal calculatedLineProfits = 0;
             int discountedCount = 0;
             int overriddenCount = 0;
 
@@ -534,8 +538,13 @@ public class DiscountEngineService : IDiscountEngineService
                 }
 
                 var lineTotal = finalUnitPrice * itemReq.Quantity;
+                decimal unitCostPrice = (product.IsBundle && product.BundleComponents.Count > 0)
+                    ? product.BundleComponents.Sum(bc => (bc.ComponentProduct?.CostPrice ?? 0m) * bc.Quantity)
+                    : product.CostPrice;
+
                 calculatedSubtotal += resolvedUnitBasePrice * itemReq.Quantity;
                 calculatedTotalDiscount += discountAmountPerUnit * itemReq.Quantity;
+                calculatedLineProfits += (finalUnitPrice - unitCostPrice) * itemReq.Quantity;
 
                 invoiceTierFlags.Add(matchedTier != null);
                 invoiceItems.Add(new SalesInvoiceItem
@@ -549,6 +558,7 @@ public class DiscountEngineService : IDiscountEngineService
                     DiscountAmount = discountAmountPerUnit,
                     UnitPrice = finalUnitPrice,
                     TotalPrice = lineTotal,
+                    UnitCostPrice = unitCostPrice,
                     WasManagerOverride = wasOverride,
                     ApprovedByManagerId = approvedManagerId
                 });
@@ -568,17 +578,41 @@ public class DiscountEngineService : IDiscountEngineService
                 }
             }
 
-            salesInvoice.Subtotal = calculatedSubtotal;
-            salesInvoice.DiscountAmount = calculatedTotalDiscount;
-            var subtotalAfterDiscount = Math.Max(0, calculatedSubtotal - calculatedTotalDiscount);
-            salesInvoice.TaxAmount = Math.Round(subtotalAfterDiscount * 0.05m, 2); // 5% VAT
-            salesInvoice.TotalAmount = subtotalAfterDiscount + salesInvoice.TaxAmount;
-            salesInvoice.Items = invoiceItems;
-
-            // 3-Way Customer Resolution inside ACID Transaction (Existing / Auto-Create New / Walk-In Default)
-            var resolvedCustomer = await ResolveCustomerInTransactionAsync(request, salesInvoice.TotalAmount);
+            // 1. Resolve Customer inside ACID Transaction (Walk-In / Existing / Auto-Create New)
+            var resolvedCustomer = await ResolveCustomerEntityInTransactionAsync(request);
             salesInvoice.CustomerId = resolvedCustomer.Id;
             salesInvoice.CustomerName = resolvedCustomer.Name;
+
+            var subtotalAfterItemDiscounts = Math.Max(0m, calculatedSubtotal - calculatedTotalDiscount);
+            var invoiceLevelDiscount = Math.Max(0m, request.InvoiceDiscountAmount);
+            var maxLoyaltyRedemptionCap = Math.Max(0m, subtotalAfterItemDiscounts - invoiceLevelDiscount);
+            var actorName = !string.IsNullOrWhiteSpace(request.CashierName) ? request.CashierName.Trim() : request.CashierId;
+
+            // 2. Profit-Based Loyalty Points Redemption & Earning inside ACID Transaction
+            var loyaltyResult = _loyaltyService != null
+                ? await _loyaltyService.ApplyCheckoutLoyaltyInTransactionAsync(
+                    resolvedCustomer,
+                    salesInvoice,
+                    calculatedLineProfits,
+                    invoiceLevelDiscount,
+                    maxRedeemableCurrencyCap: maxLoyaltyRedemptionCap,
+                    requestedRedeemPoints: request.RedeemPoints,
+                    actorName: actorName)
+                : new CheckoutLoyaltyResult(0m, 0m, 0m, Math.Max(0m, calculatedLineProfits - invoiceLevelDiscount), resolvedCustomer.LoyaltyPointsBalance);
+
+            salesInvoice.Subtotal = calculatedSubtotal;
+            salesInvoice.DiscountAmount = calculatedTotalDiscount + invoiceLevelDiscount + loyaltyResult.LoyaltyDiscountAmount;
+            var subtotalAfterDiscount = Math.Max(0m, subtotalAfterItemDiscounts - invoiceLevelDiscount - loyaltyResult.LoyaltyDiscountAmount);
+            salesInvoice.TaxAmount = Math.Round(subtotalAfterDiscount * 0.05m, 2); // 5% VAT
+            salesInvoice.TotalAmount = subtotalAfterDiscount + salesInvoice.TaxAmount;
+            salesInvoice.LoyaltyPointsEarned = loyaltyResult.PointsEarned;
+            salesInvoice.LoyaltyPointsRedeemed = loyaltyResult.PointsRedeemed;
+            salesInvoice.LoyaltyDiscountAmount = loyaltyResult.LoyaltyDiscountAmount;
+            salesInvoice.RealizedProfit = loyaltyResult.RealizedProfit;
+            salesInvoice.Items = invoiceItems;
+
+            // 3. Enforce Credit Limit & Debit Receivable Balance on final net payable amount
+            ApplyCustomerCreditDebitInTransaction(resolvedCustomer, request.PaymentMethod, salesInvoice.TotalAmount);
 
             // Optional Treasury account metadata (drawer cash transfers to Main Safe once upon closing the active shift / Z-Report)
             if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
@@ -640,6 +674,11 @@ public class DiscountEngineService : IDiscountEngineService
                 ShiftId = salesInvoice.ShiftId,
                 Source = isPosSource ? InvoiceSource.POS : InvoiceSource.StandardInvoice,
                 TreasuryAccountId = salesInvoice.TreasuryAccountId,
+                LoyaltyPointsEarned = salesInvoice.LoyaltyPointsEarned,
+                LoyaltyPointsRedeemed = salesInvoice.LoyaltyPointsRedeemed,
+                LoyaltyDiscountAmount = salesInvoice.LoyaltyDiscountAmount,
+                RealizedProfit = salesInvoice.RealizedProfit,
+                CustomerLoyaltyPointsBalanceAfter = resolvedCustomer.LoyaltyPointsBalance,
                 CreatedAt = salesInvoice.CreatedAt,
                 DiscounterItemsCount = discountedCount,
                 OverriddenItemsCount = overriddenCount,
@@ -967,12 +1006,9 @@ public class DiscountEngineService : IDiscountEngineService
     }
 
     /// <summary>
-    /// Resolves invoice Customer in 3 modes inside active ACID transaction:
-    /// 1) Existing CustomerId (+ credit limit verification for Credit/Installment)
-    /// 2) Auto-create new Customer from typed CustomerName
-    /// 3) Default Walk-In Cash Customer ("عميل نقدي") for non-credit sales, or reject credit with ERR_CREDIT_SALE_REQUIRES_CUSTOMER.
+    /// Resolves invoice Customer in 3 modes inside active ACID transaction BEFORE applying loyalty &amp; credit checks.
     /// </summary>
-    private async Task<Customer> ResolveCustomerInTransactionAsync(CreatePosInvoiceRequest request, decimal invoiceTotal)
+    private async Task<Customer> ResolveCustomerEntityInTransactionAsync(CreatePosInvoiceRequest request)
     {
         var methodNorm = (request.PaymentMethod ?? "CASH").Trim().ToUpperInvariant();
         bool isCreditOrInstallment = methodNorm is "CREDIT" or "INSTALLMENT" or "CUSTOMER_ACCOUNT_DEBIT";
@@ -988,21 +1024,10 @@ public class DiscountEngineService : IDiscountEngineService
             {
                 throw new ApplicationException("ERR_CUSTOMER_NOT_FOUND");
             }
-
-            if (isCreditOrInstallment)
+            if (isCreditOrInstallment && existing.IsDefaultCashCustomer)
             {
-                if (existing.IsDefaultCashCustomer)
-                {
-                    throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
-                }
-                if (existing.CreditLimit > 0m && existing.CurrentBalance + invoiceTotal > existing.CreditLimit)
-                {
-                    throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
-                }
-                existing.CurrentBalance += invoiceTotal;
-                existing.UpdatedAt = now;
+                throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
             }
-
             return existing;
         }
 
@@ -1021,9 +1046,10 @@ public class DiscountEngineService : IDiscountEngineService
                 Code = $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}",
                 Name = trimmedName,
                 IsDefaultCashCustomer = false,
+                LoyaltyPointsBalance = 0.0000m,
                 IsActive = true,
                 CreatedBy = actor,
-                CurrentBalance = isCreditOrInstallment ? invoiceTotal : 0m,
+                CurrentBalance = 0m,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -1048,6 +1074,7 @@ public class DiscountEngineService : IDiscountEngineService
                 Code = "WALK-IN-CASH",
                 Name = "عميل نقدي",
                 IsDefaultCashCustomer = true,
+                LoyaltyPointsBalance = 0.0000m,
                 IsActive = true,
                 CreatedBy = "System",
                 CreatedAt = now,
@@ -1057,5 +1084,24 @@ public class DiscountEngineService : IDiscountEngineService
         }
 
         return walkIn;
+    }
+
+    private static void ApplyCustomerCreditDebitInTransaction(Customer customer, string? paymentMethod, decimal invoiceTotal)
+    {
+        var methodNorm = (paymentMethod ?? "CASH").Trim().ToUpperInvariant();
+        bool isCreditOrInstallment = methodNorm is "CREDIT" or "INSTALLMENT" or "CUSTOMER_ACCOUNT_DEBIT";
+        if (!isCreditOrInstallment) return;
+
+        if (customer.IsDefaultCashCustomer)
+        {
+            throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
+        }
+        if (customer.CreditLimit > 0m && customer.CurrentBalance + invoiceTotal > customer.CreditLimit)
+        {
+            throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
+        }
+
+        customer.CurrentBalance += invoiceTotal;
+        customer.UpdatedAt = DateTime.UtcNow;
     }
 }

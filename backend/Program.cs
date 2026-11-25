@@ -64,6 +64,7 @@ builder.Services.AddScoped<IPriceListService, PriceListService>();
 builder.Services.AddScoped<IPurchaseReturnService, PurchaseReturnService>();
 builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
+builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 
 // JWT Authentication Configuration
 var jwtSecret = "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";
@@ -256,6 +257,19 @@ using (var scope = app.Services.CreateScope())
             else
             {
                 logger.LogInformation("Database schema is already initialized ({Count} tables verified).", count);
+                // Ensure incremental Profit-Based Customer Loyalty schema upgrades are idempotently applied
+                string[] incrementalPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "13_profit_based_customer_loyalty.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "13_profit_based_customer_loyalty.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "13_profit_based_customer_loyalty.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "13_profit_based_customer_loyalty.sql")
+                };
+                var loyaltySqlPath = incrementalPaths.FirstOrDefault(File.Exists);
+                if (loyaltySqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(loyaltySqlPath));
+                }
             }
         }
     }

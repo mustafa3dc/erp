@@ -96,7 +96,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         var model = _configuration["Gemini:Model"]?.Trim();
         if (string.IsNullOrWhiteSpace(model))
         {
-            model = "gemini-3.8-flash";
+            model = "gemini-2.5-flash";
         }
 
         // Cache key by content SHA-256 + tenant to eliminate duplicate Vision LLM spend on retries
@@ -254,9 +254,9 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         client.Timeout = TimeSpan.FromSeconds(45);
 
         var escapedKey = Uri.EscapeDataString(apiKey);
-        var modelsToTry = model.Equals("gemini-3.8-flash", StringComparison.OrdinalIgnoreCase)
-            ? new[] { model, "gemini-2.5-flash" }
-            : new[] { model, "gemini-3.8-flash" };
+        var modelsToTry = model.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase)
+            ? new[] { model, "gemini-2.0-flash" }
+            : new[] { model, "gemini-2.5-flash" };
 
         var endpointsToTry = new List<string>();
         foreach (var candidateModel in modelsToTry.Distinct(StringComparer.OrdinalIgnoreCase))

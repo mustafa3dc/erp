@@ -54,7 +54,7 @@ services:
       - ConnectionStrings__PostgreSql=Host=postgres;Port=5432;Database=erp_warehouse_db;Username=erp_admin;Password=erp_secure_password_2026;
       - ConnectionStrings__Redis=redis:6379
       - Gemini__ApiKey=${GEMINI_API_KEY}
-      - Gemini__Model=gemini-2.5-flash
+      - Gemini__Model=gemini-3.8-flash
     ports:
       - "5000:5000"
     depends_on:

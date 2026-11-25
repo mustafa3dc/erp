@@ -94,9 +94,11 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
 
         var normalizedMime = NormalizeMimeType(contentType, fileName);
         var model = _configuration["Gemini:Model"]?.Trim();
-        if (string.IsNullOrWhiteSpace(model))
+        if (string.IsNullOrWhiteSpace(model)
+            || model.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase)
+            || model.Equals("gemini-2.0-flash", StringComparison.OrdinalIgnoreCase))
         {
-            model = "gemini-2.5-flash";
+            model = "gemini-3.8-flash";
         }
 
         // Cache key by content SHA-256 + tenant to eliminate duplicate Vision LLM spend on retries
@@ -251,58 +253,76 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         };
 
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(45);
+        client.Timeout = TimeSpan.FromSeconds(100);
 
-        bool isOAuthToken = apiKey.StartsWith("AQ.", StringComparison.Ordinal)
-                         || apiKey.StartsWith("ya29.", StringComparison.Ordinal);
+        // Only Google OAuth2 access tokens (ya29.*) use Authorization: Bearer.
+        // Google AI Studio keys (AIza* and AQ.*) must be passed via ?key=.
+        bool isOAuthToken = apiKey.StartsWith("ya29.", StringComparison.Ordinal);
 
-        var modelsToTry = model.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase)
-            ? new[] { model, "gemini-2.0-flash" }
-            : new[] { model, "gemini-2.5-flash" };
+        var modelsToTry = new[]
+        {
+            model,
+            "gemini-3.8-flash",
+            "gemini-flash-lite-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-latest"
+        }.Distinct(StringComparer.OrdinalIgnoreCase);
 
-        var endpointsToTry = new List<(string Url, bool UseBearer)>();
-        foreach (var candidateModel in modelsToTry.Distinct(StringComparer.OrdinalIgnoreCase))
+        var endpointsToTry = new List<string>();
+        foreach (var candidateModel in modelsToTry)
         {
             var escapedModel = Uri.EscapeDataString(candidateModel);
             if (isOAuthToken)
             {
-                // OAuth2 tokens: use Authorization: Bearer header (no ?key= in URL)
-                endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent", true));
-                endpointsToTry.Add(($"https://aiplatform.googleapis.com/v1/publishers/google/models/{escapedModel}:generateContent", true));
+                endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent");
             }
             else
             {
-                // API keys (AIza...): use ?key= query param
                 var escapedKey = Uri.EscapeDataString(apiKey);
-                endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}", false));
+                endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}");
             }
         }
 
         var serializedPayload = JsonSerializer.Serialize(requestPayload);
         HttpResponseMessage? response = null;
         string? lastErrBody = null;
+        bool anyTimedOut = false;
 
-        foreach (var (url, useBearer) in endpointsToTry)
+        foreach (var url in endpointsToTry)
         {
-            using var httpContent = new StringContent(serializedPayload, Encoding.UTF8, "application/json");
-            if (useBearer)
+            response?.Dispose();
+            response = null;
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
-                httpContent.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
-                client.DefaultRequestHeaders.Remove("Authorization");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                Content = new StringContent(serializedPayload, Encoding.UTF8, "application/json")
+            };
+            if (isOAuthToken)
+            {
+                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
             }
+
+            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            attemptCts.CancelAfter(TimeSpan.FromSeconds(30));
+
             try
             {
-                response = await client.PostAsync(url, httpContent, ct);
+                response = await client.SendAsync(request, attemptCts.Token);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw new OcrExtractionException("ERR_OCR_TIMEOUT", StatusCodes.Status504GatewayTimeout);
+            }
+            catch (OperationCanceledException)
+            {
+                anyTimedOut = true;
+                _logger.LogWarning("Gemini OCR endpoint timed out after 30s, trying fallback model");
+                continue;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Gemini HTTP call failed");
-                throw new OcrExtractionException("ERR_OCR_UPSTREAM_FAILED", StatusCodes.Status502BadGateway);
+                continue;
             }
 
             if (response.IsSuccessStatusCode)
@@ -313,7 +333,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
             lastErrBody = await response.Content.ReadAsStringAsync(ct);
             _logger.LogWarning("Gemini OCR endpoint returned {Status}: {Body}", response.StatusCode, lastErrBody);
 
-            if ((int)response.StatusCode is not (400 or 401 or 403 or 404))
+            if ((int)response.StatusCode is not (400 or 401 or 403 or 404 or 429 or 500 or 502 or 503 or 504))
             {
                 break;
             }
@@ -321,10 +341,16 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
 
         if (response == null || !response.IsSuccessStatusCode)
         {
+            response?.Dispose();
+            if (anyTimedOut && response == null)
+            {
+                throw new OcrExtractionException("ERR_OCR_TIMEOUT", StatusCodes.Status504GatewayTimeout);
+            }
             throw new OcrExtractionException("ERR_OCR_UPSTREAM_FAILED", StatusCodes.Status502BadGateway);
         }
 
-        var rawResponse = await response.Content.ReadAsStringAsync(ct);
+        using var successResponse = response;
+        var rawResponse = await successResponse.Content.ReadAsStringAsync(ct);
         try
         {
             using var doc = JsonDocument.Parse(rawResponse);

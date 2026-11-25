@@ -191,24 +191,48 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 // Config Status Endpoint — shows which env vars are loaded (no secrets exposed)
-app.MapGet("/api/config/status", (IConfiguration config) =>
+app.MapGet("/api/config/status", async (IConfiguration config, IHttpClientFactory httpFactory, bool? probe) =>
 {
-    var geminiKey = config["Gemini:ApiKey"]?.Trim();
-    if (string.IsNullOrWhiteSpace(geminiKey))
+    static string DescribeKey(string? k)
     {
-        geminiKey = (Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
-            ?? Environment.GetEnvironmentVariable("Gemini__ApiKey"))?.Trim();
+        var t = k?.Trim();
+        if (string.IsNullOrWhiteSpace(t)) return "NOT SET";
+        if (t.Length <= 10) return $"SET (len={t.Length})";
+        return $"SET (len={t.Length}, {t[..6]}...{t[^4..]})";
+    }
+
+    var envGemini = Environment.GetEnvironmentVariable("GEMINI_API_KEY")?.Trim();
+    var envGeminiDouble = Environment.GetEnvironmentVariable("Gemini__ApiKey")?.Trim();
+    var cfgGemini = config["Gemini:ApiKey"]?.Trim();
+    var geminiKey = !string.IsNullOrWhiteSpace(envGemini) ? envGemini : (cfgGemini ?? envGeminiDouble);
+
+    object? probeResult = null;
+    if (probe == true && !string.IsNullOrWhiteSpace(geminiKey))
+    {
+        try
+        {
+            var client = httpFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(15);
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={Uri.EscapeDataString(geminiKey)}";
+            using var content = new StringContent("{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"ping\"}]}]}", Encoding.UTF8, "application/json");
+            using var resp = await client.PostAsync(url, content);
+            var body = await resp.Content.ReadAsStringAsync();
+            probeResult = new { status = (int)resp.StatusCode, ok = resp.IsSuccessStatusCode, body = body.Length > 400 ? body[..400] : body };
+        }
+        catch (Exception ex)
+        {
+            probeResult = new { error = ex.Message };
+        }
     }
 
     return Results.Ok(new
     {
         gemini_key_configured = !string.IsNullOrWhiteSpace(geminiKey),
-        gemini_key_prefix = string.IsNullOrWhiteSpace(geminiKey) ? "MISSING" : geminiKey[..Math.Min(6, geminiKey.Length)] + "...",
         gemini_model = config["Gemini:Model"] ?? "not set",
-        env_GEMINI_API_KEY = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_API_KEY")) ? "SET" : "NOT SET",
-        env_Gemini__ApiKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("Gemini__ApiKey")) ? "SET" : "NOT SET",
-        config_Gemini_ApiKey = !string.IsNullOrWhiteSpace(config["Gemini:ApiKey"]) ? "SET" : "NOT SET",
+        env_GEMINI_API_KEY = DescribeKey(envGemini),
+        env_Gemini__ApiKey = DescribeKey(envGeminiDouble),
+        config_Gemini_ApiKey = DescribeKey(cfgGemini),
+        probe = probeResult
     });
 }).AllowAnonymous();
 

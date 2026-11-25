@@ -80,14 +80,19 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
     {
         ValidateFile(fileBytes, contentType, fileName);
 
-        var apiKey = _configuration["Gemini:ApiKey"]?.Trim();
-        if (string.IsNullOrWhiteSpace(apiKey))
+        var candidateKeys = new[]
         {
-            apiKey = (Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
-                ?? Environment.GetEnvironmentVariable("Gemini__ApiKey"))?.Trim();
+            Environment.GetEnvironmentVariable("GEMINI_API_KEY")?.Trim(),
+            _configuration["Gemini:ApiKey"]?.Trim(),
+            Environment.GetEnvironmentVariable("GOOGLE_API_KEY")?.Trim(),
+            Environment.GetEnvironmentVariable("Gemini__ApiKey")?.Trim()
         }
-        if (string.IsNullOrWhiteSpace(apiKey))
+        .Where(k => !string.IsNullOrWhiteSpace(k))
+        .Select(k => k!)
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+        if (candidateKeys.Count == 0)
         {
             throw new OcrExtractionException("ERR_AI_SCAN_UNAVAILABLE", StatusCodes.Status503ServiceUnavailable);
         }
@@ -124,7 +129,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
 
         if (rawParsed == null)
         {
-            rawParsed = await CallGeminiVisionAsync(fileBytes, normalizedMime, apiKey, model, ct);
+            rawParsed = await CallGeminiVisionAsync(fileBytes, normalizedMime, candidateKeys, model, ct);
             if (_redisDb != null)
             {
                 try
@@ -182,7 +187,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
     private async Task<GeminiExtractedInvoicePayload> CallGeminiVisionAsync(
         byte[] fileBytes,
         string mimeType,
-        string apiKey,
+        IReadOnlyList<string> candidateKeys,
         string model,
         CancellationToken ct)
     {
@@ -255,10 +260,6 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(100);
 
-        // Only Google OAuth2 access tokens (ya29.*) use Authorization: Bearer.
-        // Google AI Studio keys (AIza* and AQ.*) must be passed via ?key=.
-        bool isOAuthToken = apiKey.StartsWith("ya29.", StringComparison.Ordinal);
-
         var modelsToTry = new[]
         {
             model,
@@ -266,20 +267,26 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
             "gemini-flash-lite-latest",
             "gemini-3.1-flash-lite",
             "gemini-flash-latest"
-        }.Distinct(StringComparer.OrdinalIgnoreCase);
+        }.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-        var endpointsToTry = new List<string>();
-        foreach (var candidateModel in modelsToTry)
+        var endpointsToTry = new List<(string Url, string ApiKey, bool IsOAuthToken)>();
+        foreach (var candidateKey in candidateKeys)
         {
-            var escapedModel = Uri.EscapeDataString(candidateModel);
-            if (isOAuthToken)
+            // Only Google OAuth2 access tokens (ya29.*) use Authorization: Bearer.
+            // Google AI Studio keys (AIza* and AQ.*) must be passed via ?key=.
+            bool isOAuthToken = candidateKey.StartsWith("ya29.", StringComparison.Ordinal);
+            foreach (var candidateModel in modelsToTry)
             {
-                endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent");
-            }
-            else
-            {
-                var escapedKey = Uri.EscapeDataString(apiKey);
-                endpointsToTry.Add($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}");
+                var escapedModel = Uri.EscapeDataString(candidateModel);
+                if (isOAuthToken)
+                {
+                    endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent", candidateKey, true));
+                }
+                else
+                {
+                    var escapedKey = Uri.EscapeDataString(candidateKey);
+                    endpointsToTry.Add(($"https://generativelanguage.googleapis.com/v1beta/models/{escapedModel}:generateContent?key={escapedKey}", candidateKey, false));
+                }
             }
         }
 
@@ -288,7 +295,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
         string? lastErrBody = null;
         bool anyTimedOut = false;
 
-        foreach (var url in endpointsToTry)
+        foreach (var (url, attemptKey, isOAuthToken) in endpointsToTry)
         {
             response?.Dispose();
             response = null;
@@ -299,7 +306,7 @@ public class GeminiInvoiceOcrService : IInvoiceOcrService
             };
             if (isOAuthToken)
             {
-                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {attemptKey}");
             }
 
             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

@@ -7,6 +7,7 @@ import { ModalBackdropPortal } from './ui/dialog';
 
 export interface TransactionDetail {
   id: string;
+  movementNumber?: string;
   sku: string;
   productName: string;
   type: 'Inbound' | 'Outbound' | 'Transfer' | 'Adjustment' | string;

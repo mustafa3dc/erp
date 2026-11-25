@@ -283,5 +283,185 @@ public class InventoryController : ControllerBase
 
         return Ok(results);
     }
+
+    /// <summary>
+    /// GET /api/inventory/movements
+    /// Queries genuine persisted StockMovements sorted strictly newest-first (ORDER BY MovementDate DESC).
+    /// Stamps UTC DateTimeKind so clients accurately convert timestamps to local timezone.
+    /// </summary>
+    [HttpGet("movements")]
+    [HasPermission(Permissions.Inventory.ItemsView)]
+    public async Task<ActionResult> GetStockMovements(
+        [FromQuery] Guid? warehouseId,
+        [FromQuery] int limit = 100)
+    {
+        var cappedLimit = Math.Clamp(limit, 1, 500);
+
+        var query = _context.StockMovements
+            .Include(m => m.Items)
+                .ThenInclude(i => i.Product)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (warehouseId.HasValue)
+        {
+            query = query.Where(m => m.FromWarehouseId == warehouseId.Value || m.ToWarehouseId == warehouseId.Value);
+        }
+
+        var movements = await query
+            .OrderByDescending(m => m.MovementDate)
+            .Take(cappedLimit)
+            .ToListAsync();
+
+        var warehouseNames = await _context.Warehouses
+            .AsNoTracking()
+            .ToDictionaryAsync(w => w.Id, w => w.Name);
+
+        var rows = new List<object>();
+
+        foreach (var m in movements)
+        {
+            var utcDate = DateTime.SpecifyKind(m.MovementDate, DateTimeKind.Utc);
+            var fromName = m.FromWarehouseId.HasValue && warehouseNames.TryGetValue(m.FromWarehouseId.Value, out var fName)
+                ? fName
+                : null;
+            var toName = m.ToWarehouseId.HasValue && warehouseNames.TryGetValue(m.ToWarehouseId.Value, out var tName)
+                ? tName
+                : null;
+
+            var normalizedType = NormalizeDashboardMovementType(m.MovementType);
+
+            if (m.Items.Count == 0)
+            {
+                rows.Add(new
+                {
+                    id = string.IsNullOrWhiteSpace(m.MovementNumber) ? m.Id.ToString() : m.MovementNumber,
+                    movementId = m.Id,
+                    movementNumber = m.MovementNumber,
+                    sku = m.ReferenceNumber ?? string.Empty,
+                    productName = m.Notes ?? m.MovementType,
+                    type = normalizedType,
+                    rawType = m.MovementType,
+                    qty = 0,
+                    unit = "قطعة",
+                    unitCost = 0m,
+                    location = toName ?? fromName ?? string.Empty,
+                    fromLocation = fromName ?? (normalizedType == "Inbound" ? "مورد / إرجاع" : string.Empty),
+                    toLocation = toName ?? (normalizedType == "Outbound" ? "عميل / صرف" : string.Empty),
+                    status = normalizedType == "Outbound" ? "Dispatched" : "Received",
+                    movementDate = utcDate,
+                    createdAt = utcDate,
+                    timestamp = utcDate,
+                    operatorName = m.CreatedBy ?? "System",
+                    referenceNo = m.ReferenceNumber,
+                    notes = m.Notes
+                });
+                continue;
+            }
+
+            foreach (var item in m.Items)
+            {
+                var signedQty = normalizedType == "Outbound" ? -Math.Abs(item.Quantity) : Math.Abs(item.Quantity);
+                rows.Add(new
+                {
+                    id = m.Items.Count > 1
+                        ? $"{(string.IsNullOrWhiteSpace(m.MovementNumber) ? m.Id.ToString("N")[..8] : m.MovementNumber)}-{item.Id.ToString("N")[..4]}"
+                        : (string.IsNullOrWhiteSpace(m.MovementNumber) ? m.Id.ToString() : m.MovementNumber),
+                    movementId = m.Id,
+                    movementNumber = m.MovementNumber,
+                    sku = item.Product?.Sku ?? m.ReferenceNumber ?? string.Empty,
+                    productName = item.Product?.Name ?? m.Notes ?? string.Empty,
+                    type = normalizedType,
+                    rawType = m.MovementType,
+                    qty = signedQty,
+                    unit = item.Product?.UnitOfMeasure ?? "قطعة",
+                    unitCost = item.UnitCost,
+                    location = toName ?? fromName ?? string.Empty,
+                    fromLocation = fromName ?? (normalizedType == "Inbound" ? "مورد / إرجاع" : string.Empty),
+                    toLocation = toName ?? (normalizedType == "Outbound" ? "عميل / صرف" : string.Empty),
+                    status = normalizedType == "Outbound" ? "Dispatched" : "Received",
+                    movementDate = utcDate,
+                    createdAt = utcDate,
+                    timestamp = utcDate,
+                    operatorName = m.CreatedBy ?? "System",
+                    referenceNo = m.ReferenceNumber,
+                    notes = m.Notes
+                });
+            }
+        }
+
+        return Ok(rows);
+    }
+
+    /// <summary>
+    /// GET /api/inventory/movements/weekly-summary
+    /// Groups genuine persisted StockMovements into the 7 rolling local days using client UTC offset (e.g. tzOffsetMinutes=180 for UTC+3).
+    /// </summary>
+    [HttpGet("movements/weekly-summary")]
+    [HasPermission(Permissions.Inventory.ItemsView)]
+    public async Task<ActionResult> GetWeeklyMovementsSummary([FromQuery] int tzOffsetMinutes = 180)
+    {
+        var offset = TimeSpan.FromMinutes(Math.Clamp(tzOffsetMinutes, -720, 840));
+        var localToday = DateTime.UtcNow.Add(offset).Date;
+        var localWindowStart = localToday.AddDays(-6);
+        var utcWindowStart = localWindowStart.Subtract(offset);
+        var utcWindowEnd = localToday.AddDays(1).Subtract(offset);
+
+        var movements = await _context.StockMovements
+            .Include(m => m.Items)
+            .AsNoTracking()
+            .Where(m => m.MovementDate >= utcWindowStart && m.MovementDate < utcWindowEnd)
+            .OrderByDescending(m => m.MovementDate)
+            .ToListAsync();
+
+        var dailyBuckets = Enumerable.Range(0, 7)
+            .Select(i => localWindowStart.AddDays(i))
+            .ToDictionary(d => d, _ => (Inbound: 0, Outbound: 0));
+
+        foreach (var m in movements)
+        {
+            var utcStamp = DateTime.SpecifyKind(m.MovementDate, DateTimeKind.Utc);
+            var localDate = utcStamp.Add(offset).Date;
+            if (!dailyBuckets.ContainsKey(localDate)) continue;
+
+            var qty = m.Items.Sum(i => Math.Abs(i.Quantity));
+            if (qty <= 0) continue;
+
+            var normType = NormalizeDashboardMovementType(m.MovementType);
+            var current = dailyBuckets[localDate];
+            if (normType == "Inbound")
+            {
+                dailyBuckets[localDate] = (current.Inbound + qty, current.Outbound);
+            }
+            else if (normType == "Outbound")
+            {
+                dailyBuckets[localDate] = (current.Inbound, current.Outbound + qty);
+            }
+        }
+
+        var result = dailyBuckets
+            .OrderBy(kvp => kvp.Key)
+            .Select(kvp => new
+            {
+                date = kvp.Key.ToString("yyyy-MM-dd"),
+                inbound = kvp.Value.Inbound,
+                outbound = kvp.Value.Outbound
+            })
+            .ToList();
+
+        return Ok(result);
+    }
+
+    private static string NormalizeDashboardMovementType(string? rawType)
+    {
+        var t = (rawType ?? string.Empty).Trim().ToUpperInvariant();
+        if (t is "INBOUND" or "IN" or "RECEIPT" or "INBOUND_PURCHASE" or "SALESRETURN" or "SALES_RETURN" or "ADJUSTMENT_IN")
+            return "Inbound";
+        if (t is "OUTBOUND" or "OUT" or "POS SALE" or "DISPATCH" or "SALE" or "ADJUSTMENT_OUT")
+            return "Outbound";
+        if (t is "TRANSFER")
+            return "Transfer";
+        return rawType ?? "Adjustment";
+    }
 }
 

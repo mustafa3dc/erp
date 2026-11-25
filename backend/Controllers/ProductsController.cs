@@ -116,10 +116,83 @@ public class ProductsController : ControllerBase
 
     [HttpPost]
     [HasPermission(Permissions.Inventory.ItemsCreate)]
-    public async Task<ActionResult<Product>> CreateProduct(Product product)
+    public async Task<ActionResult<Product>> CreateProduct(
+        [FromBody] Product product,
+        [FromQuery] int? initialStock = null,
+        [FromQuery] Guid? warehouseId = null)
     {
+        var now = DateTime.UtcNow;
+        product.CreatedAt = now;
+        product.UpdatedAt = now;
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
         _context.Products.Add(product);
+
+        if (!product.IsBundle)
+        {
+            var openingQty = initialStock ?? product.WarehouseStocks.Sum(ws => ws.Quantity);
+            var targetWarehouseId = warehouseId
+                ?? product.WarehouseStocks.FirstOrDefault()?.WarehouseId
+                ?? (await _context.Warehouses.Where(w => w.IsActive).Select(w => w.Id).FirstOrDefaultAsync());
+
+            if (openingQty > 0 && targetWarehouseId != Guid.Empty)
+            {
+                if (!product.WarehouseStocks.Any())
+                {
+                    _context.WarehouseStocks.Add(new WarehouseStock
+                    {
+                        TenantId = product.TenantId,
+                        WarehouseId = targetWarehouseId,
+                        ProductId = product.Id,
+                        Quantity = openingQty,
+                        LastCountedAt = now
+                    });
+                }
+
+                var actor = User.Identity?.Name ?? "System";
+                var openMovement = new StockMovement
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = product.TenantId,
+                    MovementNumber = $"MOV-OPEN-{now:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}",
+                    MovementType = "Inbound",
+                    FromWarehouseId = null,
+                    ToWarehouseId = targetWarehouseId,
+                    ReferenceNumber = product.Sku,
+                    Notes = $"رصيد افتتاحي عند تعريف الصنف ({product.Name})",
+                    CreatedBy = actor,
+                    MovementDate = now,
+                    Items = new List<StockMovementItem>
+                    {
+                        new StockMovementItem
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = product.TenantId,
+                            ProductId = product.Id,
+                            Quantity = openingQty,
+                            UnitCost = product.CostPrice
+                        }
+                    }
+                };
+                _context.StockMovements.Add(openMovement);
+
+                _context.InventoryTransactions.Add(new InventoryTransaction
+                {
+                    TransactionId = Guid.NewGuid(),
+                    TenantId = product.TenantId,
+                    ProductId = product.Id,
+                    WarehouseId = targetWarehouseId,
+                    QuantityChange = openingQty,
+                    TransactionType = "OPENING_STOCK",
+                    Reason = $"رصيد افتتاحي لصنف جديد ({product.Name})",
+                    ReferenceUserId = actor,
+                    CreatedAt = now
+                });
+            }
+        }
+
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
         return CreatedAtAction(nameof(GetProducts), new { id = product.Id }, product);
     }
 

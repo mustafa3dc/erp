@@ -287,9 +287,6 @@ export function getNextTransactionId(offset: number = 0): string {
       }
     }
   }
-  if (maxSeq === 0 && existing.length > 0) {
-    maxSeq = existing.length;
-  }
   const nextSeq = maxSeq + 1 + offset;
   return `TRX-${String(nextSeq).padStart(4, '0')}`;
 }
@@ -298,26 +295,14 @@ export function getStoredTransactions(): TransactionDetail[] {
   const existing = safeGet<TransactionDetail[] | null>(KEYS.TRANSACTIONS, null);
   if (existing !== null && Array.isArray(existing)) {
     const products = safeGet<Product[] | null>(KEYS.PRODUCTS, null) || [];
+    const invoices = safeGet<SalesInvoice[] | null>(KEYS.INVOICES, null) || [];
     let hasChanges = false;
     const total = existing.length;
 
-    // Check if transactions need sequence re-indexing (e.g. have random 10-digit IDs or non-sequential format)
-    let isCleanSequence = true;
-    for (let i = 0; i < total; i++) {
-      const expectedSeq = total - i;
-      const expectedId = `TRX-${String(expectedSeq).padStart(4, '0')}`;
-      if (existing[i].id !== expectedId) {
-        isCleanSequence = false;
-        break;
-      }
-    }
-
     const sanitized = existing.map((t, idx) => {
-      let id = t.id;
-      if (!isCleanSequence) {
-        // Oldest transaction (at the end of array) gets TRX-0001, newest gets TRX-total
-        const seqNum = total - idx;
-        id = `TRX-${String(seqNum).padStart(4, '0')}`;
+      // Preserve genuine persisted IDs (MOV-..., ADJ-..., TRX-...) without fabricating sequential #TRX-0001 overrides
+      const id = ((t as any).movementNumber || t.id || '').trim() || `MOV-${Date.now()}-${idx}`;
+      if (id !== t.id) {
         hasChanges = true;
       }
 
@@ -334,8 +319,8 @@ export function getStoredTransactions(): TransactionDetail[] {
       let productName = t.productName;
       const lowerProd = (productName || '').toLowerCase();
       if (
-        !productName || 
-        productName === 'Walk-in Cash Customer' || 
+        !productName ||
+        productName === 'Walk-in Cash Customer' ||
         productName === 'عميل نقدي عام' ||
         productName === 'عميل نقدي' ||
         productName === 'فاتورة مبيعات' ||
@@ -379,7 +364,6 @@ export function getStoredTransactions(): TransactionDetail[] {
       let operator = t.operator;
       if (operator === 'Mustafa Operations' || !operator) {
         const session = getStoredAuthSession();
-        const invoices = safeGet<SalesInvoice[] | null>(KEYS.INVOICES, null) || [];
         const matchedInv = invoices.find(inv => inv.invoiceNo === t.referenceNo);
         if (matchedInv?.operator && matchedInv.operator !== 'Mustafa Operations') {
           operator = matchedInv.operator;
@@ -390,7 +374,7 @@ export function getStoredTransactions(): TransactionDetail[] {
         }
       }
 
-      // Ensure transaction always has an authentic date & timestamp
+      // Strictly preserve real timestamps — NEVER stagger/subtract days (AddDays(-i))
       let timestamp = t.timestamp;
       let movementDate = t.movementDate;
       let createdAt = t.createdAt;
@@ -399,31 +383,33 @@ export function getStoredTransactions(): TransactionDetail[] {
       const rawToParse = movementDate || createdAt || date || timestamp;
       const parsed = parseDateSafely(rawToParse);
 
+      // Heal transactions whose timestamp was corrupted by the old synthetic daysAgo distributor
       const seqNum = total - idx;
-      const now = new Date();
-      const isParsedToday = parsed && 
-        parsed.getFullYear() === now.getFullYear() &&
-        parsed.getMonth() === now.getMonth() &&
-        parsed.getDate() === now.getDate();
-
       let finalIso: string;
+      if (parsed) {
+        const looksSyntheticStagger =
+          parsed.getSeconds() === 0 &&
+          parsed.getMilliseconds() === 0 &&
+          parsed.getHours() === 9 + ((seqNum * 7) % 9) &&
+          parsed.getMinutes() === (seqNum * 13) % 60;
 
-      if (parsed && !isParsedToday) {
-        // Authentic past date (e.g. yesterday, 2 days ago): preserve it!
-        finalIso = parsed.toISOString();
-      } else if (parsed && isParsedToday && seqNum >= total - 3) {
-        // Genuinely recent transactions created today: keep today's timestamp
-        finalIso = parsed.toISOString();
+        if (looksSyntheticStagger) {
+          const matchedInv = t.referenceNo ? invoices.find(inv => inv.invoiceNo === t.referenceNo) : undefined;
+          const invParsed = matchedInv ? parseDateSafely(matchedInv.createdAt || matchedInv.date) : null;
+          if (invParsed) {
+            finalIso = invParsed.toISOString();
+          } else {
+            const matchedProd = products.find(p => p.sku === t.sku || p.id === t.sku);
+            const prodUpdated = matchedProd?.updatedAt ? parseDateSafely(matchedProd.updatedAt) : null;
+            finalIso = prodUpdated ? prodUpdated.toISOString() : new Date().toISOString();
+          }
+          hasChanges = true;
+        } else {
+          finalIso = parsed.toISOString();
+        }
       } else {
-        // Clustered fallback or legacy missing date: distribute logically across the past 6 days
-        // Oldest transactions (low seqNum) get 5-6 days ago, middle ones get 2-4 days ago
-        const daysAgo = Math.min(6, Math.max(1, Math.floor((total - seqNum) / Math.max(1, Math.ceil(total / 6)))));
-        const distributedDate = new Date(now);
-        distributedDate.setDate(now.getDate() - daysAgo);
-        const hour = 9 + ((seqNum * 7) % 9);
-        const minute = (seqNum * 13) % 60;
-        distributedDate.setHours(hour, minute, 0, 0);
-        finalIso = distributedDate.toISOString();
+        finalIso = new Date().toISOString();
+        hasChanges = true;
       }
 
       if (timestamp !== finalIso || movementDate !== finalIso || createdAt !== finalIso || date !== finalIso) {
@@ -452,10 +438,17 @@ export function getStoredTransactions(): TransactionDetail[] {
       };
     });
 
+    // Sort strictly newest-first (ORDER BY CreatedAt / MovementDate DESC)
+    const sorted = [...sanitized].sort((a, b) => {
+      const ta = parseDateSafely(a.movementDate || a.createdAt || a.date || a.timestamp)?.getTime() || 0;
+      const tb = parseDateSafely(b.movementDate || b.createdAt || b.date || b.timestamp)?.getTime() || 0;
+      return tb - ta;
+    });
+
     if (hasChanges) {
-      safeSet(KEYS.TRANSACTIONS, sanitized);
+      safeSet(KEYS.TRANSACTIONS, sorted);
     }
-    return sanitized;
+    return sorted;
   }
   safeSet(KEYS.TRANSACTIONS, []);
   return [];

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Copy, Check, FileText, ChevronRight, Box } from 'lucide-react';
 import { TransactionDetail } from './TransactionModal';
 import { localizeTxType, localizeTxStatus, localizeUnit, localizeWarehouse } from '../lib/localeHelpers';
-import { formatMovementDate } from '../utils/dateFormatter';
+import { formatMovementDate, extractMovementDate, parseDateSafely } from '../utils/dateFormatter';
 import { Product } from '../types/warehouse';
 import { getStoredProducts } from '../services/storageService';
 
@@ -31,13 +31,10 @@ export const RecentTransactionsTable: React.FC<RecentTransactionsTableProps> = (
     return inputProducts && inputProducts.length > 0 ? inputProducts : getStoredProducts();
   }, [inputProducts]);
 
-  const formatTxId = (id: string): string => {
-    if (id.startsWith('#TRX-')) return id;
-    if (id.startsWith('TRX-')) return `#${id}`;
-    if (id.startsWith('#')) return id;
-    const clean = id.replace(/[^0-9A-Za-z]/g, '');
-    const suffix = clean.length > 4 ? clean.slice(-4) : clean;
-    return `#TRX-${suffix}`;
+  const formatTxId = (id: string, movementNumber?: string): string => {
+    const raw = (movementNumber || id || '').trim();
+    if (!raw) return '—';
+    return raw.startsWith('#') ? raw : `#${raw}`;
   };
 
   const handleCopyId = (formattedId: string) => {
@@ -133,10 +130,18 @@ export const RecentTransactionsTable: React.FC<RecentTransactionsTableProps> = (
     };
   };
 
-  const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
+  const sortedTransactions = useMemo(() => {
+    return [...(transactions || [])].sort((a, b) => {
+      const ta = parseDateSafely(extractMovementDate(a))?.getTime() || 0;
+      const tb = parseDateSafely(extractMovementDate(b))?.getTime() || 0;
+      return tb - ta;
+    });
+  }, [transactions]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedTransactions.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
   const startIdx = (safePage - 1) * pageSize;
-  const paginatedTransactions = transactions.slice(startIdx, startIdx + pageSize);
+  const paginatedTransactions = sortedTransactions.slice(startIdx, startIdx + pageSize);
 
   return (
     <div 
@@ -241,7 +246,7 @@ export const RecentTransactionsTable: React.FC<RecentTransactionsTableProps> = (
               </tr>
             ) : (
               paginatedTransactions.map((tx) => {
-                const formattedId = formatTxId(tx.id);
+                const formattedId = formatTxId(tx.id, (tx as any).movementNumber);
                 const isCopied = copiedId === formattedId;
                 const typeStyle = getTypeStyle(tx.type);
                 const statusStyle = getStatusStyle(tx.status);

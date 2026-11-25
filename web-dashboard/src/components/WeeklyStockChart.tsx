@@ -1,14 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import { TransactionDetail } from './TransactionModal';
 import { getStoredTransactions } from '../services/storageService';
-import { parseDateSafely, extractMovementDate } from '../utils/dateFormatter';
+import { parseDateSafely, extractMovementDate, getLocalDateKey } from '../utils/dateFormatter';
+
+interface WeeklySummaryPoint {
+  date: string;
+  inbound: number;
+  outbound: number;
+}
 
 interface WeeklyStockChartProps {
   lang?: 'en' | 'ar';
   transactions?: TransactionDetail[];
+  backendWeeklySummary?: WeeklySummaryPoint[] | null;
 }
 
-export default function WeeklyStockChart({ lang = 'ar', transactions }: WeeklyStockChartProps) {
+export default function WeeklyStockChart({ lang = 'ar', transactions, backendWeeklySummary }: WeeklyStockChartProps) {
   const isAr = lang === 'ar';
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
@@ -17,18 +24,16 @@ export default function WeeklyStockChart({ lang = 'ar', transactions }: WeeklySt
     return transactions !== undefined ? transactions : getStoredTransactions();
   }, [transactions]);
 
-  // Compute rolling 7-day window ending today (No future empty days!)
+  // Compute rolling 7-day window ending today in client local timezone (e.g. Asia/Baghdad UTC+3)
   const { weekData, maxVal, yLabels, totalInbound, totalOutbound, hasAnyMovement } = useMemo(() => {
     const now = new Date();
     const dayNamesAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     const dayNamesEn = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    // 7 days ending today: index 0 is 6 days ago, index 6 is today
+    // 7 local calendar days ending today: index 0 is 6 days ago, index 6 is today
     const days = [];
     for (let i = 6; i >= 0; i--) {
-      const dateObj = new Date(now);
-      dateObj.setDate(now.getDate() - i);
-      dateObj.setHours(0, 0, 0, 0);
+      const dateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 0, 0, 0, 0);
 
       const y = dateObj.getFullYear();
       const m = dateObj.getMonth();
@@ -45,7 +50,7 @@ export default function WeeklyStockChart({ lang = 'ar', transactions }: WeeklySt
         year: y,
         month: m,
         dayNum,
-        dateStr: `${y}-${String(m + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`,
+        dateStr: getLocalDateKey(dateObj),
         shortDate,
         fullDate,
         isToday: i === 0,
@@ -54,27 +59,38 @@ export default function WeeklyStockChart({ lang = 'ar', transactions }: WeeklySt
       });
     }
 
-    // Calculate real aggregations per day
-    if (Array.isArray(allTxs)) {
+    const dayByKey = new Map(days.map(d => [d.dateStr, d]));
+
+    if (backendWeeklySummary && Array.isArray(backendWeeklySummary) && backendWeeklySummary.length > 0) {
+      for (const point of backendWeeklySummary) {
+        const target = dayByKey.get(point.date);
+        if (target) {
+          target.inbound += Number(point.inbound) || 0;
+          target.outbound += Number(point.outbound) || 0;
+        }
+      }
+    } else if (Array.isArray(allTxs)) {
+      // Calculate real aggregations per local calendar day (UTC timestamps converted to local timezone via parseDateSafely)
       for (const tx of allTxs) {
         const rawDate = extractMovementDate(tx) || (tx as any).createdAt || (tx as any).date || (tx as any).timestamp;
         const d = parseDateSafely(rawDate);
         if (!d || isNaN(d.getTime())) continue;
 
-        const y = d.getFullYear();
-        const m = d.getMonth();
-        const dayNum = d.getDate();
-
-        const targetDay = days.find(day => day.year === y && day.month === m && day.dayNum === dayNum);
+        const targetDay = dayByKey.get(getLocalDateKey(d));
         if (!targetDay) continue;
 
         const qty = Math.abs(Number(tx.qty) || 0);
         const typeLower = (tx.type || '').toLowerCase();
+        const statusLower = (tx.status || '').toLowerCase();
 
         if (
-          typeLower.includes('inbound') || 
+          typeLower.includes('inbound') ||
           typeLower.includes('received') ||
-          tx.type === 'استلام' || 
+          typeLower.includes('salesreturn') ||
+          typeLower.includes('sales_return') ||
+          typeLower.includes('adjustment_in') ||
+          statusLower === 'salesreturn' ||
+          tx.type === 'استلام' ||
           tx.type === 'توريد' ||
           tx.type === 'وارد' ||
           typeLower.includes('purchase') ||
@@ -82,10 +98,11 @@ export default function WeeklyStockChart({ lang = 'ar', transactions }: WeeklySt
         ) {
           targetDay.inbound += qty;
         } else if (
-          typeLower.includes('outbound') || 
+          typeLower.includes('outbound') ||
           typeLower.includes('dispatched') ||
-          tx.type === 'صرف' || 
-          tx.type === 'إخراج' || 
+          typeLower.includes('adjustment_out') ||
+          tx.type === 'صرف' ||
+          tx.type === 'إخراج' ||
           tx.type === 'صادر' ||
           tx.type === 'مبيعات' ||
           typeLower.includes('sale') ||

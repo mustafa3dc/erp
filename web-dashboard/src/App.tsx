@@ -52,6 +52,7 @@ import { SettingsProvider, useSettings } from './context/settings-context';
 import { getTranslation } from './lib/i18n';
 import CommandPaletteModal from './components/modals/CommandPaletteModal';
 import MiniSparkline from './components/ui/MiniSparkline';
+import { parseDateSafely } from './utils/dateFormatter';
 import { Toaster, toast } from 'sonner';
 import BarcodeSvg from './components/BarcodeSvg';
 import WarehouseCapacityBars from './components/WarehouseCapacityBars';
@@ -712,6 +713,62 @@ function DashboardApp() {
   useEffect(() => {
     saveStoredTransactions(transactions);
   }, [transactions]);
+
+  // Fetch genuine StockMovements ledger sorted newest-first from backend PostgreSQL when authenticated
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
+      : null;
+    if (!token) return;
+
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (settings.tenantCountryCode) headers['X-Tenant-Country'] = settings.tenantCountryCode;
+
+    fetch('/api/inventory/movements?limit=150', { headers })
+      .then(res => (res.ok ? res.json() : null))
+      .then((rows: any[]) => {
+        if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+        const dbMovements: TransactionDetail[] = rows.map(r => ({
+          id: String(r.movementNumber || r.id),
+          movementNumber: r.movementNumber ? String(r.movementNumber) : undefined,
+          sku: String(r.sku || ''),
+          productName: String(r.productName || ''),
+          type: (r.type as TransactionDetail['type']) || 'Inbound',
+          qty: Number(r.qty) || 0,
+          unit: String(r.unit || 'قطعة'),
+          unitCost: Number(r.unitCost) || 0,
+          location: String(r.location || ''),
+          fromLocation: String(r.fromLocation || ''),
+          toLocation: String(r.toLocation || ''),
+          status: String(r.status || 'Received'),
+          timestamp: String(r.movementDate || r.createdAt || r.timestamp),
+          movementDate: String(r.movementDate || r.createdAt || r.timestamp),
+          createdAt: String(r.createdAt || r.movementDate || r.timestamp),
+          date: String(r.movementDate || r.createdAt || r.timestamp),
+          operator: String(r.operatorName || r.operator || 'System'),
+          referenceNo: r.referenceNo ? String(r.referenceNo) : undefined
+        }));
+
+        setTransactions(prev => {
+          // Merge backend rows with any un-synced local movements, deduplicated by id/movementNumber, sorted newest-first
+          const byId = new Map<string, TransactionDetail>();
+          for (const item of prev) byId.set(item.id, item);
+          for (const dbItem of dbMovements) byId.set(dbItem.id, dbItem);
+          return Array.from(byId.values()).sort((a, b) => {
+            const ta = parseDateSafely(a.movementDate || a.createdAt || a.date || a.timestamp)?.getTime() || 0;
+            const tb = parseDateSafely(b.movementDate || b.createdAt || b.date || b.timestamp)?.getTime() || 0;
+            return tb - ta;
+          });
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.username, settings.tenantCountryCode]);
 
   useEffect(() => {
     saveStoredLang(lang);
@@ -2252,28 +2309,33 @@ function DashboardApp() {
             saveStoredProducts(updated);
             return updated;
           });
-          const newTx: TransactionDetail = {
-            id: getNextTransactionId(),
-            sku: newProd.sku,
-            productName: newProd.nameAr,
-            type: 'Inbound',
-            qty: newProd.currentStock,
-            unit: newProd.unit || (isAr ? 'قطعة' : 'unit'),
-            location: newProd.warehouseName,
-            fromLocation: isAr ? 'مورد معتمد' : 'Authorized Supplier',
-            toLocation: newProd.warehouseName,
-            status: 'Received',
-            timestamp: new Date().toISOString(),
-            movementDate: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-            date: new Date().toISOString(),
-            operator: isAr ? 'مسؤول الاستلام' : 'Receiver Officer'
-          };
-          setTransactions(prev => {
-            const updated = [newTx, ...prev];
-            saveStoredTransactions(updated);
-            return updated;
-          });
+          if (!newProd.isBundle && Number(newProd.currentStock) > 0) {
+            const nowIso = new Date().toISOString();
+            const openId = `MOV-OPEN-${nowIso.slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+            const newTx: TransactionDetail = {
+              id: openId,
+              sku: newProd.sku,
+              productName: newProd.nameAr,
+              type: 'Inbound',
+              qty: newProd.currentStock,
+              unit: newProd.unit || (isAr ? 'قطعة' : 'unit'),
+              location: newProd.warehouseName,
+              fromLocation: isAr ? 'رصيد افتتاحي — مورد معتمد' : 'Opening Stock — Supplier',
+              toLocation: newProd.warehouseName,
+              status: 'Received',
+              timestamp: nowIso,
+              movementDate: nowIso,
+              createdAt: nowIso,
+              date: nowIso,
+              referenceNo: newProd.sku,
+              operator: currentUser?.fullName || currentUser?.username || (isAr ? 'مسؤول الاستلام' : 'Receiver Officer')
+            };
+            setTransactions(prev => {
+              const updated = [newTx, ...prev];
+              saveStoredTransactions(updated);
+              return updated;
+            });
+          }
           showToast(lang === 'ar' ? `تم تسجيل وحفظ الصنف (${newProd.nameAr}) في النظام بنجاح!` : `Saved ${newProd.nameAr} to inventory!`);
         }}
         onRestockProduct={handleRestockProduct}

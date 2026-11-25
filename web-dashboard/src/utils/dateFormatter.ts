@@ -32,7 +32,18 @@ export function parseDateSafely(rawDate: string | Date | null | undefined): Date
     if (!isNaN(d.getTime())) return d;
   }
 
-  // 1. Try standard Date constructor (handles ISO-8601, RFC2822, etc.)
+  // Ensure ISO-8601 or SQL datetime strings without timezone offset are interpreted as UTC
+  // so midnight-to-03:00 AM Iraq/local time (21:00-00:00 UTC) converts accurately to local date.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(str)) {
+    const utcIso = new Date(`${str}Z`);
+    if (!isNaN(utcIso.getTime())) return utcIso;
+  }
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(str)) {
+    const utcSql = new Date(`${str.replace(/\s+/, 'T')}Z`);
+    if (!isNaN(utcSql.getTime())) return utcSql;
+  }
+
+  // 1. Try standard Date constructor (handles ISO-8601 with Z/offset, RFC2822, etc.)
   const directDate = new Date(str);
   if (!isNaN(directDate.getTime())) {
     return directDate;
@@ -182,4 +193,14 @@ export function extractMovementDate(
 ): string | Date | undefined {
   if (!item) return undefined;
   return item.movementDate || item.createdAt || item.date || item.timestamp || undefined;
+}
+
+/**
+ * Returns local calendar date key ("YYYY-MM-DD") after converting UTC timestamp to client local time.
+ */
+export function getLocalDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }

@@ -127,12 +127,22 @@ public class PosTerminalController : ControllerBase
         }
         catch (ApplicationException ex)
         {
-            var isStockError = ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد");
-            var isWarehouseError = !isStockError && (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"));
-            return BadRequest(new 
-            { 
-                errorCode = isStockError ? "ERR_INSUFFICIENT_STOCK" : (isWarehouseError ? "INVALID_WAREHOUSE" : "ERR_DISCOUNT_EXCEEDED_LIMIT"), 
-                message = ex.Message 
+            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+                ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
+                : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
+                ? "ERR_CUSTOMER_NOT_FOUND"
+                : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
+                ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
+                ? "ERR_INSUFFICIENT_STOCK"
+                : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))
+                ? "INVALID_WAREHOUSE"
+                : "ERR_DISCOUNT_EXCEEDED_LIMIT";
+
+            return BadRequest(new
+            {
+                errorCode,
+                message = ex.Message
             });
         }
         catch (Exception ex)

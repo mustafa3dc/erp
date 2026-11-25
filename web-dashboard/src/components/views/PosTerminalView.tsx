@@ -58,8 +58,10 @@ import {
   getStoredProductBundles,
   getEffectiveProductStock,
   validateCartStockWithBundles,
-  getMaxAllowedCartQuantity
+  getMaxAllowedCartQuantity,
+  getStoredCustomers
 } from '../../services/storageService';
+import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
 import { formatMovementDate, formatShiftDateTime } from '../../utils/dateFormatter';
 import PosCategoryFilter from '../PosCategoryFilter';
@@ -382,6 +384,9 @@ export default function PosTerminalView({
   const [posGuarantorName, setPosGuarantorName] = useState<string>('');
   const [posGuarantorPhone, setPosGuarantorPhone] = useState<string>('');
   const [posCustomerName, setPosCustomerName] = useState<string>('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(undefined);
+  const [customersList, setCustomersList] = useState<any[]>(() => getStoredCustomers());
+  const [customerErrorHighlight, setCustomerErrorHighlight] = useState<boolean>(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -760,9 +765,20 @@ export default function PosTerminalView({
     }
 
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const resolvedInputCustomerName = (installmentData?.customerName ?? posCustomerName).trim();
+    const isCreditOrInstallmentMethod = method === 'CREDIT' || method === 'INSTALLMENT';
+
+    if (isCreditOrInstallmentMethod && !resolvedInputCustomerName && !selectedCustomerId) {
+      setCustomerErrorHighlight(true);
+      showPaymentToast(
+        getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer'),
+        4000
+      );
+      return;
+    }
 
     try {
-      // 2. Execute Atomic POS Sale Transaction (Deduction or Staged Dispatch + Movement + Sales Invoice + Shift Sales)
+      // 2. Execute Atomic POS Sale Transaction (Deduction or Staged Dispatch + Movement + Sales Invoice + Shift Sales + 3-Way Customer Resolution)
       const result = executePosSaleTransaction({
         invoiceNumber,
         warehouseId: selectedWarehouse.id,
@@ -774,7 +790,8 @@ export default function PosTerminalView({
         cashierId: activeShift.terminalId,
         cashierName: effectiveCashierName,
         paymentMethod: method,
-        customerName: t('posMessages.defaultCustomer', isAr ? 'عميل كاشير مباشر (POS Retail)' : 'Retail Walk-in Customer'),
+        customerId: selectedCustomerId,
+        customerName: resolvedInputCustomerName || undefined,
         items: cart.map(it => {
           const discUnit = getDiscountAmountPerUnit(it);
           const unitPrice = getEffectiveUnitPrice(it);
@@ -897,6 +914,12 @@ export default function PosTerminalView({
       setShowReceiptModal(true);
       setCart([]);
       setStockError(null);
+      setCustomersList(getStoredCustomers());
+      const checkoutCustomerId = selectedCustomerId;
+      const checkoutCustomerName = resolvedInputCustomerName;
+      setSelectedCustomerId(undefined);
+      setPosCustomerName('');
+      setCustomerErrorHighlight(false);
       const warehouseLabel = isAr ? selectedWarehouse.nameAr : (selectedWarehouse.nameEn || selectedWarehouse.nameAr);
       showPaymentToast(
         isWarehouseDispatch
@@ -912,6 +935,7 @@ export default function PosTerminalView({
         const token = localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (tenantCountryCode) headers['X-Tenant-Country'] = tenantCountryCode;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
         fetch('/api/pos/invoices', {
           method: 'POST',
@@ -920,6 +944,8 @@ export default function PosTerminalView({
             warehouseId: selectedWarehouse.id,
             dispenseMode,
             targetWarehouseId: targetWh.id,
+            customerId: uuidRegex.test(checkoutCustomerId || '') ? checkoutCustomerId : null,
+            customerName: checkoutCustomerName || null,
             shiftId: activeShift.id,
             cashierId: activeShift.terminalId,
             cashierName: effectiveCashierName,
@@ -947,7 +973,17 @@ export default function PosTerminalView({
       } catch {}
 
     } catch (err: any) {
-      if (err.message?.includes('INVALID_WAREHOUSE') || err.message?.includes('المستودع المحدد غير موجود أو تم تعطيله')) {
+      if (err.message?.includes('ERR_CREDIT_SALE_REQUIRES_CUSTOMER')) {
+        setCustomerErrorHighlight(true);
+        const msg = getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('ERR_CREDIT_LIMIT_EXCEEDED')) {
+        setCustomerErrorHighlight(true);
+        const msg = getTranslation(lang, 'ui.customerPicker.creditLimitExceeded').replace('{limit}', '');
+        setStockError(msg);
+        showPaymentToast(msg, 4000);
+      } else if (err.message?.includes('INVALID_WAREHOUSE') || err.message?.includes('المستودع المحدد غير موجود أو تم تعطيله')) {
         clearStoredSelectedWarehouseId();
         const resolution = validateAndResolveActiveWarehouse(availableWarehouses);
         setSelectedWarehouseId(resolution.activeWarehouseId);
@@ -1510,6 +1546,25 @@ export default function PosTerminalView({
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Smart Creatable Customer Selector (Default Walk-In / Search / Auto-Create New) */}
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--muted)/20' }}>
+            <SmartCustomerCombobox
+              lang={lang}
+              customers={customersList}
+              selectedCustomerId={selectedCustomerId}
+              customerName={posCustomerName}
+              onChange={({ customerId, customerName }) => {
+                setSelectedCustomerId(customerId);
+                setPosCustomerName(customerName);
+                setCustomerErrorHighlight(false);
+              }}
+              isCreditMode={isInstallmentModalOpen}
+              highlightError={customerErrorHighlight}
+              compact
+              inputId="pos-customer-combobox"
+            />
           </div>
 
           {/* Cart Items List */}

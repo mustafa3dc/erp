@@ -1227,6 +1227,13 @@ CREATE INDEX IF NOT EXISTS idx_sales_invoices_fulfillment ON sales_invoices(fulf
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_dispense_mode ON sales_invoices(dispense_mode);
 ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS shift_id VARCHAR(100);
 CREATE INDEX IF NOT EXISTS idx_sales_invoices_shift_id ON sales_invoices(shift_id);
+ALTER TABLE IF EXISTS customers ADD COLUMN IF NOT EXISTS is_default_cash_customer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS customers ADD COLUMN IF NOT EXISTS created_by VARCHAR(150);
+ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE RESTRICT;
+ALTER TABLE IF EXISTS sales_invoices ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
+INSERT INTO customers (code, name, is_default_cash_customer, is_active, created_by)
+SELECT 'WALK-IN-CASH', 'عميل نقدي', TRUE, TRUE, 'System'
+WHERE NOT EXISTS (SELECT 1 FROM customers WHERE is_default_cash_customer = TRUE OR code = 'WALK-IN-CASH');
 
 CREATE TABLE IF NOT EXISTS rma_return_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

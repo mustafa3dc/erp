@@ -32,8 +32,10 @@ import {
   createInstallmentContract,
   resolveQuantityUnitPrice,
   getStoredProductBundles,
-  getEffectiveProductStock
+  getEffectiveProductStock,
+  resolveOrCreateLocalCustomer
 } from '../../services/storageService';
+import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
 import { useSettings } from '../../context/settings-context';
 import { Button } from '../ui/button';
@@ -68,15 +70,15 @@ export default function CreateInvoiceView({
   const { settings, formatMoney, tenantCountryCode } = useSettings();
   const isIraqTenant = (tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ');
 
-  const [customersList] = useState<any[]>(() => getStoredCustomers());
+  const [customersList, setCustomersList] = useState<any[]>(() => getStoredCustomers());
   const [warehousesList] = useState<Warehouse[]>(() => {
     if (propWarehouses && propWarehouses.length > 0) return propWarehouses;
     return getStoredWarehouses();
   });
 
-  // Pre-default to Walk-in Cash Customer to remove friction for instant counter sales
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('WALK_IN');
-  const [customerName, setCustomerName] = useState<string>(() => isAr ? 'عميل نقدي عام' : 'Walk-in Cash Customer');
+  // Pre-default to empty (= Walk-in Cash Customer "عميل نقدي")
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(undefined);
+  const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [customerAddress, setCustomerAddress] = useState<string>('');
   
@@ -300,13 +302,33 @@ export default function CreateInvoiceView({
     e.preventDefault();
     setFormError('');
 
-    if (!customerName.trim()) {
-      setFormError(isAr ? 'يرجى إدخال اسم العميل أو المشتري' : 'Please provide customer name');
-      return;
-    }
+    const isCreditOrInstallment = paymentMethod === 'credit' || paymentMethod === 'installment';
 
     if (lineItems.length === 0) {
       setFormError(isAr ? 'يرجى إضافة مادة واحدة على الأقل إلى الفاتورة' : 'Please add at least one item to the invoice');
+      return;
+    }
+
+    let resolvedCustomer;
+    try {
+      resolvedCustomer = resolveOrCreateLocalCustomer({
+        customerId: selectedCustomerId,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerAddress: customerAddress.trim(),
+        isCreditOrInstallment,
+        saleAmount: grandTotal
+      });
+      if (resolvedCustomer.createdNew) {
+        setCustomersList(getStoredCustomers());
+      }
+    } catch (custErr: any) {
+      const code = custErr?.message;
+      if (code === 'ERR_CREDIT_LIMIT_EXCEEDED') {
+        setFormError(getTranslation(lang, 'ui.customerPicker.creditLimitExceeded').replace('{limit}', ''));
+      } else {
+        setFormError(getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer'));
+      }
       return;
     }
 
@@ -364,7 +386,7 @@ export default function CreateInvoiceView({
         invoiceNumber: nextInvoiceNumber,
         warehouseId: effectiveWarehouseId || 'WH-01',
         warehouseName: resolvedWarehouseName,
-        customerName: customerName.trim(),
+        customerName: resolvedCustomer.customerName,
         cashierName: currentUser.fullName || (isAr ? 'أمين الصندوق' : 'Cashier'),
         items: expandedDispatchItems,
         totalQuantity: totalUnits,
@@ -383,8 +405,8 @@ export default function CreateInvoiceView({
       const monthlyAmount = installmentCount > 0 ? Math.round(remainingInstallment / installmentCount) : 0;
       const contract = createInstallmentContract({
         invoiceId,
-        customerId: selectedCustomerId !== 'WALK_IN' ? selectedCustomerId : undefined,
-        customerName: customerName.trim(),
+        customerId: resolvedCustomer.customerId,
+        customerName: resolvedCustomer.customerName,
         guarantorName: guarantorName.trim(),
         guarantorPhone: guarantorPhone.trim(),
         totalCashPrice: subtotal,
@@ -402,8 +424,9 @@ export default function CreateInvoiceView({
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerId: resolvedCustomer.customerId,
+      customerName: resolvedCustomer.customerName,
+      customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
       dispenseMode,
@@ -505,48 +528,28 @@ export default function CreateInvoiceView({
                 </span>
               </div>
 
-              {/* Row 1: Customer Account & Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Registered Account Picker */}
-                <div className="space-y-1">
-                  <Label htmlFor="customerSelect" className="text-xs font-semibold text-foreground/80 flex items-center gap-1.5">
-                    <span>{isAr ? 'حساب العميل' : 'Customer Account'}</span>
-                  </Label>
-                  <Select
-                    value={selectedCustomerId}
-                    onValueChange={handleCustomerSelect}
-                  >
-                    <SelectTrigger id="customerSelect" className="h-9 rounded-lg border border-border/80 bg-background text-xs font-medium">
-                      <SelectValue placeholder={isAr ? 'اختر حساب العميل...' : 'Select customer...'} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover text-popover-foreground border-border shadow-xl">
-                      <SelectItem value="WALK_IN">
-                        {isAr ? 'عميل نقدي عام (نقدي مباشر)' : 'Walk-in Cash Customer'}
-                      </SelectItem>
-                      {customersList.map((cust) => (
-                        <SelectItem key={cust.id} value={cust.id}>
-                          {cust.name} {cust.phone ? `(${cust.phone})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Customer Display Name */}
-                <div className="space-y-1">
-                  <Label htmlFor="custName" className="text-xs font-semibold text-foreground/80 flex items-center gap-1">
-                    <span>{isAr ? 'اسم العميل / المشتري' : 'Customer Name'}</span>
-                    <span className="text-destructive font-bold">*</span>
-                  </Label>
-                  <Input
-                    id="custName"
-                    required
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder={isAr ? 'اسم العميل أو اسم المنشأة...' : 'Customer or company name...'}
-                    className="h-9 rounded-lg border border-border/80 bg-background text-xs"
-                  />
-                </div>
+              {/* Row 1: Smart Creatable Customer Autocomplete */}
+              <div>
+                <SmartCustomerCombobox
+                  lang={lang}
+                  customers={customersList}
+                  selectedCustomerId={selectedCustomerId}
+                  customerName={customerName}
+                  onChange={({ customerId, customerName: nextName, customer }) => {
+                    setSelectedCustomerId(customerId);
+                    setCustomerName(nextName);
+                    if (customer) {
+                      setCustomerPhone(customer.phone && customer.phone !== '—' ? customer.phone : '');
+                      setCustomerAddress(customer.city || customer.address || '');
+                    } else if (!nextName.trim()) {
+                      setCustomerPhone('');
+                      setCustomerAddress('');
+                    }
+                  }}
+                  isCreditMode={paymentMethod === 'credit' || paymentMethod === 'installment'}
+                  highlightError={Boolean(formError && (paymentMethod === 'credit' || paymentMethod === 'installment') && !customerName.trim() && !selectedCustomerId)}
+                  inputId="invoice-smart-customer"
+                />
               </div>
 
               {/* Row 2: Phone Number & Fulfillment Switcher */}

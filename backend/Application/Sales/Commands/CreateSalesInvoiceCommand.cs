@@ -20,6 +20,7 @@ public sealed record CreateSalesInvoiceCommand(
     Guid WarehouseId,
     string DispenseMode, // "IN_STORE" or "WAREHOUSE_DISPATCH"
     Guid? TargetWarehouseId,
+    Guid? CustomerId,
     string? CustomerName,
     string CashierId,
     string CashierName,
@@ -46,6 +47,7 @@ public sealed class CreateSalesInvoiceCommandHandler
                 WarehouseId = cmd.WarehouseId,
                 DispenseMode = cmd.DispenseMode,
                 TargetWarehouseId = cmd.TargetWarehouseId,
+                CustomerId = cmd.CustomerId,
                 CustomerName = cmd.CustomerName,
                 CashierId = cmd.CashierId,
                 CashierName = cmd.CashierName,
@@ -65,12 +67,26 @@ public sealed class CreateSalesInvoiceCommandHandler
         }
         catch (ApplicationException ex)
         {
-            var isStockError = ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد");
-            var isWarehouseError = !isStockError && (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"));
+            var errorCode = ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
+                ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
+                : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")
+                ? "ERR_CUSTOMER_NOT_FOUND"
+                : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
+                ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
+                ? "ERR_INSUFFICIENT_STOCK"
+                : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))
+                ? "INVALID_WAREHOUSE"
+                : "ERR_SALES_COMMAND_FAILED";
+
+            var targetField = errorCode.Contains("CUSTOMER") || errorCode.Contains("CREDIT")
+                ? "CustomerId"
+                : (errorCode == "INVALID_WAREHOUSE" ? "WarehouseId" : (errorCode == "ERR_INSUFFICIENT_STOCK" ? "Items" : "DispenseMode"));
+
             return Result<PosInvoiceResponse>.Failure(
-                isStockError ? "ERR_INSUFFICIENT_STOCK" : (isWarehouseError ? "INVALID_WAREHOUSE" : "ERR_SALES_COMMAND_FAILED"),
+                errorCode,
                 "SALES",
-                new[] { new ErrorDetail(isWarehouseError ? "WarehouseId" : (isStockError ? "Items" : "DispenseMode"), ex.Message, cmd.WarehouseId) }
+                new[] { new ErrorDetail(targetField, ex.Message, cmd.WarehouseId) }
             );
         }
         catch (Exception ex)

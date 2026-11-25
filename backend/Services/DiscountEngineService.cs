@@ -565,6 +565,11 @@ public class DiscountEngineService : IDiscountEngineService
             salesInvoice.TotalAmount = subtotalAfterDiscount + salesInvoice.TaxAmount;
             salesInvoice.Items = invoiceItems;
 
+            // 3-Way Customer Resolution inside ACID Transaction (Existing / Auto-Create New / Walk-In Default)
+            var resolvedCustomer = await ResolveCustomerInTransactionAsync(request, salesInvoice.TotalAmount);
+            salesInvoice.CustomerId = resolvedCustomer.Id;
+            salesInvoice.CustomerName = resolvedCustomer.Name;
+
             _context.SalesInvoices.Add(salesInvoice);
 
             WarehouseDispatchOrder? dispatchOrder = null;
@@ -575,7 +580,7 @@ public class DiscountEngineService : IDiscountEngineService
                     InvoiceId = salesInvoice.Id,
                     InvoiceNumber = salesInvoice.InvoiceNumber,
                     WarehouseId = fulfillmentWarehouseId,
-                    CustomerName = !string.IsNullOrWhiteSpace(request.CustomerName) ? request.CustomerName : "عميل نقدي صالة العرض",
+                    CustomerName = salesInvoice.CustomerName ?? "عميل نقدي",
                     CashierName = request.CashierName ?? request.CashierId,
                     ItemsSnapshot = System.Text.Json.JsonSerializer.Serialize(dispatchItemsSnapshot),
                     TotalQuantity = invoiceItems.Sum(i => i.Quantity),
@@ -602,6 +607,8 @@ public class DiscountEngineService : IDiscountEngineService
             {
                 InvoiceId = salesInvoice.Id,
                 InvoiceNumber = salesInvoice.InvoiceNumber,
+                CustomerId = salesInvoice.CustomerId,
+                CustomerName = salesInvoice.CustomerName,
                 DispenseMode = salesInvoice.DispenseMode,
                 FulfillmentStatus = salesInvoice.FulfillmentStatus,
                 DispatchOrderId = dispatchOrder?.Id,
@@ -939,5 +946,98 @@ public class DiscountEngineService : IDiscountEngineService
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Resolves invoice Customer in 3 modes inside active ACID transaction:
+    /// 1) Existing CustomerId (+ credit limit verification for Credit/Installment)
+    /// 2) Auto-create new Customer from typed CustomerName
+    /// 3) Default Walk-In Cash Customer ("عميل نقدي") for non-credit sales, or reject credit with ERR_CREDIT_SALE_REQUIRES_CUSTOMER.
+    /// </summary>
+    private async Task<Customer> ResolveCustomerInTransactionAsync(CreatePosInvoiceRequest request, decimal invoiceTotal)
+    {
+        var methodNorm = (request.PaymentMethod ?? "CASH").Trim().ToUpperInvariant();
+        bool isCreditOrInstallment = methodNorm is "CREDIT" or "INSTALLMENT" or "CUSTOMER_ACCOUNT_DEBIT";
+        var now = DateTime.UtcNow;
+        var actor = !string.IsNullOrWhiteSpace(request.CashierName) ? request.CashierName.Trim() : request.CashierId;
+
+        // Case 1: Existing CustomerId provided
+        if (request.CustomerId.HasValue && request.CustomerId.Value != Guid.Empty)
+        {
+            var existing = await _context.Customers
+                .FirstOrDefaultAsync(c => c.Id == request.CustomerId.Value && c.IsActive);
+            if (existing == null)
+            {
+                throw new ApplicationException("ERR_CUSTOMER_NOT_FOUND");
+            }
+
+            if (isCreditOrInstallment)
+            {
+                if (existing.IsDefaultCashCustomer)
+                {
+                    throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
+                }
+                if (existing.CreditLimit > 0m && existing.CurrentBalance + invoiceTotal > existing.CreditLimit)
+                {
+                    throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
+                }
+                existing.CurrentBalance += invoiceTotal;
+                existing.UpdatedAt = now;
+            }
+
+            return existing;
+        }
+
+        // Case 2: No CustomerId, check trimmed CustomerName
+        var trimmedName = request.CustomerName?.Trim();
+        bool isWalkInAlias = string.IsNullOrWhiteSpace(trimmedName) ||
+            trimmedName.Equals("عميل نقدي", StringComparison.OrdinalIgnoreCase) ||
+            trimmedName.Equals("عميل نقدي عام", StringComparison.OrdinalIgnoreCase) ||
+            trimmedName.Equals("Walk-in Cash Customer", StringComparison.OrdinalIgnoreCase);
+
+        if (!isWalkInAlias && !string.IsNullOrWhiteSpace(trimmedName))
+        {
+            var newCustomer = new Customer
+            {
+                Id = Guid.NewGuid(),
+                Code = $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}",
+                Name = trimmedName,
+                IsDefaultCashCustomer = false,
+                IsActive = true,
+                CreatedBy = actor,
+                CurrentBalance = isCreditOrInstallment ? invoiceTotal : 0m,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _context.Customers.Add(newCustomer);
+            return newCustomer;
+        }
+
+        // Case 3: Both empty (or Walk-In alias)
+        if (isCreditOrInstallment)
+        {
+            throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
+        }
+
+        var walkIn = await _context.Customers
+            .FirstOrDefaultAsync(c => (c.IsDefaultCashCustomer || c.Code == "WALK-IN-CASH") && c.IsActive);
+
+        if (walkIn == null)
+        {
+            walkIn = new Customer
+            {
+                Id = Guid.NewGuid(),
+                Code = "WALK-IN-CASH",
+                Name = "عميل نقدي",
+                IsDefaultCashCustomer = true,
+                IsActive = true,
+                CreatedBy = "System",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _context.Customers.Add(walkIn);
+        }
+
+        return walkIn;
     }
 }

@@ -691,6 +691,21 @@
       "processingBtn": "Processing...",
       "unassignedWarehouse": "Unassigned"
     },
+    "customerPicker": {
+      "label": "Customer / Buyer",
+      "placeholder": "Walk-in Cash Customer (or type new name / search...)",
+      "walkInDefaultName": "Walk-in Cash Customer",
+      "walkInBadge": "Walk-in Cash",
+      "newCustomerBadge": "New customer (auto-created)",
+      "selectedCustomerBadge": "Registered",
+      "createNewAction": "+ Add as new customer: \"{name}\"",
+      "clearTooltip": "Reset to Walk-in Cash Customer",
+      "noMatchesHint": "No existing match — will be created automatically on checkout",
+      "creditRequiresCustomer": "Credit sale requires selecting an existing customer or typing a new customer name (anonymous cash walk-in not allowed).",
+      "creditLimitExceeded": "Sale exceeds customer's allowed credit limit ({limit}).",
+      "balanceLabel": "Balance",
+      "keyboardHint": "↑↓ navigate • Enter select • Esc close"
+    },
     "common": {
       "clearSearch": "Clear search",
       "loadingData": "Loading records...",

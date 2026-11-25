@@ -335,6 +335,14 @@ public class SalesInvoice : ITenantEntity
     [Column("cashier_name")]
     public string? CashierName { get; set; }
 
+    [Column("customer_id")]
+    public Guid? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [MaxLength(255)]
+    [Column("customer_name")]
+    public string? CustomerName { get; set; }
+
     [MaxLength(100)]
     [Column("shift_id")]
     public string? ShiftId { get; set; }
@@ -501,6 +509,14 @@ public class DiscountAuditLog : ITenantEntity
 
     [Column("cashier_name")]
     public string? CashierName { get; set; }
+
+    [Column("customer_id")]
+    public Guid? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [MaxLength(255)]
+    [Column("customer_name")]
+    public string? CustomerName { get; set; }
 
     [MaxLength(100)]
     [Column("shift_id")]
@@ -1290,6 +1306,13 @@ public class Customer : ITenantEntity
     [Column("price_list_id")]
     public Guid? PriceListId { get; set; }
     public PriceList? PriceList { get; set; }
+
+    [Column("is_default_cash_customer")]
+    public bool IsDefaultCashCustomer { get; set; } = false;
+
+    [MaxLength(150)]
+    [Column("created_by")]
+    public string? CreatedBy { get; set; }
 
     [Column("is_active")]
     public bool IsActive { get; set; } = true;

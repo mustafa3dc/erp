@@ -97,6 +97,7 @@ export interface InvoiceLineItem {
 export interface SalesInvoice {
   id: string;
   invoiceNo: string;
+  customerId?: string;
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;

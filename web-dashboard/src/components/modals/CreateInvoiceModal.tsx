@@ -27,8 +27,11 @@ import {
   saveStoredDispatchOrders,
   resolveQuantityUnitPrice,
   getStoredProductBundles,
-  getEffectiveProductStock
+  getEffectiveProductStock,
+  getStoredCustomers,
+  resolveOrCreateLocalCustomer
 } from '../../services/storageService';
+import SmartCustomerCombobox from '../SmartCustomerCombobox';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
 
@@ -85,6 +88,8 @@ export default function CreateInvoiceModal({
     : (settings?.tenantCountryCode === 'SA' ? 15 : 0);
   const [applyTax, setApplyTax] = useState<boolean>(() => Boolean(settings?.isTaxEnabled && taxRatePercent > 0));
 
+  const [customersList, setCustomersList] = useState<any[]>(() => getStoredCustomers());
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(undefined);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
@@ -273,12 +278,30 @@ export default function CreateInvoiceModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim()) {
-      setErrorMsg(isAr ? 'يرجى إدخال اسم العميل أو المشتري' : 'Please enter customer name');
-      return;
-    }
     if (lineItems.length === 0) {
       setErrorMsg(isAr ? 'يرجى إضافة صنف واحد على الأقل إلى الفاتورة' : 'Please add at least one line item');
+      return;
+    }
+
+    let resolvedCustomer;
+    try {
+      resolvedCustomer = resolveOrCreateLocalCustomer({
+        customerId: selectedCustomerId,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerAddress: customerAddress.trim(),
+        isCreditOrInstallment: paymentMethod === 'credit',
+        saleAmount: total
+      });
+      if (resolvedCustomer.createdNew) {
+        setCustomersList(getStoredCustomers());
+      }
+    } catch (custErr: any) {
+      if (custErr?.message === 'ERR_CREDIT_LIMIT_EXCEEDED') {
+        setErrorMsg(getTranslation(lang, 'ui.customerPicker.creditLimitExceeded').replace('{limit}', ''));
+      } else {
+        setErrorMsg(getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer'));
+      }
       return;
     }
     if (isDiscountExceedingSubtotal) {
@@ -343,7 +366,7 @@ export default function CreateInvoiceModal({
         invoiceNumber: nextInvoiceNumber,
         warehouseId: targetWh?.id || 'WH-01',
         warehouseName: resolvedWarehouseName,
-        customerName: customerName.trim(),
+        customerName: resolvedCustomer.customerName,
         cashierName: session?.fullName?.trim() || session?.username?.trim() || (isAr ? 'أمين الصندوق' : 'Cashier'),
         items: expandedDispatchItems,
         totalQuantity: totalUnits,
@@ -359,8 +382,9 @@ export default function CreateInvoiceModal({
     const newInvoice: SalesInvoice = {
       id: invoiceId,
       invoiceNo: nextInvoiceNumber,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerId: resolvedCustomer.customerId,
+      customerName: resolvedCustomer.customerName,
+      customerPhone: customerPhone.trim() || resolvedCustomer.customerPhone || '',
       customerAddress: customerAddress.trim(),
       warehouseName: resolvedWarehouseName,
       dispenseMode,
@@ -433,21 +457,29 @@ export default function CreateInvoiceModal({
 
           {/* Customer & Dispatch Section */}
           <div className="invoice-section-grid">
-            {/* Customer Name */}
+            {/* Smart Creatable Customer Combobox */}
             <div className="invoice-field">
-              <div className="invoice-field-label">
-                <User size={13} />
-                <span>{isAr ? 'اسم العميل / المشتري' : 'Cust\u200Comer Na\u200Cme'}</span>
-                <span className="required-star">*</span>
-              </div>
-              <input 
-                type="text" 
-                autoComplete="new-password"
-                className="invoice-text-input"
-                placeholder={isAr ? "اسم العميل أو اسم الشركة..." : "Customer or Company Name..."}
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                autoFocus
+              <SmartCustomerCombobox
+                lang={lang}
+                customers={customersList}
+                selectedCustomerId={selectedCustomerId}
+                customerName={customerName}
+                onChange={({ customerId, customerName: nextName, customer }) => {
+                  setSelectedCustomerId(customerId);
+                  setCustomerName(nextName);
+                  setErrorMsg(null);
+                  if (customer) {
+                    setCustomerPhone(customer.phone && customer.phone !== '—' ? customer.phone : '');
+                    setCustomerAddress(customer.city || customer.address || '');
+                  } else if (!nextName.trim()) {
+                    setCustomerPhone('');
+                    setCustomerAddress('');
+                  }
+                }}
+                isCreditMode={paymentMethod === 'credit'}
+                highlightError={Boolean(errorMsg && paymentMethod === 'credit' && !customerName.trim() && !selectedCustomerId)}
+                compact
+                inputId="modal-smart-customer"
               />
             </div>
 

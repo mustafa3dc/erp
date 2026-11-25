@@ -1133,7 +1133,10 @@ export interface PosSaleTransactionRequest {
   cashierId: string;
   cashierName: string;
   paymentMethod: string;
+  customerId?: string;
   customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
   items: {
     product: Product;
     quantity: number;
@@ -1311,11 +1314,22 @@ export function executePosSaleTransaction(
     }
   }
 
-  // 3. Save Sales Invoice with Dispense Attributes & Strict Shift Isolation
+  // 3. Save Sales Invoice with Dispense Attributes, Strict Shift Isolation & 3-Way Customer Resolution
   const activeShift = getStoredActiveShift();
   const resolvedShiftId = req.shiftId || activeShift?.id;
   const invoiceCreatedIso = new Date().toISOString();
   const upperMethod = (req.paymentMethod || 'CASH').toUpperCase();
+  const isCreditOrInstallment = upperMethod === 'CREDIT' || upperMethod === 'INSTALLMENT' || upperMethod === 'CUSTOMER_ACCOUNT_DEBIT';
+
+  const resolvedCustomer = resolveOrCreateLocalCustomer({
+    customerId: req.customerId,
+    customerName: req.customerName,
+    customerPhone: req.customerPhone,
+    customerAddress: req.customerAddress,
+    isCreditOrInstallment,
+    saleAmount: req.grandTotal
+  });
+
   const mappedPaymentMethod =
     upperMethod === 'CARD' || upperMethod === 'CREDIT_CARD'
       ? 'card'
@@ -1325,6 +1339,8 @@ export function executePosSaleTransaction(
       ? 'qi_card'
       : upperMethod === 'INSTALLMENT'
       ? 'installment'
+      : upperMethod === 'CREDIT'
+      ? 'credit'
       : 'cash';
 
   const invoiceId = `INV-${Date.now()}`;
@@ -1367,7 +1383,7 @@ export function executePosSaleTransaction(
       invoiceNumber: req.invoiceNumber,
       warehouseId: effectiveWarehouseId,
       warehouseName: effectiveWarehouseName,
-      customerName: req.customerName || 'عميل نقدي (صالة العرض)',
+      customerName: resolvedCustomer.customerName,
       cashierName: req.cashierName || req.cashierId || 'الكاشير',
       items: expandedDispatchItems,
       totalQuantity: req.items.reduce((sum, it) => sum + it.quantity, 0),
@@ -1383,9 +1399,10 @@ export function executePosSaleTransaction(
   const salesInvoice: SalesInvoice = {
     id: invoiceId,
     invoiceNo: req.invoiceNumber,
-    customerName: req.customerName || 'عميل نقدي (POS Retail)',
-    customerPhone: '—',
-    customerAddress: isWarehouseDispatch ? `تجهيز من مخزن ${effectiveWarehouseName}` : 'نقطة البيع المباشرة',
+    customerId: resolvedCustomer.customerId,
+    customerName: resolvedCustomer.customerName,
+    customerPhone: req.customerPhone || resolvedCustomer.customerPhone || '—',
+    customerAddress: req.customerAddress || (isWarehouseDispatch ? `تجهيز من مخزن ${effectiveWarehouseName}` : 'نقطة البيع المباشرة'),
     warehouseName: effectiveWarehouseName,
     shiftId: resolvedShiftId,
     sourceModule: 'POS',
@@ -2167,6 +2184,141 @@ export function getStoredCustomers(): any[] {
 
 export function saveStoredCustomers(customers: any[]): void {
   safeSet(KEYS.CUSTOMERS, customers);
+}
+
+export interface CustomerResolutionInput {
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  isCreditOrInstallment?: boolean;
+  saleAmount?: number;
+}
+
+export interface CustomerResolutionResult {
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  isDefaultCashCustomer: boolean;
+  createdNew: boolean;
+}
+
+/**
+ * 3-Way Customer Resolution for POS & Sales Invoices:
+ * 1) Existing customerId -> validates existence & credit limit, updates debt on credit/installment.
+ * 2) Typed customerName (without customerId) -> auto-creates a new persistent Customer profile immediately.
+ * 3) Empty input -> rejects Credit/Installment with ERR_CREDIT_SALE_REQUIRES_CUSTOMER, else assigns "عميل نقدي".
+ */
+export function resolveOrCreateLocalCustomer(input: CustomerResolutionInput): CustomerResolutionResult {
+  const customers = getStoredCustomers();
+  const saleAmt = Math.max(0, Number(input.saleAmount) || 0);
+  const isCredit = Boolean(input.isCreditOrInstallment);
+  const trimmedId = (input.customerId || '').trim();
+
+  // Case 1: Selected existing customerId
+  if (trimmedId && trimmedId !== 'WALK_IN' && trimmedId !== 'CUST-WALKIN') {
+    const idx = customers.findIndex(c => c && c.id === trimmedId);
+    if (idx >= 0) {
+      const cust = customers[idx];
+      if (cust.isDefaultCashCustomer && isCredit) {
+        throw new Error('ERR_CREDIT_SALE_REQUIRES_CUSTOMER');
+      }
+      if (isCredit) {
+        const limit = Number(cust.creditLimit) || 0;
+        const currBal = Number(cust.currentBalance) || 0;
+        if (limit > 0 && currBal + saleAmt > limit) {
+          throw new Error('ERR_CREDIT_LIMIT_EXCEEDED');
+        }
+        customers[idx] = {
+          ...cust,
+          currentBalance: currBal + saleAmt,
+          phone: cust.phone || input.customerPhone || '',
+          city: cust.city || input.customerAddress || ''
+        };
+        saveStoredCustomers(customers);
+      }
+      return {
+        customerId: cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone,
+        isDefaultCashCustomer: Boolean(cust.isDefaultCashCustomer),
+        createdNew: false
+      };
+    }
+  }
+
+  // Case 2: Typed customer name (creates a new customer automatically on the fly)
+  const rawName = (input.customerName || '').trim();
+  const lowerName = rawName.toLowerCase();
+  const isWalkInAlias =
+    !rawName ||
+    lowerName === 'عميل نقدي' ||
+    lowerName === 'عميل نقدي عام' ||
+    lowerName === 'walk-in cash customer' ||
+    lowerName === 'retail walk-in customer' ||
+    lowerName === 'عميل كاشير مباشر (pos retail)';
+
+  if (!isWalkInAlias) {
+    // Re-use if an exact name match exists (case-insensitive), otherwise create a brand-new Customer record
+    const exactMatchIdx = customers.findIndex(
+      c => c && typeof c.name === 'string' && c.name.trim().toLowerCase() === lowerName
+    );
+    if (exactMatchIdx >= 0) {
+      const existingCust = customers[exactMatchIdx];
+      if (isCredit) {
+        const limit = Number(existingCust.creditLimit) || 0;
+        const currBal = Number(existingCust.currentBalance) || 0;
+        if (limit > 0 && currBal + saleAmt > limit) {
+          throw new Error('ERR_CREDIT_LIMIT_EXCEEDED');
+        }
+        customers[exactMatchIdx] = { ...existingCust, currentBalance: currBal + saleAmt };
+        saveStoredCustomers(customers);
+      }
+      return {
+        customerId: existingCust.id,
+        customerName: existingCust.name,
+        customerPhone: existingCust.phone,
+        isDefaultCashCustomer: false,
+        createdNew: false
+      };
+    }
+
+    const newCustomer = {
+      id: `CUST-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      code: `C-${Date.now().toString().slice(-5)}`,
+      name: rawName,
+      phone: (input.customerPhone || '').trim() || '—',
+      city: (input.customerAddress || '').trim() || 'بغداد',
+      creditLimit: 0,
+      currentBalance: isCredit ? saleAmt : 0,
+      loyaltyTier: 'BRONZE' as const,
+      loyaltyPoints: 0,
+      isDefaultCashCustomer: false,
+      createdAt: new Date().toISOString()
+    };
+    saveStoredCustomers([newCustomer, ...customers]);
+
+    return {
+      customerId: newCustomer.id,
+      customerName: newCustomer.name,
+      customerPhone: newCustomer.phone,
+      isDefaultCashCustomer: false,
+      createdNew: true
+    };
+  }
+
+  // Case 3: Empty -> reject Credit/Installment, or resolve default Walk-In Cash Customer
+  if (isCredit) {
+    throw new Error('ERR_CREDIT_SALE_REQUIRES_CUSTOMER');
+  }
+
+  return {
+    customerId: 'CUST-WALKIN',
+    customerName: 'عميل نقدي',
+    customerPhone: '—',
+    isDefaultCashCustomer: true,
+    createdNew: false
+  };
 }
 
 export function getStoredRMA(): any[] {

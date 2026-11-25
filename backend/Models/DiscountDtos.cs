@@ -104,6 +104,7 @@ public class CreatePosInvoiceRequest
     public Guid WarehouseId { get; set; }
     public string DispenseMode { get; set; } = "IN_STORE"; // IN_STORE, WAREHOUSE_DISPATCH
     public Guid? TargetWarehouseId { get; set; }
+    public Guid? CustomerId { get; set; }
     public string? CustomerName { get; set; }
     public string CashierId { get; set; } = string.Empty;
     public string CashierName { get; set; } = string.Empty;
@@ -127,6 +128,8 @@ public class PosInvoiceResponse
 {
     public Guid InvoiceId { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
+    public Guid? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
     public string DispenseMode { get; set; } = "IN_STORE"; // IN_STORE, WAREHOUSE_DISPATCH
     public string FulfillmentStatus { get; set; } = "FULFILLED"; // FULFILLED, PENDING_DISPATCH
     public Guid? DispatchOrderId { get; set; }

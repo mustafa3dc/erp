@@ -691,6 +691,21 @@
       "processingBtn": "جاري التنفيذ...",
       "unassignedWarehouse": "غير محدد"
     },
+    "customerPicker": {
+      "label": "العميل / المشتري",
+      "placeholder": "عميل نقدي (أو اكتب اسم عميل جديد / ابحث...)",
+      "walkInDefaultName": "عميل نقدي",
+      "walkInBadge": "عميل نقدي",
+      "newCustomerBadge": "عميل جديد (يُضاف تلقائياً)",
+      "selectedCustomerBadge": "عميل مسجل",
+      "createNewAction": "+ إضافة كعميل جديد: \"{name}\"",
+      "clearTooltip": "إعادة تعيين إلى عميل نقدي",
+      "noMatchesHint": "لا توجد نتائج مطابقة — سيتم إنشاؤه تلقائياً عند الحفظ",
+      "creditRequiresCustomer": "البيع الآجل يتطلب اختيار عميل مسجل أو كتابة اسم عميل جديد (لا يُسمح به للعميل النقدي).",
+      "creditLimitExceeded": "تجاوز الرصيد الآجل المسموح به لهذا العميل ({limit}).",
+      "balanceLabel": "الرصيد",
+      "keyboardHint": "↑↓ للتنقل • Enter للاختيار • Esc للإغلاق"
+    },
     "common": {
       "clearSearch": "مسح البحث",
       "loadingData": "جاري تحميل البيانات...",

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   MapPin,
   User,
-  Thermometer,
+  Snowflake,
   Layers,
   Plus,
   ArrowDownToLine,
@@ -20,15 +20,14 @@ import {
   ExternalLink,
   Trash2
 } from 'lucide-react';
-import { Warehouse, Product } from '../../types/warehouse';
+import { Warehouse, Product, normalizeWarehouseStorageType } from '../../types/warehouse';
 import RadialGauge from '../RadialGauge';
 import EditWarehouseModal from '../modals/EditWarehouseModal';
 import AddWarehouseModal from '../modals/AddWarehouseModal';
 import WarehouseLiveLayout, { RackBayItem } from './WarehouseLiveLayout';
 import {
   GLOBAL_COUNTRIES,
-  getCountryByCode,
-  getStorageTypeById
+  getCountryByCode
 } from '../../data/globalLocations';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -195,7 +194,9 @@ export default function WarehousesRacksView({
   const tenantDefaultCountryCode = settings.tenantCountryCode || 'IQ';
   const resolvedCountryCode = activeWh?.countryCode || tenantDefaultCountryCode;
   const activeCountry = getCountryByCode(resolvedCountryCode);
-  const activeStorageType = getStorageTypeById(activeWh?.storageType || 'rdc_general');
+  const normalizedStorageType = normalizeWarehouseStorageType(activeWh?.storageType);
+  const isColdStorage = normalizedStorageType === 'ColdStorage';
+  const storageTypeText = tr(isColdStorage ? 'storageTypeCold' : 'storageTypeStandard');
 
   const resolvedCountryName = useMemo(() => {
     if (!activeWh) return '';
@@ -654,15 +655,19 @@ export default function WarehousesRacksView({
                 </span>
 
                 <span style={{
-                  background: `${activeStorageType.badgeColor}15`,
-                  border: `1px solid ${activeStorageType.badgeColor}35`,
-                  color: activeStorageType.badgeColor,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: isColdStorage ? 'rgba(6, 182, 212, 0.1)' : 'rgba(59, 130, 246, 0.08)',
+                  border: `1px solid ${isColdStorage ? 'rgba(6, 182, 212, 0.35)' : 'rgba(59, 130, 246, 0.25)'}`,
+                  color: isColdStorage ? '#0891b2' : 'var(--primary)',
                   padding: '3px 10px',
                   borderRadius: '6px',
                   fontSize: '0.78rem',
                   fontWeight: 700
                 }}>
-                  {isAr ? activeStorageType.nameAr : activeStorageType.nameEn}
+                  {isColdStorage ? <Snowflake size={13} /> : <Package size={13} />}
+                  {storageTypeText}
                 </span>
               </div>
 
@@ -714,7 +719,7 @@ export default function WarehousesRacksView({
                 </div>
               </div>
 
-              {/* Operational Climate & Real Rack Count */}
+              {/* Operational Storage Type & Real Rack Count */}
               <div className="wh-specs-row" style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', color: '#64748b', fontSize: '0.83rem', marginTop: '6px' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <User size={15} color="var(--primary)" />
@@ -726,8 +731,11 @@ export default function WarehousesRacksView({
                   <span dir="ltr" style={{ display: 'inline-block' }}>{activeWh.phone || tr('notRecorded')}</span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Thermometer size={15} color="var(--primary)" />
-                  <strong style={{ color: 'var(--foreground)' }}>{tr('climateLabel')}</strong> {isAr ? activeStorageType.tempRangeAr : activeStorageType.tempRangeEn}
+                  {isColdStorage ? <Snowflake size={15} color="#0891b2" /> : <Package size={15} color="var(--primary)" />}
+                  <strong style={{ color: 'var(--foreground)' }}>{tr('storageTypeLabel')}</strong>{' '}
+                  <span style={{ color: isColdStorage ? '#0891b2' : 'var(--foreground)', fontWeight: isColdStorage ? 700 : 500 }}>
+                    {storageTypeText}
+                  </span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Layers size={15} color="var(--primary)" />

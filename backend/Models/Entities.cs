@@ -3,6 +3,17 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ERP.Warehouse.Api.Models;
 
+public static class WarehouseStorageTypes
+{
+    public const string Standard = "Standard";
+    public const string ColdStorage = "ColdStorage";
+
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), ColdStorage, StringComparison.OrdinalIgnoreCase)
+            ? ColdStorage
+            : Standard;
+}
+
 [Table("warehouses")]
 public class Warehouse : ITenantEntity
 {
@@ -45,6 +56,10 @@ public class Warehouse : ITenantEntity
     [MaxLength(20)]
     [Column("type")]
     public string Type { get; set; } = "STORE"; // STORE, WAREHOUSE
+
+    [MaxLength(30)]
+    [Column("storage_type")]
+    public string StorageType { get; set; } = WarehouseStorageTypes.Standard; // Standard | ColdStorage
 
     [Column("total_capacity")]
     public decimal TotalCapacity { get; set; } = 10000;

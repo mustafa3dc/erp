@@ -33,6 +33,16 @@ export interface Product {
   quantityTiers?: ProductQuantityTierRule[];
 }
 
+export type WarehouseStorageType = 'Standard' | 'ColdStorage';
+
+export function normalizeWarehouseStorageType(raw?: string | null): WarehouseStorageType {
+  const clean = (raw || '').trim().toLowerCase();
+  if (clean === 'coldstorage' || clean === 'cold_storage' || clean === 'cold_chain' || clean === 'deep_freeze') {
+    return 'ColdStorage';
+  }
+  return 'Standard';
+}
+
 export interface Warehouse {
   id: string;
   code: string;
@@ -49,7 +59,7 @@ export interface Warehouse {
   postalCode?: string;
   timezone?: string;
   currency?: string;
-  storageType?: string;
+  storageType?: WarehouseStorageType | string;
   storageTypeLabelAr?: string;
   storageTypeLabelEn?: string;
   manager: string;

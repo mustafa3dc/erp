@@ -9,17 +9,18 @@ import {
   Phone,
   User,
   ShieldCheck,
-  Plus
+  Plus,
+  Package,
+  Snowflake
 } from 'lucide-react';
-import { Warehouse } from '../../types/warehouse';
+import { Warehouse, WarehouseStorageType } from '../../types/warehouse';
 import { 
   GLOBAL_COUNTRIES, 
-  STORAGE_CLASSIFICATIONS, 
   getCountryByCode, 
-  getStatesForCountry, 
-  getStorageTypeById 
+  getStatesForCountry
 } from '../../data/globalLocations';
 import { useSettings } from '../../context/settings-context';
+import { getTranslation } from '../../lib/i18n';
 
 export interface AddWarehouseModalProps {
   lang: 'en' | 'ar';
@@ -57,7 +58,7 @@ export default function AddWarehouseModal({
     postalCode: '',
     currency: settings.baseCurrency || initialCountry.currencySymbol || 'IQD',
     timezone: initialCountry.defaultTimezone || 'Asia/Baghdad (UTC+3)',
-    storageType: 'rdc_general',
+    storageType: 'Standard' as WarehouseStorageType,
     manager: '',
     phone: '',
     capacity: 15000,
@@ -91,8 +92,8 @@ export default function AddWarehouseModal({
     }
 
     const countryObj = getCountryByCode(countryCode);
-    const storageObj = getStorageTypeById(form.storageType);
     const autoCode = form.code.trim() || `WH-${countryObj.code}-${String(totalWarehousesCount + 1).padStart(2, '0')}`;
+    const isCold = form.storageType === 'ColdStorage';
 
     onAddWarehouse({
       code: autoCode.toUpperCase(),
@@ -107,8 +108,8 @@ export default function AddWarehouseModal({
       timezone: form.timezone,
       currency: form.currency,
       storageType: form.storageType,
-      storageTypeLabelAr: storageObj.nameAr,
-      storageTypeLabelEn: storageObj.nameEn,
+      storageTypeLabelAr: getTranslation('ar', `ui.warehouses.${isCold ? 'storageTypeCold' : 'storageTypeStandard'}`),
+      storageTypeLabelEn: getTranslation('en', `ui.warehouses.${isCold ? 'storageTypeCold' : 'storageTypeStandard'}`),
       manager: form.manager.trim() || (isAr ? 'مدير العمليات' : 'Operations Manager'),
       phone: form.phone.trim(),
       capacity: Number(form.capacity) || 10000,
@@ -329,22 +330,57 @@ export default function AddWarehouseModal({
             <div className="goods-form-section">
               <div className="goods-section-header">
                 <Layers size={16} />
-                <span>{isAr ? '3. التصنيف الفني والسعة التخزينية' : '3. Classification & Capacity'}</span>
+                <span>{getTranslation(lang, 'ui.warehouses.storageTypeSectionTitle')}</span>
               </div>
               <div className="form-grid-2">
                 <div className="goods-input-group">
-                  <label>{isAr ? 'نوع وتصنيف التخزين *' : 'Storage Classification *'}</label>
-                  <select
-                    className="goods-select-input"
-                    value={form.storageType}
-                    onChange={(e) => setForm({ ...form, storageType: e.target.value })}
-                  >
-                    {STORAGE_CLASSIFICATIONS.map(st => (
-                      <option key={st.id} value={st.id}>
-                        {isAr ? st.nameAr : st.nameEn} - {isAr ? st.tempRangeAr : st.tempRangeEn}
-                      </option>
-                    ))}
-                  </select>
+                  <label>{getTranslation(lang, 'ui.warehouses.storageTypeFieldLabel')}</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, storageType: 'Standard' })}
+                      style={{
+                        height: '40px',
+                        padding: '0 12px',
+                        borderRadius: '8px',
+                        border: form.storageType === 'Standard' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        background: form.storageType === 'Standard' ? 'var(--primary-light)' : 'var(--card)',
+                        color: form.storageType === 'Standard' ? 'var(--primary)' : 'var(--foreground)',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Package size={15} />
+                      <span>{getTranslation(lang, 'ui.warehouses.storageTypeStandard')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, storageType: 'ColdStorage' })}
+                      style={{
+                        height: '40px',
+                        padding: '0 12px',
+                        borderRadius: '8px',
+                        border: form.storageType === 'ColdStorage' ? '2px solid #06b6d4' : '1px solid var(--border)',
+                        background: form.storageType === 'ColdStorage' ? 'rgba(6, 182, 212, 0.12)' : 'var(--card)',
+                        color: form.storageType === 'ColdStorage' ? '#0891b2' : 'var(--foreground)',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Snowflake size={15} />
+                      <span>{getTranslation(lang, 'ui.warehouses.storageTypeCold')}</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="goods-input-group">
                   <label>{isAr ? 'السعة الكلية التقديرية (م³)' : 'Total Capacity (m³)'}</label>

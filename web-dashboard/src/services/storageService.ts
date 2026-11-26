@@ -614,6 +614,13 @@ export function getStoredWarehouses(): Warehouse[] {
         w.currency = tenantDefaults.currency;
         modified = true;
       }
+      const normStorage = (w.storageType || '').toLowerCase();
+      if (normStorage !== 'standard' && normStorage !== 'coldstorage') {
+        w.storageType = (normStorage === 'cold_chain' || normStorage === 'deep_freeze' || normStorage === 'cold_storage')
+          ? 'ColdStorage'
+          : 'Standard';
+        modified = true;
+      }
       return w;
     });
     if (modified) {
@@ -637,7 +644,7 @@ export function getStoredWarehouses(): Warehouse[] {
       postalCode: '',
       timezone: tenantDefaults.timezone,
       currency: tenantDefaults.currency,
-      storageType: 'rdc_general',
+      storageType: 'Standard',
       manager: '',
       managerEn: '',
       phone: '',
@@ -702,7 +709,7 @@ export function createWarehouse(data: {
     postalCode: data.postalCode?.trim() || '',
     timezone: data.timezone?.trim() || tenantDefaults.timezone,
     currency: data.currency?.trim() || tenantDefaults.currency,
-    storageType: data.storageType || 'rdc_general',
+    storageType: data.storageType === 'ColdStorage' ? 'ColdStorage' : 'Standard',
     storageTypeLabelAr: data.storageTypeLabelAr,
     storageTypeLabelEn: data.storageTypeLabelEn,
     manager: data.manager?.trim() || '',

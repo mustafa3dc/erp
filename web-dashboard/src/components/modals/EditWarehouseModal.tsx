@@ -10,17 +10,18 @@ import {
   Phone,
   User,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Package,
+  Snowflake
 } from 'lucide-react';
-import { Warehouse } from '../../types/warehouse';
+import { Warehouse, WarehouseStorageType, normalizeWarehouseStorageType } from '../../types/warehouse';
 import { 
   GLOBAL_COUNTRIES, 
-  STORAGE_CLASSIFICATIONS, 
   getCountryByCode, 
-  getStatesForCountry, 
-  getStorageTypeById 
+  getStatesForCountry
 } from '../../data/globalLocations';
 import { useSettings } from '../../context/settings-context';
+import { getTranslation } from '../../lib/i18n';
 
 export interface EditWarehouseModalProps {
   lang: 'en' | 'ar';
@@ -54,7 +55,7 @@ export default function EditWarehouseModal({
     postalCode: warehouse.postalCode || '',
     currency: warehouse.currency || settings.baseCurrency || defaultCountryObj.currencySymbol || 'IQD',
     timezone: warehouse.timezone || defaultCountryObj.defaultTimezone || 'Asia/Baghdad (UTC+3)',
-    storageType: warehouse.storageType || 'rdc_general',
+    storageType: normalizeWarehouseStorageType(warehouse.storageType) as WarehouseStorageType,
     manager: warehouse.manager || '',
     phone: warehouse.phone || '',
     capacity: warehouse.capacity || 10000,
@@ -76,7 +77,7 @@ export default function EditWarehouseModal({
         postalCode: warehouse.postalCode || '',
         currency: warehouse.currency || settings.baseCurrency || country.currencySymbol || 'IQD',
         timezone: warehouse.timezone || country.defaultTimezone || 'Asia/Baghdad (UTC+3)',
-        storageType: warehouse.storageType || 'rdc_general',
+        storageType: normalizeWarehouseStorageType(warehouse.storageType) as WarehouseStorageType,
         manager: warehouse.manager || '',
         phone: warehouse.phone || '',
         capacity: warehouse.capacity || 10000,
@@ -110,7 +111,7 @@ export default function EditWarehouseModal({
     }
 
     const countryObj = getCountryByCode(countryCode);
-    const storageObj = getStorageTypeById(form.storageType);
+    const isCold = form.storageType === 'ColdStorage';
 
     onUpdateWarehouse(warehouse.id, {
       code: form.code.trim().toUpperCase() || warehouse.code,
@@ -125,8 +126,8 @@ export default function EditWarehouseModal({
       timezone: form.timezone,
       currency: form.currency,
       storageType: form.storageType,
-      storageTypeLabelAr: storageObj.nameAr,
-      storageTypeLabelEn: storageObj.nameEn,
+      storageTypeLabelAr: getTranslation('ar', `ui.warehouses.${isCold ? 'storageTypeCold' : 'storageTypeStandard'}`),
+      storageTypeLabelEn: getTranslation('en', `ui.warehouses.${isCold ? 'storageTypeCold' : 'storageTypeStandard'}`),
       manager: form.manager.trim(),
       phone: form.phone.trim(),
       capacity: Number(form.capacity) || warehouse.capacity,
@@ -358,41 +359,59 @@ export default function EditWarehouseModal({
               </div>
             </div>
 
-            {/* SECTION 3: STORAGE TYPE CLASSIFICATION */}
+            {/* SECTION 3: STORAGE TYPE */}
             <div className="goods-form-section">
               <div className="section-title-row">
                 <Layers size={16} className="text-cyan" />
-                <h4>{isAr ? '3. نوع وتصنيف التخزين والتحكم البيئي' : '3. Storage Classification'}</h4>
+                <h4>{getTranslation(lang, 'ui.warehouses.storageTypeFieldLabel')}</h4>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-                {STORAGE_CLASSIFICATIONS.map(st => {
-                  const isSelected = form.storageType === st.id;
-                  return (
-                    <div
-                      key={st.id}
-                      onClick={() => setForm({ ...form, storageType: st.id })}
-                      style={{
-                        background: isSelected ? 'var(--primary-light)' : 'var(--card-bg, #ffffff)',
-                        border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
-                        borderRadius: '10px',
-                        padding: '12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isSelected ? 'var(--primary)' : 'var(--foreground)' }}>
-                          {isAr ? st.nameAr : st.nameEn}
-                        </span>
-                        {isSelected && <CheckCircle2 size={16} color="var(--primary)" />}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--muted-foreground)' }}>
-                        {isAr ? st.tempRangeAr : st.tempRangeEn}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, storageType: 'Standard' })}
+                  style={{
+                    background: form.storageType === 'Standard' ? 'var(--primary-light)' : 'var(--card-bg, #ffffff)',
+                    border: form.storageType === 'Standard' ? '2px solid var(--primary)' : '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 700, color: form.storageType === 'Standard' ? 'var(--primary)' : 'var(--foreground)' }}>
+                    <Package size={16} />
+                    <span>{getTranslation(lang, 'ui.warehouses.storageTypeStandard')}</span>
+                  </span>
+                  {form.storageType === 'Standard' && <CheckCircle2 size={16} color="var(--primary)" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, storageType: 'ColdStorage' })}
+                  style={{
+                    background: form.storageType === 'ColdStorage' ? 'rgba(6, 182, 212, 0.12)' : 'var(--card-bg, #ffffff)',
+                    border: form.storageType === 'ColdStorage' ? '2px solid #06b6d4' : '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 700, color: form.storageType === 'ColdStorage' ? '#0891b2' : 'var(--foreground)' }}>
+                    <Snowflake size={16} />
+                    <span>{getTranslation(lang, 'ui.warehouses.storageTypeCold')}</span>
+                  </span>
+                  {form.storageType === 'ColdStorage' && <CheckCircle2 size={16} color="#06b6d4" />}
+                </button>
               </div>
             </div>
 

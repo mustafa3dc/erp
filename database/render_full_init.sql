@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS warehouses (
     location_address TEXT,
     manager_name VARCHAR(150),
     contact_phone VARCHAR(50),
+    storage_type VARCHAR(30) NOT NULL DEFAULT 'Standard',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

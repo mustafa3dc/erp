@@ -98,6 +98,7 @@ public class WarehousesController : ControllerBase
                 location = w.Location,
                 manager = w.ManagerName,
                 phone = w.ContactPhone,
+                storageType = WarehouseStorageTypes.Normalize(w.StorageType),
                 totalCapacity = w.TotalCapacity,
                 occupied = stats?.Occupied ?? 0,
                 itemsCount = stats?.ItemsCount ?? 0,
@@ -122,6 +123,7 @@ public class WarehousesController : ControllerBase
                 location = "بغداد",
                 manager = string.Empty,
                 phone = string.Empty,
+                storageType = WarehouseStorageTypes.Standard,
                 totalCapacity = 10000m,
                 occupied = 0,
                 itemsCount = 0,
@@ -179,6 +181,7 @@ public class WarehousesController : ControllerBase
             location = warehouse.Location,
             manager = warehouse.ManagerName,
             phone = warehouse.ContactPhone,
+            storageType = WarehouseStorageTypes.Normalize(warehouse.StorageType),
             totalCapacity = warehouse.TotalCapacity,
             isActive = warehouse.IsActive
         });
@@ -205,6 +208,7 @@ public class WarehousesController : ControllerBase
         }
         input.CreatedAt = DateTime.UtcNow;
         input.UpdatedAt = DateTime.UtcNow;
+        input.StorageType = WarehouseStorageTypes.Normalize(input.StorageType);
         input.IsActive = true;
 
         _context.Warehouses.Add(input);
@@ -216,6 +220,7 @@ public class WarehousesController : ControllerBase
             code = input.Code,
             name = input.Name,
             location = input.Location,
+            storageType = input.StorageType,
             isActive = input.IsActive
         });
     }

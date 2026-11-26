@@ -307,6 +307,8 @@ using (var scope = app.Services.CreateScope())
                 logger.LogInformation("Database schema is already initialized ({Count} tables verified).", count);
                 // Idempotently ensure incremental columns exist on existing databases
                 dbContext.Database.ExecuteSqlRaw(@"
+                    ALTER TABLE IF EXISTS warehouses
+                        ADD COLUMN IF NOT EXISTS storage_type VARCHAR(30) NOT NULL DEFAULT 'Standard';
                     ALTER TABLE IF EXISTS products
                         ADD COLUMN IF NOT EXISTS requires_serial_number BOOLEAN NOT NULL DEFAULT FALSE,
                         ADD COLUMN IF NOT EXISTS warranty_months INT NOT NULL DEFAULT 0,

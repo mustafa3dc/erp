@@ -38,6 +38,7 @@ public interface ILoyaltyRewardsService
     Task<PublicLoyaltyCardDto> CancelPublicVoucherAsync(string token, Guid voucherId, CancellationToken ct = default);
 
     Task<PosVoucherLookupDto> GetPosVoucherAsync(string code, CancellationToken ct = default);
+    Task<List<PosVoucherLookupDto>> GetPendingPosVouchersAsync(Guid? customerId, string? phone, CancellationToken ct = default);
     Task<PosVoucherLookupDto> ClaimPosVoucherAsync(string code, ClaimPosVoucherRequestDto request, string actorName, CancellationToken ct = default);
 }
 
@@ -618,6 +619,63 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
         }
 
         return MapPosVoucherDto(voucher, inStock);
+    }
+
+    public async Task<List<PosVoucherLookupDto>> GetPendingPosVouchersAsync(
+        Guid? customerId,
+        string? phone,
+        CancellationToken ct = default)
+    {
+        if (!customerId.HasValue && string.IsNullOrWhiteSpace(phone))
+        {
+            return new List<PosVoucherLookupDto>();
+        }
+
+        var query = _context.LoyaltyRedemptionVouchers
+            .Include(v => v.Customer)
+            .Include(v => v.Reward)
+            .ThenInclude(r => r!.Product)
+            .AsNoTracking()
+            .Where(v => v.Status == LoyaltyRedemptionStatuses.PendingPickup);
+
+        if (customerId.HasValue && customerId.Value != Guid.Empty)
+        {
+            query = query.Where(v => v.CustomerId == customerId.Value);
+        }
+        else if (!string.IsNullOrWhiteSpace(phone))
+        {
+            var rawPhone = phone.Trim();
+            var normPhone = LoyaltyTokenHelper.NormalizePhone(rawPhone);
+            query = query.Where(v =>
+                v.Customer != null &&
+                ((!string.IsNullOrEmpty(normPhone) && v.Customer.NormalizedPhone == normPhone) ||
+                 (v.Customer.Phone != null && v.Customer.Phone.Contains(rawPhone))));
+        }
+
+        var vouchers = await query
+            .OrderByDescending(v => v.CreatedAt)
+            .Take(25)
+            .ToListAsync(ct);
+
+        if (vouchers.Count == 0) return new List<PosVoucherLookupDto>();
+
+        var productIds = vouchers
+            .Where(v => v.Reward?.ProductId.HasValue == true)
+            .Select(v => v.Reward!.ProductId!.Value)
+            .Distinct()
+            .ToList();
+
+        var stockByProduct = await LoadAvailableStockByProductAsync(productIds, _tenantProvider.CurrentTenantId, ct);
+
+        return vouchers.Select(v =>
+        {
+            bool inStock = true;
+            if (v.Reward?.ProductId.HasValue == true)
+            {
+                inStock = stockByProduct.TryGetValue(v.Reward.ProductId.Value, out var avail) && avail >= 1;
+            }
+            return MapPosVoucherDto(v, inStock);
+        }).ToList();
     }
 
     public async Task<PosVoucherLookupDto> ClaimPosVoucherAsync(

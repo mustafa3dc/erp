@@ -29,6 +29,16 @@ public class PosVouchersController : ControllerBase
         ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? "Cashier";
 
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<List<PosVoucherLookupDto>>>> SearchPendingVouchers(
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? phone,
+        CancellationToken ct)
+    {
+        var vouchers = await _rewardsService.GetPendingPosVouchersAsync(customerId, phone, ct);
+        return Ok(ApiResponse<List<PosVoucherLookupDto>>.Ok(vouchers));
+    }
+
     [HttpGet("{code}")]
     public async Task<ActionResult<ApiResponse<PosVoucherLookupDto>>> LookupVoucher(
         [FromRoute] string code,

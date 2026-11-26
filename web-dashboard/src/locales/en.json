@@ -1190,7 +1190,17 @@
       "shiftRequiredAlert": "An active open POS shift is required before handing over rewards.",
       "alreadyClaimedAlert": "This voucher has already been claimed or cancelled.",
       "outOfStockAlert": "Insufficient warehouse stock to hand over this reward.",
-      "cancelBtn": "Close"
+      "cancelBtn": "Close",
+      "handoverToolbarBtn": "Handover Reward",
+      "pendingRewardAlert": "Pending reward ready for pickup ({count})",
+      "pendingRewardAlertCta": "Review & Handover",
+      "manualModalTitle": "Manual Reward Handover",
+      "manualModalSubtitle": "Enter voucher code (RDM-) or customer phone number to find pending pickup rewards",
+      "lookupPlaceholder": "Enter RDM- code or phone number...",
+      "lookupSearchBtn": "Search",
+      "lookupSearchingBtn": "Searching...",
+      "lookupNoResults": "No pending pickup reward vouchers found.",
+      "lookupPromptHint": "Supports barcode scan or manual lookup by voucher code or registered customer phone."
     }
   }
 }

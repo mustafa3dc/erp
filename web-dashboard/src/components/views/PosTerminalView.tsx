@@ -35,7 +35,8 @@ import {
   FileText,
   CalendarClock,
   Scale,
-  QrCode
+  QrCode,
+  Gift
 } from 'lucide-react';
 import { useSettings, ScaleSettings } from '../../context/settings-context';
 import { Product, DiscountAuditLog, Warehouse, SalesInvoice } from '../../types/warehouse';
@@ -44,8 +45,10 @@ import OpenShiftModal from '../modals/OpenShiftModal';
 import ElectronicScaleModal from '../modals/ElectronicScaleModal';
 import DigitalLoyaltyCardModal, { DigitalLoyaltyCustomerInfo } from '../modals/DigitalLoyaltyCardModal';
 import RewardHandoverModal from '../modals/RewardHandoverModal';
+import ManualVoucherLookupModal from '../modals/ManualVoucherLookupModal';
 import {
   claimPosVoucher,
+  fetchPendingPosVouchers,
   lookupCustomerByMemberCode,
   lookupPosVoucher,
   PosVoucherLookupResult
@@ -403,6 +406,9 @@ export default function PosTerminalView({
   const [handoverVoucher, setHandoverVoucher] = useState<PosVoucherLookupResult | null>(null);
   const [isHandoverSubmitting, setIsHandoverSubmitting] = useState(false);
   const [handoverError, setHandoverError] = useState<string | null>(null);
+  const [pendingCustomerVouchers, setPendingCustomerVouchers] = useState<PosVoucherLookupResult[]>([]);
+  const [isManualHandoverModalOpen, setIsManualHandoverModalOpen] = useState(false);
+  const [manualInitialVouchers, setManualInitialVouchers] = useState<PosVoucherLookupResult[] | undefined>(undefined);
 
   // Installment POS Modal States
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
@@ -422,6 +428,29 @@ export default function PosTerminalView({
     return customersList.find(c => c && c.id === selectedCustomerId) || null;
   }, [selectedCustomerId, customersList]);
   const isWalkInCustomer = !selectedCustomerObj || Boolean(selectedCustomerObj.isDefaultCashCustomer) || selectedCustomerId === 'CUST-WALKIN';
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isWalkInCustomer || !selectedCustomerObj?.id) {
+      setPendingCustomerVouchers([]);
+      return;
+    }
+
+    fetchPendingPosVouchers({
+      customerId: selectedCustomerObj.id,
+      phone: selectedCustomerObj.phone
+    })
+      .then(vouchers => {
+        if (!cancelled) setPendingCustomerVouchers(vouchers);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingCustomerVouchers([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isWalkInCustomer, selectedCustomerObj?.id, selectedCustomerObj?.phone]);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -1296,6 +1325,19 @@ export default function PosTerminalView({
             </span>
           </button>
 
+          {/* Manual Reward Handover Quick Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setManualInitialVouchers(undefined);
+              setIsManualHandoverModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-full border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
+          >
+            <Gift size={14} className="text-amber-500 shrink-0" />
+            <span>{getTranslation(lang, 'ui.posLoyaltyScan.handoverToolbarBtn')}</span>
+          </button>
+
           {/* Parked Carts */}
           {parkedCarts.length > 0 && (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1742,6 +1784,34 @@ export default function PosTerminalView({
               formatMoney={formatMoney}
               compact
             />
+            {!isWalkInCustomer && pendingCustomerVouchers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (pendingCustomerVouchers.length === 1) {
+                    setHandoverError(null);
+                    setHandoverVoucher(pendingCustomerVouchers[0]);
+                  } else {
+                    setManualInitialVouchers(pendingCustomerVouchers);
+                    setIsManualHandoverModalOpen(true);
+                  }
+                }}
+                className="mt-2 w-full px-3 py-2 rounded-xl border border-amber-500/35 bg-amber-500/12 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-colors"
+              >
+                <span className="inline-flex items-center gap-1.5 min-w-0">
+                  <Gift size={14} className="shrink-0" />
+                  <span className="truncate tabular-nums">
+                    {getTranslation(lang, 'ui.posLoyaltyScan.pendingRewardAlert').replace(
+                      '{count}',
+                      String(pendingCustomerVouchers.length)
+                    )}
+                  </span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[10px] font-bold text-foreground shrink-0">
+                  {getTranslation(lang, 'ui.posLoyaltyScan.pendingRewardAlertCta')}
+                </span>
+              </button>
+            )}
             {!isWalkInCustomer && selectedCustomerObj?.loyaltyCardToken && (
               <button
                 type="button"
@@ -2998,6 +3068,9 @@ export default function PosTerminalView({
             if (setTransactions) {
               setTransactions(getStoredTransactions());
             }
+            setPendingCustomerVouchers(prev =>
+              prev.filter(v => v.voucherCode !== claimed.voucherCode)
+            );
             setHandoverVoucher(null);
             showPaymentToast(
               getTranslation(lang, 'ui.posLoyaltyScan.handoverSuccessToast').replace(
@@ -3011,6 +3084,38 @@ export default function PosTerminalView({
           } finally {
             setIsHandoverSubmitting(false);
           }
+        }}
+      />
+
+      {/* Manual Reward Handover Lookup Modal (RDM- Code OR Phone) */}
+      <ManualVoucherLookupModal
+        isOpen={isManualHandoverModalOpen}
+        onClose={() => {
+          setIsManualHandoverModalOpen(false);
+          setManualInitialVouchers(undefined);
+        }}
+        initialVouchers={manualInitialVouchers}
+        hasActiveShift={Boolean(activeShift)}
+        shiftId={activeShift?.id}
+        warehouseId={selectedWarehouse?.id}
+        actorName={effectiveCashierName}
+        lang={lang}
+        onClaimSuccess={(claimed) => {
+          if (setProducts) {
+            setProducts(getStoredProducts());
+          }
+          if (setTransactions) {
+            setTransactions(getStoredTransactions());
+          }
+          setPendingCustomerVouchers(prev =>
+            prev.filter(v => v.voucherCode !== claimed.voucherCode)
+          );
+          showPaymentToast(
+            getTranslation(lang, 'ui.posLoyaltyScan.handoverSuccessToast').replace(
+              '{code}',
+              claimed.voucherCode
+            )
+          );
         }}
       />
 

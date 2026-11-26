@@ -783,6 +783,91 @@ export async function lookupCustomerByMemberCode(code: string): Promise<PosCusto
   };
 }
 
+export async function fetchPendingPosVouchers(params: {
+  customerId?: string;
+  phone?: string;
+}): Promise<PosVoucherLookupResult[]> {
+  const customerId = params.customerId?.trim();
+  const phone = params.phone?.trim();
+  if (!customerId && !phone) return [];
+
+  const token = getAuthToken();
+  if (token && ((!customerId || isUuid(customerId)) || phone)) {
+    try {
+      const query = new URLSearchParams();
+      if (customerId && isUuid(customerId)) query.set('customerId', customerId);
+      else if (phone) query.set('phone', phone);
+
+      if (query.toString()) {
+        const res = await fetch(`/api/pos/vouchers?${query.toString()}`, {
+          headers: authHeaders()
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success && Array.isArray(json.data)) {
+          return json.data;
+        }
+      }
+    } catch {
+      // Fallback locally
+    }
+  }
+
+  const customers = getStoredCustomers();
+  let targetCustomerIds = new Set<string>();
+  if (customerId) {
+    targetCustomerIds.add(customerId);
+  } else if (phone) {
+    const normPhone = normalizeLoyaltyPhone(phone);
+    for (const c of customers) {
+      if (!c || c.isDefaultCashCustomer) continue;
+      const cNorm = c.normalizedPhone || normalizeLoyaltyPhone(c.phone);
+      const cRaw = String(c.phone || '');
+      if ((normPhone && cNorm === normPhone) || cRaw.includes(phone)) {
+        targetCustomerIds.add(c.id);
+      }
+    }
+  }
+
+  if (targetCustomerIds.size === 0) return [];
+
+  const vouchers = safeGet<LocalStoredVoucher[]>(KEYS.LOYALTY_VOUCHERS, []).filter(
+    v => v.status === 'PendingPickup' && targetCustomerIds.has(v.customerId)
+  );
+  if (vouchers.length === 0) return [];
+
+  const rewards = safeGet<LocalStoredReward[]>(KEYS.LOYALTY_REWARDS, []);
+  const products = getStoredProducts();
+
+  return vouchers
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(v => {
+      const customer = customers.find(c => c.id === v.customerId);
+      const reward = rewards.find(r => r.id === v.rewardId);
+      const product = reward?.productId ? products.find(p => p.id === reward.productId) : null;
+      const inStock = !reward?.productId || (Number(product?.currentStock) || 0) >= 1;
+
+      return {
+        id: v.id,
+        voucherCode: v.voucherCode,
+        status: v.status,
+        pointsSpent: v.pointsSpent,
+        createdAt: v.createdAt,
+        claimedAt: v.claimedAt ?? null,
+        customerId: v.customerId,
+        customerName: customer?.name || '',
+        customerPhone: customer?.phone ?? null,
+        loyaltyMemberCode: customer?.loyaltyMemberCode ?? null,
+        rewardId: v.rewardId,
+        rewardTitle: reward?.title || '',
+        rewardDescription: reward?.description ?? null,
+        rewardImageUrl: reward?.imageUrl ?? null,
+        productId: reward?.productId ?? null,
+        productName: product ? (product.nameAr || product.nameEn || product.sku) : null,
+        inStock
+      };
+    });
+}
+
 export async function lookupPosVoucher(code: string): Promise<PosVoucherLookupResult> {
   const normCode = code.trim().toUpperCase();
   const token = getAuthToken();

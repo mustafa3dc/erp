@@ -1190,7 +1190,17 @@
       "shiftRequiredAlert": "يجب فتح وردية كاشير نشطة أولاً قبل تسليم المكافآت.",
       "alreadyClaimedAlert": "هذه القسيمة مصروفة مسبقاً أو ملغاة ولا يمكن تسليمها مرة أخرى.",
       "outOfStockAlert": "الرصيد المخزني للصنف المرتبط بهذه المكافأة غير كافٍ للتسليم.",
-      "cancelBtn": "إغلاق"
+      "cancelBtn": "إغلاق",
+      "handoverToolbarBtn": "تسليم مكافأة",
+      "pendingRewardAlert": "يوجد مكافأة جاهزة للاستلام ({count})",
+      "pendingRewardAlertCta": "عرض وتسليم",
+      "manualModalTitle": "تسليم مكافأة ولاء يدوياً",
+      "manualModalSubtitle": "أدخل رمز القسيمة (RDM-) أو رقم هاتف العميل للبحث عن المكافآت الجاهزة للاستلام",
+      "lookupPlaceholder": "أدخل رمز القسيمة RDM-84920 أو رقم الهاتف...",
+      "lookupSearchBtn": "بحث",
+      "lookupSearchingBtn": "جاري البحث...",
+      "lookupNoResults": "لا توجد قسائم مكافآت بانتظار الاستلام مطابقة لهذا البحث.",
+      "lookupPromptHint": "يدعم المسح الضوئي أو الإدخال اليدوي لرمز القسيمة أو رقم هاتف العميل المسجل."
     }
   }
 }

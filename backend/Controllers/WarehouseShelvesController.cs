@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 
@@ -28,11 +29,13 @@ public class AssignShelfItemsRequest
 public class WarehouseShelvesController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<WarehouseShelvesController> _logger;
     private static volatile bool _schemaEnsured = false;
 
-    public WarehouseShelvesController(AppDbContext context)
+    public WarehouseShelvesController(AppDbContext context, ILogger<WarehouseShelvesController> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     private async Task EnsureShelvesSchemaAsync()
@@ -67,9 +70,9 @@ public class WarehouseShelvesController : ControllerBase
             catch { }
             _schemaEnsured = true;
         }
-        catch
+        catch (Exception ex)
         {
-            // Will retry on next call if transient
+            _logger.LogError(ex, "EnsureShelvesSchemaAsync failed");
         }
     }
 
@@ -237,9 +240,14 @@ public class WarehouseShelvesController : ControllerBase
                 items = Array.Empty<object>()
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(500, new { errorCode = "ERR_SHELF_SAVE_FAILED" });
+            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseId}", warehouseId);
+            return StatusCode(500, new
+            {
+                errorCode = "ERR_SHELF_SAVE_FAILED",
+                detail = ex.InnerException?.Message ?? ex.Message
+            });
         }
     }
 
@@ -292,9 +300,14 @@ public class WarehouseShelvesController : ControllerBase
                 isActive = shelf.IsActive
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(500, new { errorCode = "ERR_SHELF_SAVE_FAILED" });
+            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseId}", warehouseId);
+            return StatusCode(500, new
+            {
+                errorCode = "ERR_SHELF_SAVE_FAILED",
+                detail = ex.InnerException?.Message ?? ex.Message
+            });
         }
     }
 

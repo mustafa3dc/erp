@@ -294,6 +294,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
+        console.error('[ShelfSaveError]', res.status, err);
         const code =
           err?.errorCode ||
           (res.status === 404

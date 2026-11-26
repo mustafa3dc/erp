@@ -83,7 +83,10 @@
       "BALANCE_MISMATCH": "عدم تطابق في رصيد الحركة المسجل مقارنة بحسابات النظام"
     },
     "POS": {
-      "INVALID_CURRENCY_DENOMINATION": "الرصيد النقدي الافتتاحي غير صالح: يجب أن يكون صفراً أو أكبر ومن مضاعفات 250 د.ع (ERR_INVALID_CURRENCY_DENOMINATION)."
+      "INVALID_CURRENCY_DENOMINATION": "الرصيد النقدي الافتتاحي غير صالح: يجب أن يكون صفراً أو أكبر ومن مضاعفات 250 د.ع (ERR_INVALID_CURRENCY_DENOMINATION).",
+      "ERR_CUSTOMER_REQUIRED_FOR_CREDIT": "يرجى اختيار عميل مسجل لإتمام البيع بالآجل.",
+      "ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT": "يرجى اختيار عميل مسجل لإتمام البيع بالتقسيط.",
+      "ERR_INVALID_INSTALLMENT_TERMS": "شروط التقسيط غير صالحة: يجب أن يكون عدد الأقساط 1 على الأقل والدفعة المقدمة أقل من إجمالي الفاتورة."
     },
     "LOYALTY": {
       "ERR_LOYALTY_CARD_NOT_FOUND": "بطاقة الولاء الرقمية غير موجودة أو غير نشطة.",

@@ -3,7 +3,7 @@ namespace Erp.Domain.Entities;
 public static class PaymentMethodsRegistry
 {
     // الطرق العالمية المتاحة لكل دول العالم
-    public static readonly string[] GlobalMethods = { "CASH", "CARD", "BANK_TRANSFER", "INSTALLMENT" };
+    public static readonly string[] GlobalMethods = { "CASH", "CREDIT", "CARD", "BANK_TRANSFER", "INSTALLMENT" };
 
     // الطرق المقفولة حصرياً على العراق
     public static readonly Dictionary<string, string[]> RegionLockedMethods = new()

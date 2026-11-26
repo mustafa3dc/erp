@@ -661,14 +661,8 @@ public class DiscountEngineService : IDiscountEngineService
             salesInvoice.RealizedProfit = loyaltyResult.RealizedProfit;
             salesInvoice.Items = invoiceItems;
 
-            // 3. Enforce Credit Limit & Debit Receivable Balance on final net payable amount
-            ApplyCustomerCreditDebitInTransaction(resolvedCustomer, request.PaymentMethod, salesInvoice.TotalAmount);
-
-            // Optional Treasury account metadata (drawer cash transfers to Main Safe once upon closing the active shift / Z-Report)
-            if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
-            {
-                salesInvoice.TreasuryAccountId = request.TreasuryAccountId.Value;
-            }
+            // 3. Enforce Credit Limit, Debit Receivable Balance, & Route Treasury / Installments atomically
+            await RoutePosPaymentInTransactionAsync(request, salesInvoice, resolvedCustomer);
 
             _context.SalesInvoices.Add(salesInvoice);
 
@@ -1097,7 +1091,8 @@ public class DiscountEngineService : IDiscountEngineService
             }
             if (isCreditOrInstallment && existing.IsDefaultCashCustomer)
             {
-                throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
+                throw new ApplicationException(
+                    methodNorm == "INSTALLMENT" ? "ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT" : "ERR_CUSTOMER_REQUIRED_FOR_CREDIT");
             }
             return existing;
         }
@@ -1133,7 +1128,8 @@ public class DiscountEngineService : IDiscountEngineService
         // Case 3: Both empty (or Walk-In alias)
         if (isCreditOrInstallment)
         {
-            throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
+            throw new ApplicationException(
+                methodNorm == "INSTALLMENT" ? "ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT" : "ERR_CUSTOMER_REQUIRED_FOR_CREDIT");
         }
 
         var walkIn = await _context.Customers
@@ -1159,22 +1155,219 @@ public class DiscountEngineService : IDiscountEngineService
         return walkIn;
     }
 
-    private static void ApplyCustomerCreditDebitInTransaction(Customer customer, string? paymentMethod, decimal invoiceTotal)
+    private async Task RoutePosPaymentInTransactionAsync(
+        CreatePosInvoiceRequest request,
+        SalesInvoice salesInvoice,
+        Customer customer)
     {
-        var methodNorm = (paymentMethod ?? "CASH").Trim().ToUpperInvariant();
-        bool isCreditOrInstallment = methodNorm is "CREDIT" or "INSTALLMENT" or "CUSTOMER_ACCOUNT_DEBIT";
-        if (!isCreditOrInstallment) return;
+        var methodNorm = (request.PaymentMethod ?? "CASH").Trim().ToUpperInvariant();
+        var tenantId = salesInvoice.TenantId;
+        var actor = !string.IsNullOrWhiteSpace(request.CashierName) ? request.CashierName.Trim() : request.CashierId;
+        var finalTotal = Math.Round(salesInvoice.TotalAmount, 4, MidpointRounding.AwayFromZero);
 
-        if (customer.IsDefaultCashCustomer)
+        if (methodNorm == "CASH")
         {
-            throw new ApplicationException("ERR_CREDIT_SALE_REQUIRES_CUSTOMER");
-        }
-        if (customer.CreditLimit > 0m && customer.CurrentBalance + invoiceTotal > customer.CreditLimit)
-        {
-            throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
+            CashBox? cashBox = null;
+            if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
+            {
+                cashBox = await _context.CashBoxes.FirstOrDefaultAsync(cb =>
+                    cb.Id == request.TreasuryAccountId.Value && cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value));
+            }
+            cashBox ??= await _context.CashBoxes
+                .Where(cb => cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value))
+                .OrderByDescending(cb => cb.AccountType == "Cashbox")
+                .ThenBy(cb => cb.Code)
+                .FirstOrDefaultAsync();
+
+            if (cashBox != null && finalTotal > 0m)
+            {
+                cashBox.CurrentBalance = Math.Round(cashBox.CurrentBalance + finalTotal, 4, MidpointRounding.AwayFromZero);
+                cashBox.UpdatedAt = DateTime.UtcNow;
+                salesInvoice.TreasuryAccountId = cashBox.Id;
+
+                _context.TreasuryTransactions.Add(new TreasuryTransaction
+                {
+                    TenantId = tenantId,
+                    CashBoxId = cashBox.Id,
+                    TransactionType = "RECEIPT",
+                    Amount = finalTotal,
+                    BalanceAfter = cashBox.CurrentBalance,
+                    ReferenceNumber = salesInvoice.InvoiceNumber,
+                    PartyName = customer.Name,
+                    VoucherDate = DateTimeOffset.UtcNow,
+                    Notes = salesInvoice.InvoiceNumber,
+                    CreatedBy = actor,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            return;
         }
 
-        customer.CurrentBalance += invoiceTotal;
-        customer.UpdatedAt = DateTime.UtcNow;
+        if (methodNorm is "CARD" or "CREDIT_CARD")
+        {
+            CashBox? bankAccount = null;
+            if (request.TreasuryAccountId.HasValue && request.TreasuryAccountId.Value != Guid.Empty)
+            {
+                bankAccount = await _context.CashBoxes.FirstOrDefaultAsync(cb =>
+                    cb.Id == request.TreasuryAccountId.Value && cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value));
+            }
+            bankAccount ??= await _context.CashBoxes
+                .Where(cb => cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value))
+                .OrderByDescending(cb => cb.AccountType == "BankAccount")
+                .ThenBy(cb => cb.Code)
+                .FirstOrDefaultAsync();
+
+            if (bankAccount != null && finalTotal > 0m)
+            {
+                bankAccount.CurrentBalance = Math.Round(bankAccount.CurrentBalance + finalTotal, 4, MidpointRounding.AwayFromZero);
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+                salesInvoice.TreasuryAccountId = bankAccount.Id;
+
+                _context.TreasuryTransactions.Add(new TreasuryTransaction
+                {
+                    TenantId = tenantId,
+                    CashBoxId = bankAccount.Id,
+                    TransactionType = "RECEIPT",
+                    Amount = finalTotal,
+                    BalanceAfter = bankAccount.CurrentBalance,
+                    ReferenceNumber = salesInvoice.InvoiceNumber,
+                    PartyName = customer.Name,
+                    VoucherDate = DateTimeOffset.UtcNow,
+                    Notes = salesInvoice.InvoiceNumber,
+                    CreatedBy = actor,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            return;
+        }
+
+        if (methodNorm is "CREDIT" or "CUSTOMER_ACCOUNT_DEBIT")
+        {
+            if (customer.IsDefaultCashCustomer)
+            {
+                throw new ApplicationException("ERR_CUSTOMER_REQUIRED_FOR_CREDIT");
+            }
+            if (customer.CreditLimit > 0m && customer.CurrentBalance + finalTotal > customer.CreditLimit)
+            {
+                throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
+            }
+
+            customer.CurrentBalance = Math.Round(customer.CurrentBalance + finalTotal, 4, MidpointRounding.AwayFromZero);
+            customer.UpdatedAt = DateTime.UtcNow;
+            return;
+        }
+
+        if (methodNorm == "INSTALLMENT")
+        {
+            if (customer.IsDefaultCashCustomer)
+            {
+                throw new ApplicationException("ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT");
+            }
+
+            var plan = request.InstallmentPlan ?? new PosInstallmentPlanRequest();
+            var months = plan.Months;
+            var downPayment = Math.Round(plan.DownPayment, 4, MidpointRounding.AwayFromZero);
+
+            if (months < 1 || downPayment < 0m || downPayment >= finalTotal)
+            {
+                throw new ApplicationException("ERR_INVALID_INSTALLMENT_TERMS");
+            }
+
+            var remainingBalance = Math.Round(finalTotal - downPayment, 4, MidpointRounding.AwayFromZero);
+            if (customer.CreditLimit > 0m && customer.CurrentBalance + remainingBalance > customer.CreditLimit)
+            {
+                throw new ApplicationException("ERR_CREDIT_LIMIT_EXCEEDED");
+            }
+
+            customer.CurrentBalance = Math.Round(customer.CurrentBalance + remainingBalance, 4, MidpointRounding.AwayFromZero);
+            customer.UpdatedAt = DateTime.UtcNow;
+
+            if (downPayment > 0m)
+            {
+                var targetBoxId = plan.TreasuryAccountId ?? request.TreasuryAccountId;
+                CashBox? cashBox = null;
+                if (targetBoxId.HasValue && targetBoxId.Value != Guid.Empty)
+                {
+                    cashBox = await _context.CashBoxes.FirstOrDefaultAsync(cb =>
+                        cb.Id == targetBoxId.Value && cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value));
+                }
+                cashBox ??= await _context.CashBoxes
+                    .Where(cb => cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value))
+                    .OrderByDescending(cb => cb.AccountType == "Cashbox")
+                    .ThenBy(cb => cb.Code)
+                    .FirstOrDefaultAsync();
+
+                if (cashBox != null)
+                {
+                    cashBox.CurrentBalance = Math.Round(cashBox.CurrentBalance + downPayment, 4, MidpointRounding.AwayFromZero);
+                    cashBox.UpdatedAt = DateTime.UtcNow;
+                    salesInvoice.TreasuryAccountId = cashBox.Id;
+
+                    _context.TreasuryTransactions.Add(new TreasuryTransaction
+                    {
+                        TenantId = tenantId,
+                        CashBoxId = cashBox.Id,
+                        TransactionType = "RECEIPT",
+                        Amount = downPayment,
+                        BalanceAfter = cashBox.CurrentBalance,
+                        ReferenceNumber = salesInvoice.InvoiceNumber,
+                        PartyName = customer.Name,
+                        VoucherDate = DateTimeOffset.UtcNow,
+                        Notes = salesInvoice.InvoiceNumber,
+                        CreatedBy = actor,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    });
+                }
+            }
+
+            var firstDue = plan.FirstDueDate.HasValue
+                ? DateTime.SpecifyKind(plan.FirstDueDate.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow.AddMonths(1);
+            var monthlyAmount = Math.Round(remainingBalance / months, 4, MidpointRounding.AwayFromZero);
+
+            var contract = new InstallmentContract
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                ContractNumber = $"INS-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(1000, 9999)}",
+                InvoiceId = salesInvoice.Id,
+                InvoiceNumber = salesInvoice.InvoiceNumber,
+                CustomerId = customer.Id,
+                CustomerName = customer.Name,
+                CustomerPhone = customer.Phone ?? string.Empty,
+                GuarantorName = string.IsNullOrWhiteSpace(plan.GuarantorName) ? customer.Name : plan.GuarantorName.Trim(),
+                GuarantorPhone = string.IsNullOrWhiteSpace(plan.GuarantorPhone) ? (customer.Phone ?? string.Empty) : plan.GuarantorPhone.Trim(),
+                TotalCashPrice = finalTotal,
+                TotalInstallmentPrice = finalTotal,
+                DownPayment = downPayment,
+                RemainingAmount = remainingBalance,
+                InstallmentCount = months,
+                MonthlyAmount = monthlyAmount,
+                StartDate = firstDue,
+                Status = InstallmentContractStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            decimal allocated = 0m;
+            for (int m = 1; m <= months; m++)
+            {
+                var amount = m == months ? Math.Round(remainingBalance - allocated, 4, MidpointRounding.AwayFromZero) : monthlyAmount;
+                allocated += amount;
+                contract.Schedules.Add(new InstallmentScheduleItem
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    ContractId = contract.Id,
+                    InstallmentNumber = m,
+                    DueDate = firstDue.AddMonths(m - 1),
+                    Amount = amount,
+                    PaidAmount = 0.0000m,
+                    Status = InstallmentScheduleStatus.Pending
+                });
+            }
+
+            _context.InstallmentContracts.Add(contract);
+        }
     }
 }

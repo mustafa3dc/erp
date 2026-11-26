@@ -89,6 +89,12 @@ public sealed class CreateSalesInvoiceCommandHandler
                 ? "ERR_LOYALTY_DISABLED"
                 : ex.Message.Contains("ERR_LOYALTY_WALKIN_NOT_ALLOWED")
                 ? "ERR_LOYALTY_WALKIN_NOT_ALLOWED"
+                : ex.Message.Contains("ERR_CUSTOMER_REQUIRED_FOR_CREDIT")
+                ? "ERR_CUSTOMER_REQUIRED_FOR_CREDIT"
+                : ex.Message.Contains("ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT")
+                ? "ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT"
+                : ex.Message.Contains("ERR_INVALID_INSTALLMENT_TERMS")
+                ? "ERR_INVALID_INSTALLMENT_TERMS"
                 : ex.Message.Contains("ERR_CREDIT_SALE_REQUIRES_CUSTOMER")
                 ? "ERR_CREDIT_SALE_REQUIRES_CUSTOMER"
                 : ex.Message.Contains("ERR_CUSTOMER_NOT_FOUND")

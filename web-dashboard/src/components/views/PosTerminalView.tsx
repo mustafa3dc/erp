@@ -1,16 +1,16 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { 
-  ShoppingCart, 
-  Search, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  CreditCard, 
-  Banknote, 
-  Printer, 
-  PauseCircle, 
-  PlayCircle, 
-  CheckCircle2, 
+import {
+  ShoppingCart,
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  CreditCard,
+  Banknote,
+  Printer,
+  PauseCircle,
+  PlayCircle,
+  CheckCircle2,
   RotateCcw,
   Barcode,
   Layers,
@@ -33,6 +33,7 @@ import {
   Zap,
   Warehouse as WarehouseIcon,
   FileText,
+  Receipt,
   CalendarClock,
   Scale,
   QrCode,
@@ -55,10 +56,10 @@ import {
   PosVoucherLookupResult,
   syncCustomersToBackend
 } from '../../services/loyaltyRewardsService';
-import { 
-  ActiveShift, 
-  getStoredActiveShift, 
-  saveStoredActiveShift, 
+import {
+  ActiveShift,
+  getStoredActiveShift,
+  saveStoredActiveShift,
   recordShiftSale,
   executePosSaleTransaction,
   createInstallmentContract,
@@ -179,15 +180,15 @@ function parseScaleBarcode(
   };
 }
 
-export default function PosTerminalView({ 
-  products: propProducts, 
+export default function PosTerminalView({
+  products: propProducts,
   warehouses: propWarehouses,
   setProducts,
   setTransactions,
   setInvoices,
-  lang, 
-  currentUser, 
-  onNavigateToShifts 
+  lang,
+  currentUser,
+  onNavigateToShifts
 }: PosTerminalViewProps) {
   const isAr = lang === 'ar';
   const { tenantCountryCode, isMethodAllowed, formatMoney, currencySymbol, exchangeRate, settings, t } = useSettings();
@@ -245,8 +246,8 @@ export default function PosTerminalView({
       setSelectedWarehouseId(resolution.activeWarehouseId);
       saveStoredSelectedWarehouseId(resolution.activeWarehouseId);
       setPaymentToast(
-        isAr 
-          ? `تنبيه رقابي: المستودع السابق لم يعد نشطاً. تم التحويل تلقائياً إلى "${resolution.activeWarehouse.nameAr}".` 
+        isAr
+          ? `تنبيه رقابي: المستودع السابق لم يعد نشطاً. تم التحويل تلقائياً إلى "${resolution.activeWarehouse.nameAr}".`
           : `Guard Notice: Previous warehouse is disabled/missing. Switched to "${resolution.activeWarehouse.nameEn || resolution.activeWarehouse.nameAr}".`
       );
       setTimeout(() => setPaymentToast(''), 4500);
@@ -299,10 +300,10 @@ export default function PosTerminalView({
 
   // Permission & Role Check
   const hasShiftPermission = currentUser ? (
-    currentUser.role === 'SuperAdmin' || 
-    currentUser.role === 'BranchManager' || 
+    currentUser.role === 'SuperAdmin' ||
+    currentUser.role === 'BranchManager' ||
     currentUser.role === 'Cashier' ||
-    (currentUser.permissions && currentUser.permissions.includes('shifts.manage')) || 
+    (currentUser.permissions && currentUser.permissions.includes('shifts.manage')) ||
     (currentUser.permissions && currentUser.permissions.includes('pos.terminal.access'))
   ) : true;
 
@@ -312,7 +313,7 @@ export default function PosTerminalView({
 
   // Super Admin Feature Flag & Tenant Settings check for Electronic Scales
   const { features } = useTenantFeatures(currentUser);
-  
+
   // Strict Boolean Check: never default to true
   const isScaleEnabled = Boolean(
     (currentUser?.role === 'PlatformSuperAdmin' || features?.enableBarcodeScales === true) &&
@@ -369,7 +370,7 @@ export default function PosTerminalView({
     setPaymentToast(isAr ? 'تم فتح وردية الكاشير بنجاح وتفعيل نقاط البيع' : 'Shift opened successfully! POS sales unlocked.');
     setTimeout(() => setPaymentToast(''), 3500);
   };
-  
+
   // Active editing discount item
   const [editingDiscountItemId, setEditingDiscountItemId] = useState<string | null>(null);
   const [bargainInputPrice, setBargainInputPrice] = useState<string>('');
@@ -425,6 +426,10 @@ export default function PosTerminalView({
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
   const [posDownPayment, setPosDownPayment] = useState<number>(0);
   const [posInstallmentCount, setPosInstallmentCount] = useState<number>(6);
+  const [posFirstDueDate, setPosFirstDueDate] = useState<string>(() =>
+    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
+  const [posInstallmentError, setPosInstallmentError] = useState<string>('');
   const [posGuarantorName, setPosGuarantorName] = useState<string>('');
   const [posGuarantorPhone, setPosGuarantorPhone] = useState<string>('');
   const [posCustomerName, setPosCustomerName] = useState<string>('');
@@ -472,13 +477,41 @@ export default function PosTerminalView({
     return p.nameAr || p.nameEn || '';
   };
 
+  useEffect(() => {
+    const handlePaymentShortcut = (e: KeyboardEvent) => {
+      if (e.key !== 'F2' && e.key !== 'F3' && e.key !== 'F4' && e.key !== 'F5') return;
+      e.preventDefault();
+      if (
+        cart.length === 0 ||
+        grandTotal <= 0 ||
+        !activeShift ||
+        isInstallmentModalOpen ||
+        isOpenShiftModalOpen
+      ) {
+        return;
+      }
+      if (e.key === 'F2') {
+        handleCheckout('CASH');
+      } else if (e.key === 'F3') {
+        handleCheckout('CREDIT');
+      } else if (e.key === 'F4') {
+        setPosInstallmentError('');
+        setIsInstallmentModalOpen(true);
+      } else if (e.key === 'F5') {
+        handleCheckout('CARD');
+      }
+    };
+    window.addEventListener('keydown', handlePaymentShortcut);
+    return () => window.removeEventListener('keydown', handlePaymentShortcut);
+  });
+
   const filteredProducts = products.filter(p => {
     // 1. Warehouse Binding:
     // If selectedWarehouseId is 'ALL' or empty, display products from all warehouses!
-    const matchesWarehouse = 
-      !selectedWarehouseId || 
-      selectedWarehouseId === 'ALL' || 
-      !p.warehouseId || 
+    const matchesWarehouse =
+      !selectedWarehouseId ||
+      selectedWarehouseId === 'ALL' ||
+      !p.warehouseId ||
       p.warehouseId === 'ALL' ||
       p.warehouseId.toLowerCase() === selectedWarehouseId.toLowerCase() ||
       (selectedWarehouse && (
@@ -493,7 +526,7 @@ export default function PosTerminalView({
 
     const isScaleItem = p.unit === 'كغم' || p.unit === 'كجم' || p.unit?.toLowerCase() === 'kg' || p.unit === 'غرام' || p.unit?.toLowerCase() === 'g' || (p.barcode && (p.barcode.startsWith('20') || p.barcode.startsWith('21') || p.barcode.startsWith('22')));
 
-    const matchesCat = 
+    const matchesCat =
       selectedCategory === 'ALL' ||
       (selectedCategory.toLowerCase() === 'scale' && isScaleItem) ||
       p.categoryId === selectedCategory ||
@@ -508,7 +541,7 @@ export default function PosTerminalView({
     if (!query) return true;
 
     const pName = getProductName(p).toLowerCase();
-    const matchesSearch = 
+    const matchesSearch =
       pName.includes(query) ||
       (p.barcode && p.barcode.toLowerCase().includes(query)) ||
       (p.sku && p.sku.toLowerCase().includes(query)) ||
@@ -543,13 +576,13 @@ export default function PosTerminalView({
       setStockError(
         product.isBundle
           ? t('posMessages.outOfStockBundle', isAr
-              ? `لا يمكن إضافة الحزمة "${getProductName(product)}": رصيد المكونات غير كافٍ في مستودع (${whLabel})!`
-              : `Cannot add bundle "${getProductName(product)}": insufficient component stock in (${whLabel})!`)
-              .replace('{name}', getProductName(product))
-              .replace('{warehouse}', whLabel)
+            ? `لا يمكن إضافة الحزمة "${getProductName(product)}": رصيد المكونات غير كافٍ في مستودع (${whLabel})!`
+            : `Cannot add bundle "${getProductName(product)}": insufficient component stock in (${whLabel})!`)
+            .replace('{name}', getProductName(product))
+            .replace('{warehouse}', whLabel)
           : (isAr
-              ? `لا يمكن إضافة الصنف "${getProductName(product)}": نفد المخزون في مستودع (${selectedWarehouse.nameAr})!`
-              : `Cannot add "${getProductName(product)}": Out of stock in (${selectedWarehouse.nameEn || selectedWarehouse.nameAr})!`)
+            ? `لا يمكن إضافة الصنف "${getProductName(product)}": نفد المخزون في مستودع (${selectedWarehouse.nameAr})!`
+            : `Cannot add "${getProductName(product)}": Out of stock in (${selectedWarehouse.nameEn || selectedWarehouse.nameAr})!`)
       );
       return;
     }
@@ -577,12 +610,12 @@ export default function PosTerminalView({
         return prev.map(item =>
           item.product.id === product.id
             ? {
-                ...item,
-                quantity: nextQty,
-                serialNumbers: cleanSerial
-                  ? [...(item.serialNumbers || []), cleanSerial]
-                  : item.serialNumbers
-              }
+              ...item,
+              quantity: nextQty,
+              serialNumbers: cleanSerial
+                ? [...(item.serialNumbers || []), cleanSerial]
+                : item.serialNumbers
+            }
             : item
         );
       }
@@ -690,14 +723,14 @@ export default function PosTerminalView({
   // If price < Floor Price: REJECTED, LOCKED, exact message: "تجاوزت الحد المسموح به للخصم على هذه المادة"
   const handleSetItemPrice = (item: CartItem, proposedPrice: number) => {
     const retail = item.product.sellingPrice;
-    const floorPrice = item.product.minSellingPrice !== undefined 
-      ? item.product.minSellingPrice 
+    const floorPrice = item.product.minSellingPrice !== undefined
+      ? item.product.minSellingPrice
       : Math.round(retail * 0.88);
 
     // Resetting to original retail price
     if (proposedPrice === retail) {
-      setCart(prev => prev.map(ci => 
-        ci.product.id === item.product.id 
+      setCart(prev => prev.map(ci =>
+        ci.product.id === item.product.id
           ? { ...ci, customPrice: undefined, discountType: undefined, discountValue: undefined, priceError: undefined }
           : ci
       ));
@@ -708,36 +741,36 @@ export default function PosTerminalView({
 
     if (proposedPrice >= floorPrice && proposedPrice >= 0) {
       // 1. Accepted immediately! No questions asked!
-      setCart(prev => prev.map(ci => 
-        ci.product.id === item.product.id 
-          ? { 
-              ...ci, 
-              customPrice: proposedPrice, 
-              discountType: undefined, 
-              discountValue: undefined, 
-              priceError: undefined 
-            }
+      setCart(prev => prev.map(ci =>
+        ci.product.id === item.product.id
+          ? {
+            ...ci,
+            customPrice: proposedPrice,
+            discountType: undefined,
+            discountValue: undefined,
+            priceError: undefined
+          }
           : ci
       ));
       setEditingDiscountItemId(null);
       setBargainInputPrice('');
-      setPaymentToast(isAr 
-        ? `تم قبول السعر (${formatMoney(proposedPrice)}) بنجاح` 
+      setPaymentToast(isAr
+        ? `تم قبول السعر (${formatMoney(proposedPrice)}) بنجاح`
         : `Price (${formatMoney(proposedPrice)}) accepted`);
       setTimeout(() => setPaymentToast(''), 3000);
     } else {
       // 2. Breached safety floor! Lock, reject, and show exact message.
-      const errorMsg = isAr 
-        ? 'تجاوزت الحد المسموح به للخصم على هذه المادة' 
+      const errorMsg = isAr
+        ? 'تجاوزت الحد المسموح به للخصم على هذه المادة'
         : 'Discount exceeds allowed floor limit for this item';
 
-      setCart(prev => prev.map(ci => 
-        ci.product.id === item.product.id 
-          ? { 
-              ...ci, 
-              customPrice: proposedPrice, 
-              priceError: errorMsg 
-            }
+      setCart(prev => prev.map(ci =>
+        ci.product.id === item.product.id
+          ? {
+            ...ci,
+            customPrice: proposedPrice,
+            priceError: errorMsg
+          }
           : ci
       ));
       setPaymentToast(errorMsg);
@@ -756,8 +789,8 @@ export default function PosTerminalView({
   };
 
   const handleResetItemPrice = (item: CartItem) => {
-    setCart(prev => prev.map(ci => 
-      ci.product.id === item.product.id 
+    setCart(prev => prev.map(ci =>
+      ci.product.id === item.product.id
         ? { ...ci, customPrice: undefined, discountType: undefined, discountValue: undefined, priceError: undefined }
         : ci
     ));
@@ -838,16 +871,17 @@ export default function PosTerminalView({
   }, [cart, exchangeRate, settings, isIraqTenant, currencySymbol, redeemPoints, loyaltySettings, isWalkInCustomer, products, storedBundles]);
 
   const handleCheckout = (
-    method: 'CASH' | 'CARD' | 'ZAIN_CASH' | 'QI_CARD' | 'INSTALLMENT' | string,
+    method: 'CASH' | 'CREDIT' | 'CARD' | 'INSTALLMENT' | string,
     installmentData?: {
       downPayment: number;
       installmentCount: number;
+      firstDueDate?: string;
       guarantorName: string;
       guarantorPhone: string;
       customerName?: string;
     }
   ) => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || grandTotal <= 0) return;
 
     if (!activeShift) {
       showPaymentToast(
@@ -895,10 +929,15 @@ export default function PosTerminalView({
     const resolvedInputCustomerName = (installmentData?.customerName ?? posCustomerName).trim();
     const isCreditOrInstallmentMethod = method === 'CREDIT' || method === 'INSTALLMENT';
 
-    if (isCreditOrInstallmentMethod && !resolvedInputCustomerName && !selectedCustomerId) {
+    if (isCreditOrInstallmentMethod && (isWalkInCustomer || !selectedCustomerId) && !resolvedInputCustomerName) {
       setCustomerErrorHighlight(true);
       showPaymentToast(
-        getTranslation(lang, 'ui.customerPicker.creditRequiresCustomer'),
+        getTranslation(
+          lang,
+          method === 'INSTALLMENT'
+            ? 'errors.ERR.POS.ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT'
+            : 'errors.ERR.POS.ERR_CUSTOMER_REQUIRED_FOR_CREDIT'
+        ),
         4000
       );
       return;
@@ -1001,11 +1040,16 @@ export default function PosTerminalView({
       if (method === 'INSTALLMENT' && installmentData) {
         const rem = Math.max(0, grandTotal - installmentData.downPayment);
         const monthly = installmentData.installmentCount > 0 ? Math.round(rem / installmentData.installmentCount) : 0;
-        const firstDueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const firstDueDate =
+          installmentData.firstDueDate ||
+          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         createInstallmentContract({
           invoiceId: result.invoice.id,
-          customerName: installmentData.customerName || t('posMessages.defaultCustomer', isAr ? 'عميل كاشير مباشر (POS Retail)' : 'Retail Walk-in Customer'),
+          customerName:
+            selectedCustomerObj?.name ||
+            installmentData.customerName ||
+            t('posMessages.defaultCustomer', isAr ? 'عميل كاشير مباشر (POS Retail)' : 'Retail Walk-in Customer'),
           guarantorName: installmentData.guarantorName.trim(),
           guarantorPhone: installmentData.guarantorPhone.trim(),
           totalCashPrice: subtotal,
@@ -1014,7 +1058,7 @@ export default function PosTerminalView({
           remainingAmount: rem,
           installmentCount: installmentData.installmentCount,
           monthlyAmount: monthly,
-          startDate: new Date().toISOString(),
+          startDate: new Date(firstDueDate).toISOString(),
           notes: `عقد بيع بالتقسيط صادر من الكاشير لفاتورة #${invoiceNumber}`
         });
 
@@ -1049,7 +1093,7 @@ export default function PosTerminalView({
         warehouseName: selectedWarehouse?.nameAr || selectedWarehouse?.nameEn || selectedWarehouse?.code || 'WH-01',
         dispenseMode,
         targetWarehouseName: targetWhLabel,
-        receiptNotice: isWarehouseDispatch 
+        receiptNotice: isWarehouseDispatch
           ? (isAr ? 'قيد التجهيز من المخزن - يرجى مراجعة أمين المخزن للاستلام' : 'Pending Warehouse Dispatch - Please claim at warehouse')
           : (isAr ? 'مستلمة ومصروفة من المحل' : 'Dispensed and received in-store'),
         loyaltyPointsEarned: result.loyaltyPointsEarned,
@@ -1057,13 +1101,13 @@ export default function PosTerminalView({
         loyaltyDiscountAmount: result.loyaltyDiscountAmount,
         customerInfo: matchedCustomer && matchedCustomer.loyaltyCardToken
           ? {
-              id: matchedCustomer.id,
-              name: matchedCustomer.name,
-              phone: matchedCustomer.phone,
-              loyaltyMemberCode: matchedCustomer.loyaltyMemberCode,
-              loyaltyCardToken: matchedCustomer.loyaltyCardToken,
-              loyaltyPointsBalance: matchedCustomer.loyaltyPointsBalance ?? matchedCustomer.loyaltyPoints ?? 0
-            }
+            id: matchedCustomer.id,
+            name: matchedCustomer.name,
+            phone: matchedCustomer.phone,
+            loyaltyMemberCode: matchedCustomer.loyaltyMemberCode,
+            loyaltyCardToken: matchedCustomer.loyaltyCardToken,
+            loyaltyPointsBalance: matchedCustomer.loyaltyPointsBalance ?? matchedCustomer.loyaltyPoints ?? 0
+          }
           : null,
         installmentDetails: createdInstallmentDetails,
         warehouse: {
@@ -1089,8 +1133,8 @@ export default function PosTerminalView({
       showPaymentToast(
         isWarehouseDispatch
           ? (isAr ? `تم تسجيل طلب التجهيز وإرساله لأمين المخزن (${targetWhLabel}) بنجاح!` : `Dispatch order queued for warehouse keeper at (${targetWhLabel})!`)
-          : t('posMessages.saleSuccess', isAr 
-            ? `تم إتمام عملية البيع وخصم الكميات من مستودع (${warehouseLabel}) وتوثيق حركة الصرف بنجاح!` 
+          : t('posMessages.saleSuccess', isAr
+            ? `تم إتمام عملية البيع وخصم الكميات من مستودع (${warehouseLabel}) وتوثيق حركة الصرف بنجاح!`
             : `Sale completed & stock deducted from (${warehouseLabel})!`),
         4000
       );
@@ -1104,7 +1148,7 @@ export default function PosTerminalView({
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
         if (matchedCustomer && matchedCustomer.loyaltyCardToken) {
-          syncCustomersToBackend([matchedCustomer]).catch(() => {});
+          syncCustomersToBackend([matchedCustomer]).catch(() => { });
         }
 
         fetch('/api/pos/invoices', {
@@ -1142,7 +1186,7 @@ export default function PosTerminalView({
         }).catch(() => {
           // Handled safely locally
         });
-      } catch {}
+      } catch { }
 
     } catch (err: any) {
       if (err.message?.includes('ERR_NO_ACTIVE_SHIFT')) {
@@ -1193,7 +1237,7 @@ export default function PosTerminalView({
   return (
     <div className="view-content-wrapper fade-in" style={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       {paymentToast && (
-        <div 
+        <div
           className="fixed bottom-6 start-6 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-slate-900/95 dark:bg-card text-white dark:text-foreground border border-slate-700/80 dark:border-border shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200"
           style={{ maxWidth: '440px' }}
         >
@@ -1480,21 +1524,21 @@ export default function PosTerminalView({
                           return exists
                             ? prev
                             : [
-                                {
-                                  id: found.id,
-                                  code: found.code,
-                                  name: found.name,
-                                  phone: found.phone || '—',
-                                  loyaltyMemberCode: found.loyaltyMemberCode,
-                                  loyaltyCardToken: found.loyaltyCardToken,
-                                  loyaltyPoints: found.loyaltyPointsBalance,
-                                  loyaltyPointsBalance: found.loyaltyPointsBalance,
-                                  creditLimit: found.creditLimit,
-                                  currentBalance: found.currentBalance,
-                                  isDefaultCashCustomer: found.isDefaultCashCustomer
-                                },
-                                ...prev
-                              ];
+                              {
+                                id: found.id,
+                                code: found.code,
+                                name: found.name,
+                                phone: found.phone || '—',
+                                loyaltyMemberCode: found.loyaltyMemberCode,
+                                loyaltyCardToken: found.loyaltyCardToken,
+                                loyaltyPoints: found.loyaltyPointsBalance,
+                                loyaltyPointsBalance: found.loyaltyPointsBalance,
+                                creditLimit: found.creditLimit,
+                                currentBalance: found.currentBalance,
+                                isDefaultCashCustomer: found.isDefaultCashCustomer
+                              },
+                              ...prev
+                            ];
                         });
                         setSelectedCustomerId(found.id);
                         setPosCustomerName(found.name);
@@ -1628,7 +1672,7 @@ export default function PosTerminalView({
                         setSearchQuery('');
                         const unitStr = isAr ? 'كغم' : 'kg';
                         showPaymentToast(
-                          isAr 
+                          isAr
                             ? `ميزان باركود: تم إضافة (${scaleMatch.product.nameAr}) بوزن ${scaleMatch.quantity} ${unitStr}`
                             : `Scale Item: Added (${scaleMatch.product.nameAr}) [${scaleMatch.quantity} ${unitStr}]`
                         );
@@ -1637,8 +1681,8 @@ export default function PosTerminalView({
                     }
 
                     // 2. Direct exact barcode / SKU match
-                    const exactMatched = products.find(p => 
-                      (p.barcode && p.barcode.toLowerCase() === raw.toLowerCase()) || 
+                    const exactMatched = products.find(p =>
+                      (p.barcode && p.barcode.toLowerCase() === raw.toLowerCase()) ||
                       (p.sku && p.sku.toLowerCase() === raw.toLowerCase())
                     );
                     if (exactMatched) {
@@ -1654,8 +1698,8 @@ export default function PosTerminalView({
                       setSearchQuery('');
                     } else {
                       const q = raw.toLowerCase();
-                      const matched = products.find(p => 
-                        (p.nameAr && p.nameAr.toLowerCase() === q) || 
+                      const matched = products.find(p =>
+                        (p.nameAr && p.nameAr.toLowerCase() === q) ||
                         (p.nameEn && p.nameEn.toLowerCase() === q)
                       );
                       if (matched) {
@@ -1689,11 +1733,10 @@ export default function PosTerminalView({
                     setIsScaleModalOpen(true);
                   }
                 }}
-                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0 ${
-                  selectedCategory === 'scale'
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold cursor-pointer transition-all shrink-0 ${selectedCategory === 'scale'
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
-                }`}
+                  }`}
                 title={isAr ? 'أصناف الميزان والميزان الذكي' : 'Scale Items & Smart Scale'}
               >
                 <Scale className="w-4 h-4" />
@@ -1703,14 +1746,14 @@ export default function PosTerminalView({
           </div>
 
           {/* Product Grid (Masked: NO Cost Price) - alignContent: 'start' prevents single rows from stretching vertically */}
-          <div style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', 
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
             alignContent: 'start',
-            gap: '12px', 
-            paddingRight: '4px' 
+            gap: '12px',
+            paddingRight: '4px'
           }}>
             {filteredProducts.length === 0 ? (
               <div style={{
@@ -1745,7 +1788,7 @@ export default function PosTerminalView({
                     {isAr ? 'لم يتم العثور على أي منتجات مطابقة' : 'No matching products found'}
                   </h4>
                   <p style={{ fontSize: '12px', maxWidth: '420px', margin: 0, lineHeight: '1.6' }}>
-                    {searchQuery 
+                    {searchQuery
                       ? (isAr ? `لا توجد أصناف تطابق عبارة البحث "${searchQuery}"` : `No items matching "${searchQuery}"`)
                       : (isAr ? 'قد تكون المنتجات مسجلة في مستودع آخر أو تم حصرها بتصنيف مختلف.' : 'Products may be assigned to another warehouse or filtered by category.')}
                   </p>
@@ -1820,7 +1863,7 @@ export default function PosTerminalView({
                         )}
                       </div>
                       <h4 style={{ fontSize: '13px', margin: '6px 0 4px 0', fontWeight: 700, color: 'var(--foreground)', lineHeight: '1.4' }}>{getProductName(p)}</h4>
-                      
+
                       {/* Live Stock Badge */}
                       <div style={{ marginTop: '4px' }}>
                         <span style={{
@@ -1833,8 +1876,8 @@ export default function PosTerminalView({
                           borderRadius: '4px',
                           display: 'inline-block'
                         }}>
-                          {currentAvailable > 0 
-                            ? `${isAr ? 'المخزون:' : 'Stock:'} ${currentAvailable} ${p.unit || ''}` 
+                          {currentAvailable > 0
+                            ? `${isAr ? 'المخزون:' : 'Stock:'} ${currentAvailable} ${p.unit || ''}`
                             : (isAr ? 'نفد من المستودع' : 'Out of stock')}
                         </span>
                       </div>
@@ -1846,20 +1889,20 @@ export default function PosTerminalView({
                           {formatMoney(p.sellingPrice)}
                         </span>
                       </div>
-                      <button 
+                      <button
                         disabled={isOutOfStock}
-                        style={{ 
-                          background: isOutOfStock ? 'var(--muted)' : 'var(--primary)', 
-                          border: 'none', 
-                          color: isOutOfStock ? 'var(--muted-foreground)' : '#fff', 
-                          borderRadius: '6px', 
-                          width: '28px', 
-                          height: '28px', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          cursor: isOutOfStock ? 'not-allowed' : 'pointer', 
-                          boxShadow: isOutOfStock ? 'none' : '0 2px 6px var(--primary-glow)' 
+                        style={{
+                          background: isOutOfStock ? 'var(--muted)' : 'var(--primary)',
+                          border: 'none',
+                          color: isOutOfStock ? 'var(--muted-foreground)' : '#fff',
+                          borderRadius: '6px',
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                          boxShadow: isOutOfStock ? 'none' : '0 2px 6px var(--primary-glow)'
                         }}
                       >
                         <Plus size={16} />
@@ -1886,14 +1929,14 @@ export default function PosTerminalView({
 
             {cart.length > 0 && (
               <div style={{ display: 'flex', gap: '6px' }}>
-                <button 
+                <button
                   onClick={parkCurrentCart}
                   title={isAr ? 'تعليق الفاتورة' : 'Park Cart'}
                   style={{ background: 'transparent', border: 'none', color: '#f59e0b', cursor: 'pointer' }}
                 >
                   <PauseCircle size={18} />
                 </button>
-                <button 
+                <button
                   onClick={clearCart}
                   title={isAr ? 'تفريغ السلة' : 'Clear Cart'}
                   style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}
@@ -1993,439 +2036,441 @@ export default function PosTerminalView({
                   const isTierActive = tierResolution.isTierApplied && !isManualBargain;
                   const finalUnitPrice = getEffectiveUnitPrice(item);
                   const isModified = isTierActive || isManualBargain;
-                  const floorPrice = item.product.minSellingPrice !== undefined 
-                    ? item.product.minSellingPrice 
+                  const floorPrice = item.product.minSellingPrice !== undefined
+                    ? item.product.minSellingPrice
                     : (item.product.isBundle ? 0 : Math.round(item.product.sellingPrice * 0.88));
                   const isBreached = !!item.priceError || (!tierResolution.isTierApplied && finalUnitPrice < floorPrice);
                   const lineIssue = cartStockCheck.lineIssues[item.product.id];
 
-                return (
-                  <div 
-                    key={item.product.id}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 'var(--radius)',
-                      background: isBreached 
-                        ? 'rgba(239, 68, 68, 0.1)' 
-                        : isModified 
-                          ? 'rgba(16, 185, 129, 0.08)' 
-                          : 'var(--surface-subtle, var(--muted))',
-                      border: isBreached 
-                        ? '1px solid rgba(239, 68, 68, 0.4)' 
-                        : isModified 
-                          ? '1px solid rgba(16, 185, 129, 0.3)' 
-                          : '1px solid var(--border)',
-                      marginBottom: '8px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '6px',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    {/* Item Title and Total Line Price */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--foreground)' }}>{getProductName(item.product)}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', textDecoration: isTierActive ? 'line-through' : 'none' }}>
-                            {formatMoney(item.product.sellingPrice)}
+                  return (
+                    <div
+                      key={item.product.id}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 'var(--radius)',
+                        background: isBreached
+                          ? 'rgba(239, 68, 68, 0.1)'
+                          : isModified
+                            ? 'rgba(16, 185, 129, 0.08)'
+                            : 'var(--surface-subtle, var(--muted))',
+                        border: isBreached
+                          ? '1px solid rgba(239, 68, 68, 0.4)'
+                          : isModified
+                            ? '1px solid rgba(16, 185, 129, 0.3)'
+                            : '1px solid var(--border)',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {/* Item Title and Total Line Price */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--foreground)' }}>{getProductName(item.product)}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', textDecoration: isTierActive ? 'line-through' : 'none' }}>
+                              {formatMoney(item.product.sellingPrice)}
+                            </span>
+                            {isModified && (
+                              <span style={{
+                                fontSize: '11px',
+                                color: isBreached ? '#ef4444' : '#059669',
+                                fontWeight: 700
+                              }}>
+                                ({formatMoney(finalUnitPrice)})
+                              </span>
+                            )}
+                            {isTierActive && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
+                                {getTranslation(lang, 'quantityPricing.tierAppliedBadge')} ({tierResolution.maxQty != null ? `${tierResolution.minQty}-${tierResolution.maxQty}` : `${tierResolution.minQty}+`})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: isAr ? 'left' : 'right' }}>
+                          <span style={{
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            color: isBreached ? '#ef4444' : '#059669'
+                          }}>
+                            {formatMoney(finalUnitPrice * item.quantity)}
                           </span>
                           {isModified && (
-                            <span style={{ 
-                              fontSize: '11px', 
-                              color: isBreached ? '#ef4444' : '#059669', 
-                              fontWeight: 700 
-                            }}>
-                              ({formatMoney(finalUnitPrice)})
-                            </span>
-                          )}
-                          {isTierActive && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
-                              {getTranslation(lang, 'quantityPricing.tierAppliedBadge')} ({tierResolution.maxQty != null ? `${tierResolution.minQty}-${tierResolution.maxQty}` : `${tierResolution.minQty}+`})
+                            <span style={{ display: 'block', fontSize: '10px', color: 'var(--muted-foreground)', textDecoration: 'line-through' }}>
+                              {formatMoney(item.product.sellingPrice * item.quantity)}
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                        <span style={{ 
-                              fontSize: '14px', 
-                              fontWeight: 700, 
-                              color: isBreached ? '#ef4444' : '#059669' 
-                        }}>
-                          {formatMoney(finalUnitPrice * item.quantity)}
-                        </span>
-                        {isModified && (
-                          <span style={{ display: 'block', fontSize: '10px', color: 'var(--muted-foreground)', textDecoration: 'line-through' }}>
-                            {formatMoney(item.product.sellingPrice * item.quantity)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Bound Serial / IMEI Chips & Inline Cart Scanner for Serialized Products */}
-                    {isSerialModuleEnabled && (item.product.requiresSerialNumber || (item.serialNumbers && item.serialNumbers.length > 0)) && (
-                      <div className="mt-1 pt-1.5 border-t border-border/50 space-y-1.5">
-                        {item.serialNumbers && item.serialNumbers.length > 0 && (
-                          <div className="flex flex-wrap gap-1" dir="ltr">
-                            {item.serialNumbers.map(sn => (
-                              <span
-                                key={sn}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 text-[10px] font-mono font-bold"
-                              >
-                                <Barcode size={10} />
-                                <span>{sn}</span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setCart(prev => prev.map(ci =>
-                                      ci.product.id === item.product.id
-                                        ? { ...ci, serialNumbers: (ci.serialNumbers || []).filter(x => x !== sn) }
-                                        : ci
-                                    ))
-                                  }
-                                  className="bg-transparent border-0 p-0 text-primary/70 hover:text-destructive cursor-pointer"
+                      {/* Bound Serial / IMEI Chips & Inline Cart Scanner for Serialized Products */}
+                      {isSerialModuleEnabled && (item.product.requiresSerialNumber || (item.serialNumbers && item.serialNumbers.length > 0)) && (
+                        <div className="mt-1 pt-1.5 border-t border-border/50 space-y-1.5">
+                          {item.serialNumbers && item.serialNumbers.length > 0 && (
+                            <div className="flex flex-wrap gap-1" dir="ltr">
+                              {item.serialNumbers.map(sn => (
+                                <span
+                                  key={sn}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 text-[10px] font-mono font-bold"
                                 >
-                                  <X size={10} />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {item.product.requiresSerialNumber && (item.serialNumbers?.length || 0) < item.quantity && (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={cartSerialInputs[item.product.id] || ''}
-                              onChange={(e) => setCartSerialInputs(prev => ({ ...prev, [item.product.id]: e.target.value }))}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  const snVal = (cartSerialInputs[item.product.id] || '').trim();
-                                  if (!snVal) return;
-                                  const storedMatch = getStoredProductSerials().find(
-                                    s => s.serialNumber.trim().toLowerCase() === snVal.toLowerCase()
-                                  );
-                                  if (storedMatch && storedMatch.status === 'Sold') {
-                                    showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_ALREADY_SOLD'), 4000);
-                                    return;
+                                  <Barcode size={10} />
+                                  <span>{sn}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCart(prev => prev.map(ci =>
+                                        ci.product.id === item.product.id
+                                          ? { ...ci, serialNumbers: (ci.serialNumbers || []).filter(x => x !== sn) }
+                                          : ci
+                                      ))
+                                    }
+                                    className="bg-transparent border-0 p-0 text-primary/70 hover:text-destructive cursor-pointer"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {item.product.requiresSerialNumber && (item.serialNumbers?.length || 0) < item.quantity && (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={cartSerialInputs[item.product.id] || ''}
+                                onChange={(e) => setCartSerialInputs(prev => ({ ...prev, [item.product.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const snVal = (cartSerialInputs[item.product.id] || '').trim();
+                                    if (!snVal) return;
+                                    const storedMatch = getStoredProductSerials().find(
+                                      s => s.serialNumber.trim().toLowerCase() === snVal.toLowerCase()
+                                    );
+                                    if (storedMatch && storedMatch.status === 'Sold') {
+                                      showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_ALREADY_SOLD'), 4000);
+                                      return;
+                                    }
+                                    if (storedMatch && storedMatch.status !== 'InStock') {
+                                      showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_NOT_AVAILABLE_FOR_SALE'), 4000);
+                                      return;
+                                    }
+                                    setCart(prev => prev.map(ci =>
+                                      ci.product.id === item.product.id && !(ci.serialNumbers || []).some(x => x.toLowerCase() === snVal.toLowerCase())
+                                        ? { ...ci, serialNumbers: [...(ci.serialNumbers || []), snVal] }
+                                        : ci
+                                    ));
+                                    setCartSerialInputs(prev => ({ ...prev, [item.product.id]: '' }));
                                   }
-                                  if (storedMatch && storedMatch.status !== 'InStock') {
-                                    showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_NOT_AVAILABLE_FOR_SALE'), 4000);
-                                    return;
-                                  }
-                                  setCart(prev => prev.map(ci =>
-                                    ci.product.id === item.product.id && !(ci.serialNumbers || []).some(x => x.toLowerCase() === snVal.toLowerCase())
-                                      ? { ...ci, serialNumbers: [...(ci.serialNumbers || []), snVal] }
-                                      : ci
-                                  ));
-                                  setCartSerialInputs(prev => ({ ...prev, [item.product.id]: '' }));
-                                }
-                              }}
-                              placeholder={getTranslation(lang, 'serialTracking.serialRequiredForPos')}
-                              dir="ltr"
-                              className="h-7 flex-1 px-2 rounded border border-border bg-background text-foreground font-mono text-[11px] outline-none focus:border-primary"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
+                                }}
+                                placeholder={getTranslation(lang, 'serialTracking.serialRequiredForPos')}
+                                dir="ltr"
+                                className="h-7 flex-1 px-2 rounded border border-border bg-background text-foreground font-mono text-[11px] outline-none focus:border-primary"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                    {/* Stock Deficit Warning (dynamically validates bundles & shared cart component demand) */}
-                    {lineIssue && (
-                      <div style={{
-                        background: 'var(--badge-red-bg)',
-                        border: '1px solid var(--badge-red-border)',
-                        borderRadius: '6px',
-                        padding: '6px 8px',
-                        color: 'var(--badge-red-fg)',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}>
-                        <AlertCircle size={14} style={{ color: 'var(--badge-red-fg)', flexShrink: 0 }} />
-                        <span>
-                          {item.product.isBundle && lineIssue.conflictingComponent
-                            ? t('posMessages.cartComponentConflict', isAr
+                      {/* Stock Deficit Warning (dynamically validates bundles & shared cart component demand) */}
+                      {lineIssue && (
+                        <div style={{
+                          background: 'var(--badge-red-bg)',
+                          border: '1px solid var(--badge-red-border)',
+                          borderRadius: '6px',
+                          padding: '6px 8px',
+                          color: 'var(--badge-red-fg)',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <AlertCircle size={14} style={{ color: 'var(--badge-red-fg)', flexShrink: 0 }} />
+                          <span>
+                            {item.product.isBundle && lineIssue.conflictingComponent
+                              ? t('posMessages.cartComponentConflict', isAr
                                 ? `إجمالي الكمية المطلوبة للمكون "${lineIssue.conflictingComponent}" في السلة (${lineIssue.required}) يتجاوز المتاح (${lineIssue.available})!`
                                 : `Component "${lineIssue.conflictingComponent}" stock (${lineIssue.available}) exceeded (Req: ${lineIssue.required})`)
                                 .replace('{component}', lineIssue.conflictingComponent)
                                 .replace('{available}', String(lineIssue.available))
                                 .replace('{requested}', String(lineIssue.required))
-                            : t('posMessages.cartShortageWarning', isAr
+                              : t('posMessages.cartShortageWarning', isAr
                                 ? `تنبيه: الكمية المطلوبة (${lineIssue.required}) تتجاوز الرصيد المتاح (${lineIssue.available})!`
                                 : `Shortage: available ${lineIssue.available} only (Req: ${lineIssue.required})`)
                                 .replace('{available}', String(lineIssue.available))
                                 .replace('{requested}', String(lineIssue.required))}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Floor Price Breach Alert Warning */}
-                    {isBreached && (
-                      <div style={{
-                        background: 'rgba(239, 68, 68, 0.18)',
-                        border: '1px solid rgba(239, 68, 68, 0.5)',
-                        borderRadius: '6px',
-                        padding: '6px 8px',
-                        color: '#fca5a5',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '6px'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
-                          <span>{item.priceError || (isAr ? 'تجاوزت الحد المسموح به للخصم على هذه المادة' : 'Discount exceeds floor limit')}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleResetItemPrice(item)}
-                          style={{
-                            background: '#ef4444',
-                            border: 'none',
-                            color: '#fff',
-                            borderRadius: '4px',
-                            padding: '2px 8px',
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {isAr ? 'استعادة السعر' : 'Reset'}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Quantity & Bargaining Controls */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                      {/* Price Bargaining Trigger Button */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {isBreached ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
-                              setBargainInputPrice(finalUnitPrice.toString());
-                            }}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'rgba(239, 68, 68, 0.2)',
-                              border: '1px solid rgba(239, 68, 68, 0.4)',
-                              color: '#f87171',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <AlertCircle size={11} />
-                            <span>{isAr ? `تعديل السعر المرفوض (${formatMoney(finalUnitPrice)})` : `Invalid Price (${formatMoney(finalUnitPrice)})`}</span>
-                          </button>
-                        ) : isManualBargain ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
-                              setBargainInputPrice(finalUnitPrice.toString());
-                            }}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'rgba(16, 185, 129, 0.15)',
-                              border: '1px solid rgba(16, 185, 129, 0.3)',
-                              color: '#34d399',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <Check size={11} />
-                            <span>{isAr ? `سعر تفاوضي: ${formatMoney(finalUnitPrice)}` : `Bargained: ${formatMoney(finalUnitPrice)}`}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
-                              setBargainInputPrice(item.product.sellingPrice.toString());
-                            }}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'var(--card)',
-                              border: '1px solid var(--border)',
-                              color: 'var(--foreground)',
-                              fontSize: '11px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <Tag size={11} />
-                            <span>{isAr ? 'مكاسرة / سعر مخصص' : 'Bargain Price'}</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Quantity buttons */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button 
-                          onClick={() => updateQuantity(item.product.id, -1)}
-                          style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                        >
-                          <Minus size={12} />
-                        </button>
-                        <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center', color: 'var(--foreground)' }}>{item.quantity}</span>
-                        <button 
-                          onClick={() => updateQuantity(item.product.id, 1)}
-                          style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                        >
-                          <Plus size={12} />
-                        </button>
-                        <button 
-                          onClick={() => removeFromCart(item.product.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', marginLeft: '6px', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Popover / Expandable Bargaining Panel for Item */}
-                    {editingDiscountItemId === item.product.id && (
-                      <div style={{
-                        marginTop: '6px',
-                        padding: '10px',
-                        background: 'rgba(0,0,0,0.5)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(255,255,255,0.12)'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
-                            {isAr ? 'مكاسرة وتفاوض مع الزبون (Floor Price Protection):' : 'Bargaining & Negotiated Price:'}
-                          </span>
-                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                            {isAr ? `السعر الرسمي: ${formatMoney(item.product.sellingPrice)}` : `Retail: ${formatMoney(item.product.sellingPrice)}`}
                           </span>
                         </div>
+                      )}
 
-                        {/* Direct Price Input */}
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <span style={{ position: 'absolute', left: isAr ? undefined : '8px', right: isAr ? '8px' : undefined, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>{currencySymbol}</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder={isAr ? `اكتب السعر مثلا: ${Math.round(item.product.sellingPrice * 0.9)}` : 'Enter negotiated price'}
-                              value={bargainInputPrice}
-                              onChange={(e) => setBargainInputPrice(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  const val = parseFloat(bargainInputPrice);
-                                  if (!isNaN(val)) handleSetItemPrice(item, val);
-                                }
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: isAr ? '6px 22px 6px 8px' : '6px 8px 6px 22px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: 700,
-                                background: 'var(--card)',
-                                border: '1px solid var(--border)',
-                                color: 'var(--foreground)'
-                              }}
-                            />
+                      {/* Floor Price Breach Alert Warning */}
+                      {isBreached && (
+                        <div style={{
+                          background: 'rgba(239, 68, 68, 0.18)',
+                          border: '1px solid rgba(239, 68, 68, 0.5)',
+                          borderRadius: '6px',
+                          padding: '6px 8px',
+                          color: '#fca5a5',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '6px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <AlertTriangle size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                            <span>{item.priceError || (isAr ? 'تجاوزت الحد المسموح به للخصم على هذه المادة' : 'Discount exceeds floor limit')}</span>
                           </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              const val = parseFloat(bargainInputPrice);
-                              if (!isNaN(val)) handleSetItemPrice(item, val);
-                            }}
+                            onClick={() => handleResetItemPrice(item)}
                             style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              background: 'var(--primary)',
+                              background: '#ef4444',
                               border: 'none',
                               color: '#fff',
-                              fontSize: '11px',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontSize: '10px',
                               fontWeight: 700,
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 6px var(--primary-glow)'
+                              cursor: 'pointer'
                             }}
                           >
-                            {isAr ? 'تثبيت السعر' : 'Apply'}
+                            {isAr ? 'استعادة السعر' : 'Reset'}
                           </button>
                         </div>
+                      )}
 
-                        {/* Quick Presets: 5%, 10%, 15% */}
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                          {[5, 10, 15].map(pct => (
+                      {/* Quantity & Bargaining Controls */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        {/* Price Bargaining Trigger Button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {isBreached ? (
                             <button
-                              key={pct}
                               type="button"
-                              onClick={() => handleApplyDiscountPercent(item, pct)}
-                              style={{
-                                flex: 1,
-                                padding: '4px',
-                                borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                background: 'var(--primary-light)',
-                                border: '1px solid var(--primary-glow)',
-                                color: 'var(--primary)'
+                              onClick={() => {
+                                setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
+                                setBargainInputPrice(finalUnitPrice.toString());
                               }}
-                            >
-                              -{pct}% ({formatMoney(Math.round(item.product.sellingPrice * (1 - pct / 100)))})
-                            </button>
-                          ))}
-                          {isModified && (
-                            <button
-                              type="button"
-                              onClick={() => handleResetItemPrice(item)}
                               style={{
-                                padding: '4px 8px',
+                                padding: '2px 8px',
                                 borderRadius: '6px',
+                                background: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                color: '#f87171',
                                 fontSize: '11px',
-                                background: 'var(--destructive-light)',
-                                border: '1px solid var(--destructive-border)',
-                                color: 'var(--destructive)',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
                                 cursor: 'pointer'
                               }}
                             >
-                              {isAr ? 'إلغاء' : 'Reset'}
+                              <AlertCircle size={11} />
+                              <span>{isAr ? `تعديل السعر المرفوض (${formatMoney(finalUnitPrice)})` : `Invalid Price (${formatMoney(finalUnitPrice)})`}</span>
+                            </button>
+                          ) : isManualBargain ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
+                                setBargainInputPrice(finalUnitPrice.toString());
+                              }}
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                color: '#34d399',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Check size={11} />
+                              <span>{isAr ? `سعر تفاوضي: ${formatMoney(finalUnitPrice)}` : `Bargained: ${formatMoney(finalUnitPrice)}`}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDiscountItemId(editingDiscountItemId === item.product.id ? null : item.product.id);
+                                setBargainInputPrice(item.product.sellingPrice.toString());
+                              }}
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: 'var(--card)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--foreground)',
+                                fontSize: '11px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Tag size={11} />
+                              <span>{isAr ? 'مكاسرة / سعر مخصص' : 'Bargain Price'}</span>
                             </button>
                           )}
                         </div>
+
+                        {/* Quantity buttons */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            onClick={() => updateQuantity(item.product.id, -1)}
+                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center', color: 'var(--foreground)' }}>{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.product.id, 1)}
+                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                          <button
+                            onClick={() => removeFromCart(item.product.id)}
+                            style={{ background: 'transparent', border: 'none', color: '#ef4444', marginLeft: '6px', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              });
+
+                      {/* Popover / Expandable Bargaining Panel for Item */}
+                      {editingDiscountItemId === item.product.id && (
+                        <div style={{
+                          marginTop: '6px',
+                          padding: '10px',
+                          background: 'rgba(0,0,0,0.5)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(255,255,255,0.12)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
+                              {isAr ? 'مكاسرة وتفاوض مع الزبون (Floor Price Protection):' : 'Bargaining & Negotiated Price:'}
+                            </span>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                              {isAr ? `السعر الرسمي: ${formatMoney(item.product.sellingPrice)}` : `Retail: ${formatMoney(item.product.sellingPrice)}`}
+                            </span>
+                          </div>
+
+                          {/* Direct Price Input */}
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <span style={{ position: 'absolute', left: isAr ? undefined : '8px', right: isAr ? '8px' : undefined, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>{currencySymbol}</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder={isAr ? `اكتب السعر مثلا: ${Math.round(item.product.sellingPrice * 0.9)}` : 'Enter negotiated price'}
+                                value={bargainInputPrice}
+                                onChange={(e) => setBargainInputPrice(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const val = parseFloat(bargainInputPrice);
+                                    if (!isNaN(val)) handleSetItemPrice(item, val);
+                                  }
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: isAr ? '6px 22px 6px 8px' : '6px 8px 6px 22px',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  background: 'var(--card)',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--foreground)'
+                                }}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = parseFloat(bargainInputPrice);
+                                if (!isNaN(val)) handleSetItemPrice(item, val);
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                background: 'var(--primary)',
+                                border: 'none',
+                                color: '#fff',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 6px var(--primary-glow)'
+                              }}
+                            >
+                              {isAr ? 'تثبيت السعر' : 'Apply'}
+                            </button>
+                          </div>
+
+                          {/* Quick Presets: 5%, 10%, 15% */}
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                            {[5, 10, 15].map(pct => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => handleApplyDiscountPercent(item, pct)}
+                                style={{
+                                  flex: 1,
+                                  padding: '4px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  background: 'var(--primary-light)',
+                                  border: '1px solid var(--primary-glow)',
+                                  color: 'var(--primary)'
+                                }}
+                              >
+                                -{pct}% ({formatMoney(Math.round(item.product.sellingPrice * (1 - pct / 100)))})
+                              </button>
+                            ))}
+                            {isModified && (
+                              <button
+                                type="button"
+                                onClick={() => handleResetItemPrice(item)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  background: 'var(--destructive-light)',
+                                  border: '1px solid var(--destructive-border)',
+                                  color: 'var(--destructive)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {isAr ? 'إلغاء' : 'Reset'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
               })()
             )}
           </div>
 
           {/* Cart Summary & Payment */}
           <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'var(--muted)/30' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--muted-foreground)', marginBottom: '4px' }}>
-              <span>{isAr ? 'المجموع الفرعي الأصلي:' : 'Original Subtotal:'}</span>
-              <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{formatMoney(subtotal)}</span>
-            </div>
+            {(totalDiscount > 0 || loyaltyDiscountAmount > 0) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--muted-foreground)', marginBottom: '4px' }}>
+                <span>{getTranslation(lang, 'posCheckout.originalSubtotal')}</span>
+                <span className="tabular-nums" style={{ color: 'var(--foreground)', fontWeight: 600 }}>{formatMoney(subtotal)}</span>
+              </div>
+            )}
 
             {totalDiscount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#059669', marginBottom: '4px', fontWeight: 600 }}>
@@ -2458,9 +2503,9 @@ export default function PosTerminalView({
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border)', paddingTop: '8px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--foreground)' }}>{isAr ? 'المجموع النهائي:' : 'Grand Total:'}</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--foreground)' }}>{getTranslation(lang, 'posCheckout.finalTotal')}</span>
               <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                <span style={{ fontSize: '18px', fontWeight: 900, color: '#059669' }}>{formatMoney(grandTotal)}</span>
+                <span className="tabular-nums" style={{ fontSize: '18px', fontWeight: 900, color: '#059669' }}>{formatMoney(grandTotal)}</span>
                 {settings.multiCurrencyEnabled && grandTotal > 0 && (
                   <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 600, marginTop: '2px', fontFamily: 'monospace' }}>
                     <span>~ {isIqdBase ? `$ ${(currentExchangeRate > 0 ? (grandTotal / currentExchangeRate).toFixed(2) : '0.00')}` : `${Math.round(grandTotal * currentExchangeRate).toLocaleString('en-US')} د.ع`}</span>
@@ -2471,14 +2516,14 @@ export default function PosTerminalView({
 
             {/* Check if any item breached floor limit or has stock deficit (bundles validated dynamically via components) */}
             {(() => {
-              const hasFloorBreach = cart.some(ci => 
+              const hasFloorBreach = cart.some(ci =>
                 !!ci.priceError || getEffectiveUnitPrice(ci) < (ci.product.minSellingPrice ?? (ci.product.isBundle ? 0 : Math.round(ci.product.sellingPrice * 0.88)))
               );
               const targetCheckWhId = dispenseMode === 'WAREHOUSE_DISPATCH' ? targetDispatchWarehouseId : selectedWarehouseId;
               const cartStockCheck = validateCartStockWithBundles(cart, products, storedBundles, targetCheckWhId);
               const hasStockDeficit = !cartStockCheck.isValid;
               const isShiftActive = !!activeShift;
-              const canCheckout = cart.length > 0 && !hasFloorBreach && !hasStockDeficit && isShiftActive;
+              const canCheckout = cart.length > 0 && grandTotal > 0 && !hasFloorBreach && !hasStockDeficit && isShiftActive;
 
               return (
                 <>
@@ -2499,7 +2544,7 @@ export default function PosTerminalView({
                         <span>{isAr ? 'الوردية مقفلة حالياً - البيع معطّل' : 'Shift Locked - Checkout Disabled'}</span>
                       </div>
                       <p style={{ margin: 0, fontSize: '11px', color: 'var(--foreground)', opacity: 0.9, lineHeight: 1.5 }}>
-                        {isAr 
+                        {isAr
                           ? 'يرجى فتح وردية كاشير جديدة وتسجيل الرصيد النقدي الافتتاحي (الفكة) لتفعيل عمليات البيع وإصدار الفواتير.'
                           : 'Please start a cashier shift and register opening float to enable sales.'}
                       </p>
@@ -2584,141 +2629,51 @@ export default function PosTerminalView({
                     </div>
                   )}
 
-                  {/* Fast Payment Buttons with Strict Regional Isolation & Shift Gating */}
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))', 
-                    gap: '6px' 
-                  }}>
+                  {/* Symmetrical 2x2 Payment Grid: Cash [F2], Credit [F3], Installment [F4], Card [F5] */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <button
+                      type="button"
                       disabled={!canCheckout}
                       onClick={() => handleCheckout('CASH')}
-                      style={{
-                        padding: '10px 4px',
-                        borderRadius: 'var(--radius)',
-                        border: 'none',
-                        background: canCheckout ? '#059669' : 'var(--muted)',
-                        color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '5px',
-                        cursor: canCheckout ? 'pointer' : 'not-allowed',
-                        opacity: canCheckout ? 1 : 0.6,
-                        boxShadow: canCheckout ? '0 2px 6px rgba(5, 150, 105, 0.25)' : 'none'
-                      }}
+                      className="h-11 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
                     >
-                      <Banknote size={15} />
-                      <span>{isAr ? 'نقدي [F2]' : 'Cash [F2]'}</span>
+                      <Banknote size={16} className="shrink-0" />
+                      <span>{getTranslation(lang, 'posCheckout.cashBtn')}</span>
                     </button>
 
                     <button
+                      type="button"
                       disabled={!canCheckout}
-                      onClick={() => handleCheckout('CARD')}
-                      style={{
-                        padding: '10px 4px',
-                        borderRadius: 'var(--radius)',
-                        border: 'none',
-                        background: canCheckout ? 'var(--primary)' : 'var(--muted)',
-                        color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '5px',
-                        cursor: canCheckout ? 'pointer' : 'not-allowed',
-                        opacity: canCheckout ? 1 : 0.6,
-                        boxShadow: canCheckout ? '0 2px 6px var(--primary-glow)' : 'none'
-                      }}
+                      onClick={() => handleCheckout('CREDIT')}
+                      className="h-11 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border border-border bg-card hover:bg-muted text-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <CreditCard size={15} />
-                      <span>{isAr ? 'بطاقة [F3]' : 'Card [F3]'}</span>
+                      <Receipt size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span>{getTranslation(lang, 'posCheckout.creditBtn')}</span>
                     </button>
 
                     <button
+                      type="button"
                       disabled={!canCheckout}
                       onClick={() => {
-                        setPosDownPayment(Math.round(grandTotal * 0.2));
+                        setPosDownPayment(0);
+                        setPosInstallmentError('');
                         setIsInstallmentModalOpen(true);
                       }}
-                      title={isAr ? 'عقد بيع بالتقسيط مع جدول دفعات' : 'Installment Sale with payment schedule'}
-                      style={{
-                        padding: '10px 4px',
-                        borderRadius: 'var(--radius)',
-                        border: 'none',
-                        background: canCheckout ? '#2563eb' : 'var(--muted)',
-                        color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '5px',
-                        cursor: canCheckout ? 'pointer' : 'not-allowed',
-                        opacity: canCheckout ? 1 : 0.6,
-                        boxShadow: canCheckout ? '0 2px 6px rgba(37, 99, 235, 0.25)' : 'none'
-                      }}
+                      className="h-11 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border border-border bg-card hover:bg-muted text-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <CalendarClock size={15} />
-                      <span>{isAr ? 'تقسيط [F5]' : 'Installment [F5]'}</span>
+                      <CalendarClock size={16} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                      <span>{getTranslation(lang, 'posCheckout.installmentBtn')}</span>
                     </button>
 
-                    {isIraqTenant && (
-                      <button
-                        disabled={!canCheckout}
-                        onClick={() => handleCheckout('ZAIN_CASH')}
-                        title={isAr ? 'محفظة زين كاش (توثيق وقبض يدوي)' : 'ZainCash (Manual Tender)'}
-                        style={{
-                          padding: '10px 4px',
-                          borderRadius: 'var(--radius)',
-                          border: 'none',
-                          background: canCheckout ? '#db2777' : 'var(--muted)',
-                          color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
-                          fontWeight: 700,
-                          fontSize: '12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '5px',
-                          cursor: canCheckout ? 'pointer' : 'not-allowed',
-                          opacity: canCheckout ? 1 : 0.6,
-                          boxShadow: canCheckout ? '0 2px 6px rgba(219, 39, 119, 0.25)' : 'none'
-                        }}
-                      >
-                        <Smartphone size={15} />
-                        <span>{isAr ? 'زين كاش' : 'ZainCash'}</span>
-                      </button>
-                    )}
-
-                    {isIraqTenant && (
-                      <button
-                        disabled={!canCheckout}
-                        onClick={() => handleCheckout('QI_CARD')}
-                        title={isAr ? 'بطاقة كي كارد (توثيق وقبض يدوي)' : 'Qi Card (Manual Tender)'}
-                        style={{
-                          padding: '10px 4px',
-                          borderRadius: 'var(--radius)',
-                          border: 'none',
-                          background: canCheckout ? '#d97706' : 'var(--muted)',
-                          color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
-                          fontWeight: 700,
-                          fontSize: '12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '5px',
-                          cursor: canCheckout ? 'pointer' : 'not-allowed',
-                          opacity: canCheckout ? 1 : 0.6,
-                          boxShadow: canCheckout ? '0 2px 6px rgba(217, 119, 6, 0.25)' : 'none'
-                        }}
-                      >
-                        <ShieldCheck size={15} />
-                        <span>{isAr ? 'كي كارد' : 'Qi Card'}</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={!canCheckout}
+                      onClick={() => handleCheckout('CARD')}
+                      className="h-11 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border border-border bg-card hover:bg-muted text-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <CreditCard size={16} className="shrink-0 text-primary" />
+                      <span>{getTranslation(lang, 'posCheckout.cardBtn')}</span>
+                    </button>
                   </div>
                 </>
               );
@@ -2818,15 +2773,13 @@ export default function PosTerminalView({
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#d97706', marginTop: '2px', fontWeight: 600 }}>
                 <span>{isAr ? 'طريقة الدفع:' : 'Method:'}</span>
                 <span>
-                  {lastCompletedOrder.paymentMethod === 'ZAIN_CASH' 
-                    ? (isAr ? 'محفظة زين كاش (ZainCash)' : 'ZainCash')
-                    : lastCompletedOrder.paymentMethod === 'QI_CARD'
-                    ? (isAr ? 'بطاقة كي كارد (Qi Card)' : 'Qi Card')
+                  {lastCompletedOrder.paymentMethod === 'CREDIT'
+                    ? getTranslation(lang, 'posCheckout.methodCredit')
                     : lastCompletedOrder.paymentMethod === 'CARD'
-                    ? (isAr ? 'بطاقة إلكترونية (Card)' : 'Card')
-                    : lastCompletedOrder.paymentMethod === 'INSTALLMENT'
-                    ? (isAr ? 'بيع بالتقسيط (Installment Plan)' : 'Installment Plan')
-                    : (isAr ? 'نقداً (Cash)' : 'Cash')}
+                      ? getTranslation(lang, 'posCheckout.methodCard')
+                      : lastCompletedOrder.paymentMethod === 'INSTALLMENT'
+                        ? getTranslation(lang, 'posCheckout.methodInstallment')
+                        : getTranslation(lang, 'posCheckout.methodCash')}
                 </span>
               </div>
 
@@ -2934,7 +2887,7 @@ export default function PosTerminalView({
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
+              <button
                 onClick={async () => {
                   if (lastCompletedOrder && isDesktopApp()) {
                     await printReceiptNative({
@@ -2970,14 +2923,14 @@ export default function PosTerminalView({
                   }
                   setShowReceiptModal(false);
                 }}
-                className="btn-add-primary" 
+                className="btn-add-primary"
                 style={{ flex: 1, justifyContent: 'center' }}
               >
                 <Printer size={16} />
                 <span>{isAr ? 'طباعة حرارية ESC/POS (صامتة)' : 'Print Receipt (Silent)'}</span>
               </button>
 
-              <button 
+              <button
                 onClick={() => setShowReceiptModal(false)}
                 style={{ padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--muted)', color: 'var(--foreground)', cursor: 'pointer', fontWeight: 600 }}
               >
@@ -3012,8 +2965,8 @@ export default function PosTerminalView({
       {/* POS Installment Modal Dialog */}
       {isInstallmentModalOpen && (
         <ModalBackdropPortal onClose={() => setIsInstallmentModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
-          <div 
-            className="modal-content glass-panel" 
+          <div
+            className="modal-content glass-panel"
             style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3031,8 +2984,8 @@ export default function PosTerminalView({
                   </small>
                 </div>
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setIsInstallmentModalOpen(false)}
                 style={{ background: 'transparent', border: 'none', color: 'var(--muted-foreground)', cursor: 'pointer' }}
               >
@@ -3052,18 +3005,62 @@ export default function PosTerminalView({
               </div>
 
               {/* Down Payment & Tenor */}
+              {posInstallmentError && (
+                <div className="p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold">
+                  {posInstallmentError}
+                </div>
+              )}
+
+              {/* Customer Selector (Required for Installment) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px' }}>
+                  {getTranslation(lang, 'posCheckout.selectCustomerLabel')} <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={isWalkInCustomer ? '' : (selectedCustomerId || '')}
+                  onChange={(e) => {
+                    const cid = e.target.value;
+                    setSelectedCustomerId(cid || undefined);
+                    const found = customersList.find(c => c && c.id === cid);
+                    if (found) setPosCustomerName(found.name || found.nameAr || '');
+                    setPosInstallmentError('');
+                  }}
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--background)',
+                    color: 'var(--foreground)',
+                    fontWeight: 600,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="">{getTranslation(lang, 'posCheckout.chooseCustomerOption')}</option>
+                  {customersList
+                    .filter(c => c && !c.isDefaultCashCustomer && c.id !== 'CUST-WALKIN')
+                    .map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.nameAr} {c.phone ? `(${c.phone})` : ''}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px' }}>
-                    {isAr ? 'الدفعة الأولى (المقدمة):' : 'Down Payment:'}
+                    {getTranslation(lang, 'posCheckout.downPaymentLabel')}
                   </label>
                   <input
                     type="number"
                     min={0}
-                    max={grandTotal}
+                    max={Math.max(0, grandTotal - 1)}
                     value={posDownPayment === 0 ? '' : posDownPayment}
                     onChange={(e) => setPosDownPayment(Math.max(0, parseFloat(e.target.value) || 0))}
-                    placeholder="0.00"
+                    placeholder="0"
+                    className="tabular-nums"
                     style={{
                       width: '100%',
                       height: '36px',
@@ -3081,7 +3078,7 @@ export default function PosTerminalView({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px' }}>
-                    {isAr ? 'عدد أشهر التقسيط:' : 'Installment Tenor:'}
+                    {getTranslation(lang, 'posCheckout.installmentMonthsLabel')}
                   </label>
                   <select
                     value={posInstallmentCount}
@@ -3104,6 +3101,29 @@ export default function PosTerminalView({
                     <option value={24}>{isAr ? '24 شهراً (سنتان)' : '24 Months'}</option>
                   </select>
                 </div>
+              </div>
+
+              {/* First Due Date */}
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px' }}>
+                  {getTranslation(lang, 'posCheckout.firstDueDateLabel')}
+                </label>
+                <input
+                  type="date"
+                  value={posFirstDueDate}
+                  onChange={(e) => setPosFirstDueDate(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--background)',
+                    color: 'var(--foreground)',
+                    fontWeight: 600,
+                    boxSizing: 'border-box'
+                  }}
+                />
               </div>
 
               {/* Monthly Amount Live Calculation */}
@@ -3199,13 +3219,23 @@ export default function PosTerminalView({
               <button
                 type="button"
                 onClick={() => {
+                  if ((isWalkInCustomer || !selectedCustomerId) && !posCustomerName.trim()) {
+                    setPosInstallmentError(getTranslation(lang, 'errors.ERR.POS.ERR_CUSTOMER_REQUIRED_FOR_INSTALLMENT'));
+                    return;
+                  }
+                  if (posInstallmentCount < 1 || posDownPayment < 0 || posDownPayment >= grandTotal) {
+                    setPosInstallmentError(getTranslation(lang, 'errors.ERR.POS.ERR_INVALID_INSTALLMENT_TERMS'));
+                    return;
+                  }
+                  setPosInstallmentError('');
                   setIsInstallmentModalOpen(false);
                   handleCheckout('INSTALLMENT', {
                     downPayment: posDownPayment,
                     installmentCount: posInstallmentCount,
+                    firstDueDate: posFirstDueDate,
                     guarantorName: posGuarantorName,
                     guarantorPhone: posGuarantorPhone,
-                    customerName: posCustomerName
+                    customerName: selectedCustomerObj?.name || posCustomerName
                   });
                 }}
                 className="btn-add-primary"
@@ -3367,7 +3397,7 @@ export default function PosTerminalView({
           onAddWeightedItem={(product, weightKg) => {
             addToCart(product, weightKg);
             showPaymentToast(
-              isAr 
+              isAr
                 ? `تم إضافة (${getProductName(product)}) بوزن ${weightKg} كغم`
                 : `Added (${getProductName(product)}) [${weightKg} kg]`
             );

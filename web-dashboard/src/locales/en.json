@@ -1557,5 +1557,22 @@
     "colCredit": "Credit (Invoice)",
     "colRunningBalance": "Running Balance",
     "emptyLedger": "No ledger transactions recorded for this supplier yet."
+  },
+  "posCheckout": {
+    "cashBtn": "Cash [F2]",
+    "creditBtn": "Credit [F3]",
+    "installmentBtn": "Installment [F4]",
+    "cardBtn": "Card [F5]",
+    "originalSubtotal": "Original Subtotal:",
+    "finalTotal": "Grand Total:",
+    "selectCustomerLabel": "Customer",
+    "chooseCustomerOption": "-- Select Registered Customer --",
+    "downPaymentLabel": "Down Payment:",
+    "installmentMonthsLabel": "Installment Months:",
+    "firstDueDateLabel": "First Due Date:",
+    "methodCash": "Cash",
+    "methodCredit": "Credit",
+    "methodInstallment": "Installment",
+    "methodCard": "Card"
   }
 }

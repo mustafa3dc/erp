@@ -117,10 +117,21 @@ public class CreatePosInvoiceRequest
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public InvoiceSource Source { get; set; } = InvoiceSource.POS;
     public Guid? TreasuryAccountId { get; set; }
-    public string PaymentMethod { get; set; } = "CASH"; // CASH, CARD
+    public string PaymentMethod { get; set; } = "CASH"; // CASH, CREDIT, INSTALLMENT, CARD
     public decimal InvoiceDiscountAmount { get; set; } = 0.0000m;
     public decimal RedeemPoints { get; set; } = 0.0000m;
+    public PosInstallmentPlanRequest? InstallmentPlan { get; set; }
     public List<PosInvoiceItemRequest> Items { get; set; } = new();
+}
+
+public class PosInstallmentPlanRequest
+{
+    public int Months { get; set; } = 6;
+    public decimal DownPayment { get; set; } = 0.0000m;
+    public DateTime? FirstDueDate { get; set; }
+    public string? GuarantorName { get; set; }
+    public string? GuarantorPhone { get; set; }
+    public Guid? TreasuryAccountId { get; set; }
 }
 
 public class PosInvoiceItemRequest

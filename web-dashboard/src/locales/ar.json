@@ -1557,5 +1557,22 @@
     "colCredit": "دائن (فاتورة)",
     "colRunningBalance": "الرصيد المتراكم",
     "emptyLedger": "لا توجد قيود مسجلة لهذا المورد بعد."
+  },
+  "posCheckout": {
+    "cashBtn": "نقدي [F2]",
+    "creditBtn": "آجل [F3]",
+    "installmentBtn": "قسط [F4]",
+    "cardBtn": "بطاقة [F5]",
+    "originalSubtotal": "المجموع الفرعي الأصلي:",
+    "finalTotal": "المجموع النهائي:",
+    "selectCustomerLabel": "العميل / المشتري",
+    "chooseCustomerOption": "-- اختر عميلاً مسجلاً --",
+    "downPaymentLabel": "الدفعة المقدمة:",
+    "installmentMonthsLabel": "عدد الأقساط (بالأشهر):",
+    "firstDueDateLabel": "تاريخ أول قسط:",
+    "methodCash": "نقداً (Cash)",
+    "methodCredit": "آجل (Credit)",
+    "methodInstallment": "قسط (Installment)",
+    "methodCard": "بطاقة (Card)"
   }
 }

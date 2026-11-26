@@ -66,7 +66,7 @@ public class SerialTrackingController : ControllerBase
     }
 
     [HttpGet("pos-scan")]
-    [HasPermission(Permissions.Pos.TerminalAccess)]
+    [HasPermission(Permissions.POS.TerminalAccess)]
     public async Task<ActionResult<PosSerialScanResponseDto>> PosScan([FromQuery] string code)
     {
         var result = await _serialService.LookupForPosScanAsync(code);

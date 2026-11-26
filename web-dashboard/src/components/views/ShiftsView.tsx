@@ -1198,11 +1198,11 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
         onClose={() => setIsOpenShiftModalOpen(false)}
         currentUser={currentUser}
         lang={lang}
-        onConfirm={({ cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
+        onConfirm={({ id, cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
           const now = new Date();
           const startTime = formattedStartTime || formatShiftDateTime(now, isAr);
           const newShift: ActiveShift = {
-            id: `SH-${Date.now().toString().slice(-4)}`,
+            id: id || `SH-${Date.now().toString().slice(-4)}`,
             cashierName,
             terminalId,
             startTime,
@@ -1217,7 +1217,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
           };
           saveStoredActiveShift(newShift);
           setActiveShift(newShift);
-          setIsOpenShiftModalOpen(false);
+          showToast(isAr ? `تم فتح الوردية بنجاح وتوثيق وقت البدء: ${startTime}` : `Shift opened successfully at: ${startTime}`);
         }}
       />
 

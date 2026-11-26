@@ -5,6 +5,7 @@ public class OpenShiftApiRequest
     public string CashierName { get; set; } = string.Empty;
     public string TerminalId { get; set; } = string.Empty;
     public decimal OpeningFloat { get; set; }
+    public string? CurrencyCode { get; set; }
     public DateTime? OpenedAt { get; set; }
 }
 

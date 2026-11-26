@@ -308,13 +308,17 @@ export default function PosTerminalView({
     }
   }, [isScaleEnabled, selectedCategory]);
 
-  // Listen for storage shift events (e.g., opened/closed in another tab or in ShiftsView)
+  // Listen for active shift updates across components & tabs
   React.useEffect(() => {
-    const handleStorageChange = () => {
+    const handleShiftSync = () => {
       setActiveShift(getStoredActiveShift());
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('erp_active_shift_updated', handleShiftSync);
+    window.addEventListener('storage', handleShiftSync);
+    return () => {
+      window.removeEventListener('erp_active_shift_updated', handleShiftSync);
+      window.removeEventListener('storage', handleShiftSync);
+    };
   }, []);
 
   const handleOpenShift = (e: React.FormEvent) => {
@@ -2822,10 +2826,10 @@ export default function PosTerminalView({
         onClose={() => setIsOpenShiftModalOpen(false)}
         currentUser={currentUser}
         lang={lang}
-        onConfirm={({ cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
+        onConfirm={({ id, cashierName, terminalId, openingFloat, openedAt, formattedStartTime }) => {
           const now = new Date();
           const newShift: ActiveShift = {
-            id: `SH-${Date.now().toString().slice(-4)}`,
+            id: id || `SH-${Date.now().toString().slice(-4)}`,
             cashierName,
             terminalId,
             startTime: formattedStartTime || formatShiftDateTime(now, isAr),

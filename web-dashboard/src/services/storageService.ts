@@ -60,6 +60,7 @@ export const KEYS = {
   get AUTH_SESSION() { return 'logistock_erp_v3_auth_session'; },
   get ACTIVE_SHIFT() { return getScopedKey('active_shift'); },
   get SHIFTS_HISTORY() { return getScopedKey('shifts_history'); },
+  get POS_LAST_TERMINAL() { return getScopedKey('pos_last_terminal'); },
   get TREASURY_ACCOUNTS() { return getScopedKey('treasury_accounts'); },
   get TREASURY_VOUCHERS() { return getScopedKey('treasury_vouchers'); },
   get CUSTOMERS() { return getScopedKey('customers_list'); },
@@ -2235,6 +2236,54 @@ export function saveStoredPastShifts(shifts: any[]): void {
   } catch (e) {
     console.error(e);
   }
+}
+
+export function getStoredLastPosTerminal(defaultTerminal = 'كاشير 1'): string {
+  if (typeof window === 'undefined') return defaultTerminal;
+  try {
+    const saved = localStorage.getItem(KEYS.POS_LAST_TERMINAL);
+    return saved && saved.trim() ? saved.trim() : defaultTerminal;
+  } catch {
+    return defaultTerminal;
+  }
+}
+
+export function saveStoredLastPosTerminal(terminalId: string): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = terminalId.trim();
+  if (!trimmed) return;
+  try {
+    localStorage.setItem(KEYS.POS_LAST_TERMINAL, trimmed);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export function getAvailablePosTerminals(presets: string[] = ['كاشير 1', 'كاشير 2', 'كاشير 3']): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  const addUnique = (val?: string | null) => {
+    const trimmed = val?.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  };
+
+  const savedLast = getStoredLastPosTerminal('');
+  addUnique(savedLast);
+  presets.forEach(addUnique);
+
+  const active = getStoredActiveShift();
+  addUnique(active?.terminalId);
+
+  const past = getStoredPastShifts();
+  if (Array.isArray(past)) {
+    past.forEach((s: any) => addUnique(s?.terminalId));
+  }
+
+  return result;
 }
 
 // --- DOMAIN HELPERS FOR STRICT MULTI-TENANCY ---

@@ -47,6 +47,9 @@
     "LEDGER": {
       "IMMUTABLE": "سجل القيود غير قابل للتعديل أو الحذف إطلاقاً",
       "BALANCE_MISMATCH": "عدم تطابق في رصيد الحركة المسجل مقارنة بحسابات النظام"
+    },
+    "POS": {
+      "INVALID_CURRENCY_DENOMINATION": "الرصيد النقدي الافتتاحي غير صالح: يجب أن يكون صفراً أو أكبر ومن مضاعفات 250 د.ع (ERR_INVALID_CURRENCY_DENOMINATION)."
     }
   }
 }

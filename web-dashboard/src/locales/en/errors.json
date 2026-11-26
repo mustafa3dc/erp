@@ -47,6 +47,9 @@
     "LEDGER": {
       "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",
       "BALANCE_MISMATCH": "Discrepancy detected between recorded journal balance and system accounts"
+    },
+    "POS": {
+      "INVALID_CURRENCY_DENOMINATION": "Invalid opening cash balance: must be 0 or greater and strictly divisible by 250 IQD (ERR_INVALID_CURRENCY_DENOMINATION)."
     }
   }
 }

@@ -187,17 +187,47 @@ public class PosTerminalController : ControllerBase
 
     /// <summary>
     /// POST /api/pos/shifts/open
-    /// Opens and stamps a new POS cashier shift with high-precision timestamp.
+    /// Opens and stamps a new POS cashier shift with high-precision timestamp and IQD denomination validation.
     /// </summary>
     [HttpPost("shifts/open")]
     public ActionResult<ShiftAuditRecordDto> OpenShift([FromBody] OpenShiftApiRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                errorCode = "ERR_INVALID_PAYLOAD",
+                message = "بيانات طلب فتح الوردية غير صالحة.",
+                timestamp = DateTime.UtcNow
+            });
+        }
+
+        var currencyCode = string.IsNullOrWhiteSpace(request.CurrencyCode)
+            ? "IQD"
+            : request.CurrencyCode.Trim().ToUpperInvariant();
+
+        if (request.OpeningFloat < 0 || (currencyCode == "IQD" && request.OpeningFloat % 250m != 0))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                errorCode = "ERR_INVALID_CURRENCY_DENOMINATION",
+                message = "الرصيد النقدي الافتتاحي غير صالح: يجب أن يكون صفراً أو أكبر ومن مضاعفات 250 د.ع.",
+                paramsData = new { openingFloat = request.OpeningFloat, step = 250 },
+                timestamp = DateTime.UtcNow
+            });
+        }
+
         var openedAt = request.OpenedAt ?? DateTime.UtcNow;
+        var terminalId = string.IsNullOrWhiteSpace(request.TerminalId) ? "كاشير 1" : request.TerminalId.Trim();
+        var cashierName = string.IsNullOrWhiteSpace(request.CashierName) ? "المدير العام" : request.CashierName.Trim();
+
         var shift = new ShiftAuditRecordDto
         {
             Id = $"SH-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000:D4}",
-            CashierName = request.CashierName,
-            TerminalId = request.TerminalId,
+            CashierName = cashierName,
+            TerminalId = terminalId,
             OpenedAt = openedAt,
             StartTime = openedAt.ToString("yyyy/MM/dd hh:mm:ss tt"),
             OpeningFloat = request.OpeningFloat,

@@ -56,6 +56,7 @@ export default function RecurringExpensesTab({
 
   const [rules, setRules] = useState<RecurringExpenseRule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Add / Edit modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -232,12 +233,16 @@ export default function RecurringExpensesTab({
   };
 
   const handleToggle = async (rule: RecurringExpenseRule) => {
+    if (togglingId === rule.id) return;
+    setTogglingId(rule.id);
     try {
-      await toggleRecurringExpense(rule.id);
+      const updated = await toggleRecurringExpense(rule.id);
+      setRules(prev => prev.map(r => (r.id === rule.id ? { ...r, ...updated, isActive: updated.isActive } : r)));
       toast.success(getTranslation(lang, 'ui.recurringExpenses.toggledToast'));
-      await loadRules();
     } catch (err: any) {
       toast.error(formatRecurringErrorMessage(err, lang));
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -472,12 +477,24 @@ export default function RecurringExpensesTab({
                         <button
                           type="button"
                           onClick={() => handleToggle(rule)}
-                          className={`p-1.5 rounded-lg border border-border transition-colors ${
+                          disabled={togglingId === rule.id}
+                          aria-label={getTranslation(
+                            lang,
+                            rule.isActive
+                              ? 'ui.recurringExpenses.pauseScheduleTooltip'
+                              : 'ui.recurringExpenses.resumeScheduleTooltip'
+                          )}
+                          title={getTranslation(
+                            lang,
+                            rule.isActive
+                              ? 'ui.recurringExpenses.pauseScheduleTooltip'
+                              : 'ui.recurringExpenses.resumeScheduleTooltip'
+                          )}
+                          className={`p-1.5 rounded-lg border border-border transition-colors disabled:opacity-50 disabled:cursor-wait ${
                             rule.isActive
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
                               : 'bg-card text-muted-foreground hover:bg-muted'
                           }`}
-                          title={getTranslation(lang, 'ui.recurringExpenses.fieldIsActive')}
                         >
                           <Power size={14} />
                         </button>

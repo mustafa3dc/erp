@@ -417,7 +417,7 @@ export async function fetchRecurringExpenses(): Promise<RecurringExpenseRule[]> 
   const caps = buildCategoryCapsMap();
   const rules = safeGet<LocalStoredRecurringRule[]>(KEYS.RECURRING_EXPENSES, [])
     .filter(r => !r.isDeleted)
-    .sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0) || new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime());
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || a.id.localeCompare(b.id));
 
   return rules.map(r => mapLocalDto(r, caps));
 }
@@ -566,8 +566,9 @@ export async function toggleRecurringExpense(id: string): Promise<RecurringExpen
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success && json.data) return json.data;
-    } catch {
-      // Fallback
+      if (!res.ok || !json?.success) throw createApiError(json?.errorCode || 'ERR_REQUEST_FAILED');
+    } catch (err: any) {
+      if (err?.message?.startsWith('ERR_')) throw err;
     }
   }
 

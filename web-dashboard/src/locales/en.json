@@ -1414,6 +1414,8 @@
       "savedToast": "Recurring expense rule created!",
       "updatedToast": "Recurring expense rule updated!",
       "toggledToast": "Recurring expense schedule status updated.",
+      "pauseScheduleTooltip": "Pause Schedule",
+      "resumeScheduleTooltip": "Resume Schedule",
       "deletedToast": "Recurring expense rule deleted.",
       "confirmedToast": "Confirmed payment for ({title}) — {amount} posted!",
       "dashboardAlertsTitle": "System & Operational Alerts",

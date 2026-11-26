@@ -1414,6 +1414,8 @@
       "savedToast": "تمت إضافة المصروف الدوري بنجاح!",
       "updatedToast": "تم تحديث المصروف الدوري بنجاح!",
       "toggledToast": "تم تحديث حالة تفعيل المصروف الدوري.",
+      "pauseScheduleTooltip": "إيقاف مؤقت",
+      "resumeScheduleTooltip": "تفعيل الجدولة",
       "deletedToast": "تم حذف المصروف الدوري بنجاح.",
       "confirmedToast": "تم تأكيد دفع ({title}) بمبلغ {amount} وترحيل السند بنجاح!",
       "dashboardAlertsTitle": "تنبيهات النظام والعمليات",

@@ -45,12 +45,12 @@ public class RecurringExpenseService : IRecurringExpenseService
         await ProcessDueAutoPostRulesAsync(_context.CurrentTenantId, ct);
 
         var todayUtc = DateTimeOffset.UtcNow.Date;
+        var tenantId = _context.CurrentTenantId;
         var rules = await _context.RecurringExpenses
             .AsNoTracking()
-            .Where(r => !r.IsDeleted)
-            .OrderByDescending(r => r.IsActive)
-            .ThenBy(r => r.NextDueDate)
-            .ThenBy(r => r.Title)
+            .Where(r => !r.IsDeleted && (!tenantId.HasValue || r.TenantId == tenantId.Value))
+            .OrderByDescending(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
             .ToListAsync(ct);
 
         var caps = await LoadCategoryCapsAsync(ct);
@@ -167,7 +167,9 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<ApiResponse<RecurringExpenseDto>> ToggleAsync(Guid id, CancellationToken ct = default)
     {
-        var entity = await _context.RecurringExpenses.FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted, ct);
+        var tenantId = _context.CurrentTenantId;
+        var entity = await _context.RecurringExpenses
+            .FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted && (!tenantId.HasValue || r.TenantId == tenantId.Value), ct);
         if (entity == null)
         {
             return ApiResponse<RecurringExpenseDto>.Fail("ERR_RECURRING_NOT_FOUND", "RECURRING");

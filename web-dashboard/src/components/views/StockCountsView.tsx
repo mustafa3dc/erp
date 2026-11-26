@@ -1,25 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Calculator, 
-  Check, 
-  AlertTriangle, 
+import {
+  Calculator,
+  Check,
+  AlertTriangle,
   Search,
   CheckCircle2,
   PackageCheck,
   TrendingDown,
   TrendingUp,
-  Building2,
   Barcode as BarcodeIcon,
   RefreshCw,
-  ArrowRightLeft,
   Filter
 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
 import { useSettings } from '../../context/settings-context';
 import { getStoredWarehouses, getStoredProducts } from '../../services/storageService';
+import { getTranslation } from '../../lib/i18n';
 
 export interface StockAuditItem {
-  id: string; // product id
+  rowKey: string;
+  stocktakeItemId?: string;
+  productId: string;
   sku: string;
   barcode: string;
   name: string;
@@ -28,26 +29,37 @@ export interface StockAuditItem {
   warehouse: string;
   shelf: string;
   unit: string;
-  systemQty: number; // الرصيد الدفتري المسجل
-  physicalQty: number; // الجرد الفعلي الميداني
-  unitCost: number; // سعر التكلفة
+  systemQty: number;
+  physicalQty: number;
+  physicalCountInput: string;
+  unitCost: number;
 }
 
 interface StockCountsViewProps {
   lang: 'en' | 'ar';
   products?: Product[];
   warehouses?: Warehouse[];
-  onBulkReconcileStock?: (reconciledItems: { 
-    productId: string; 
-    newStock: number; 
-    delta: number; 
-    warehouseName: string; 
+  onBulkReconcileStock?: (reconciledItems: {
+    productId: string;
+    warehouseId?: string;
+    newStock: number;
+    delta: number;
+    warehouseName: string;
     operatorName?: string;
   }[]) => void;
   currentUser?: any;
 }
 
-export default function StockCountsView({ 
+const buildUniqueRowKey = (
+  baseKey: string,
+  seenCounts: Map<string, number>
+): string => {
+  const count = seenCounts.get(baseKey) || 0;
+  seenCounts.set(baseKey, count + 1);
+  return count === 0 ? baseKey : `${baseKey}__${count}`;
+};
+
+export default function StockCountsView({
   lang,
   products: propProducts,
   warehouses: propWarehouses,
@@ -55,6 +67,7 @@ export default function StockCountsView({
   currentUser
 }: StockCountsViewProps) {
   const isAr = lang === 'ar';
+  const tr = (k: string) => getTranslation(lang, `ui.stockCounts.${k}`);
   const { formatMoney } = useSettings();
 
   const allWarehouses = useMemo(() => {
@@ -66,7 +79,6 @@ export default function StockCountsView({
     return raw.filter(p => !p.isBundle);
   }, [propProducts]);
 
-  // Selected warehouse filter tab (Default to first warehouse or ALL)
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(() => {
     return allWarehouses[0]?.id || 'ALL';
   });
@@ -77,26 +89,37 @@ export default function StockCountsView({
   const [reconciledToast, setReconciledToast] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Map of physical counts edited by user: { [productId]: number }
-  const [physicalCounts, setPhysicalCounts] = useState<Record<string, number>>({});
+  // Optional API-sourced stocktake rows when backend reconciliation endpoint returns records
+  const [apiRows, setApiRows] = useState<any[] | null>(null);
 
-  // Real-time API fetching simulation / sync with active warehouse
+  // Independent per-row physical count map keyed STRICTLY by guaranteed unique rowKey
+  const [physicalCounts, setPhysicalCounts] = useState<Record<string, string>>({});
+
   const fetchWarehouseItems = async (whId: string) => {
     setIsLoading(true);
     try {
-      // Attempt backend API call
       const res = await fetch(`/api/v1/inventory/reconciliation?warehouseId=${encodeURIComponent(whId)}`, {
-        headers: { 'Accept': 'application/json' }
+        headers: { Accept: 'application/json' }
       });
       if (res.ok) {
         const apiData = await res.json();
         if (Array.isArray(apiData) && apiData.length > 0) {
-          // Initialize physical counts from backend data
-          const initialMap: Record<string, number> = {};
-          apiData.forEach((it: any) => {
-            initialMap[it.id] = typeof it.physicalQty === 'number' ? it.physicalQty : it.systemQty;
+          const seenKeys = new Map<string, number>();
+          const initialMap: Record<string, string> = {};
+          const normalizedRows = apiData.map((it: any, idx: number) => {
+            const stocktakeItemId = it.stocktakeItemId ?? it.stockCountItemId ?? (it.id ? String(it.id) : undefined);
+            const productId = String(it.productId ?? it.id ?? it.sku ?? `row-${idx}`);
+            const warehouseId = String(it.warehouseId ?? whId ?? 'wh');
+            const baseKey = stocktakeItemId ? String(stocktakeItemId) : `${productId}-${warehouseId}`;
+            const rowKey = buildUniqueRowKey(baseKey, seenKeys);
+            const sysQty = Number(it.systemQty ?? it.bookQuantity ?? 0);
+            const actQty = it.actualQuantity ?? it.physicalQty;
+            const initialVal = typeof actQty === 'number' && Number.isFinite(actQty) ? actQty : sysQty;
+            initialMap[rowKey] = String(initialVal);
+            return { ...it, __rowKey: rowKey, __stocktakeItemId: stocktakeItemId, __productId: productId, __warehouseId: warehouseId };
           });
-          setPhysicalCounts(prev => ({ ...prev, ...initialMap }));
+          setApiRows(normalizedRows);
+          setPhysicalCounts(initialMap);
           setIsLoading(false);
           return;
         }
@@ -105,69 +128,114 @@ export default function StockCountsView({
       // Graceful fallback to live state / local storage
     }
 
-    // Fallback: populate from live products
-    const initialMap: Record<string, number> = {};
-    allProducts.forEach(p => {
-      if (physicalCounts[p.id] === undefined) {
-        initialMap[p.id] = p.currentStock;
-      }
-    });
-    setPhysicalCounts(prev => ({ ...initialMap, ...prev }));
+    setApiRows(null);
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchWarehouseItems(selectedWarehouseId);
-  }, [selectedWarehouseId, allProducts]);
+  }, [selectedWarehouseId]);
 
-  // Build the list of audit items based on selected warehouse
+  // Build isolated audit items with guaranteed unique rowKey per row
   const auditItems: StockAuditItem[] = useMemo(() => {
+    const seenKeys = new Map<string, number>();
+
+    if (apiRows && apiRows.length > 0) {
+      return apiRows.map((it: any, idx: number) => {
+        const rowKey = it.__rowKey || buildUniqueRowKey(`${it.__productId || idx}-${it.__warehouseId || selectedWarehouseId}`, seenKeys);
+        const sysQty = Number(it.systemQty ?? it.bookQuantity ?? 0);
+        const rawInput = physicalCounts[rowKey] !== undefined ? physicalCounts[rowKey] : String(sysQty);
+        const parsedQty = rawInput.trim() === '' ? 0 : Math.max(0, Number(rawInput));
+        const physicalQty = Number.isFinite(parsedQty) ? parsedQty : sysQty;
+        const wh = allWarehouses.find(w => w.id === it.__warehouseId);
+        const whName = wh ? (isAr ? wh.nameAr : (wh.nameEn || wh.nameAr)) : (it.warehouse || '');
+
+        return {
+          rowKey,
+          stocktakeItemId: it.__stocktakeItemId,
+          productId: it.__productId,
+          sku: String(it.sku || ''),
+          barcode: String(it.barcode || it.sku || ''),
+          name: String(isAr ? (it.nameAr || it.name || '') : (it.nameEn || it.name || it.nameAr || '')),
+          nameAr: String(it.nameAr || it.name || ''),
+          warehouseId: it.__warehouseId,
+          warehouse: whName,
+          shelf: String(it.shelf || 'A-01'),
+          unit: String(it.unit || tr('defaultUnit')),
+          systemQty: sysQty,
+          physicalQty,
+          physicalCountInput: rawInput,
+          unitCost: Number(it.unitCost ?? it.costPrice ?? 0)
+        };
+      });
+    }
+
     const list = selectedWarehouseId === 'ALL'
       ? allProducts
       : allProducts.filter(p => p.warehouseId === selectedWarehouseId);
 
-    return list.map(p => {
-      const wh = allWarehouses.find(w => w.id === p.warehouseId);
+    return list.map((p, idx) => {
+      const productId = p.id ? String(p.id).trim() : String(p.sku || `item-${idx}`);
+      const warehouseId = p.warehouseId ? String(p.warehouseId).trim() : 'WH-01';
+      const baseKey = `${productId}-${warehouseId}`;
+      const rowKey = buildUniqueRowKey(baseKey, seenKeys);
+
+      const wh = allWarehouses.find(w => w.id === warehouseId);
       const whName = isAr ? (wh?.nameAr || p.warehouseName) : (wh?.nameEn || p.warehouseNameEn || p.warehouseName);
-      const counted = physicalCounts[p.id] !== undefined ? physicalCounts[p.id] : p.currentStock;
+      const sysQty = Number(p.currentStock) || 0;
+      const rawInput = physicalCounts[rowKey] !== undefined ? physicalCounts[rowKey] : String(sysQty);
+      const parsedQty = rawInput.trim() === '' ? 0 : Math.max(0, Number(rawInput));
+      const physicalQty = Number.isFinite(parsedQty) ? parsedQty : sysQty;
 
       return {
-        id: p.id,
+        rowKey,
+        productId,
         sku: p.sku,
         barcode: p.barcode || p.sku,
         name: isAr ? p.nameAr : (p.nameEn || p.nameAr),
         nameAr: p.nameAr,
-        warehouseId: p.warehouseId,
+        warehouseId,
         warehouse: whName,
         shelf: p.shelf || 'A-01',
-        unit: p.unit || (isAr ? 'قطعة' : 'Unit'),
-        systemQty: p.currentStock,
-        physicalQty: counted,
-        unitCost: p.costPrice || 0
+        unit: p.unit || tr('defaultUnit'),
+        systemQty: sysQty,
+        physicalQty,
+        physicalCountInput: rawInput,
+        unitCost: Number(p.costPrice) || 0
       };
     });
-  }, [allProducts, allWarehouses, selectedWarehouseId, physicalCounts, isAr]);
+  }, [apiRows, allProducts, allWarehouses, selectedWarehouseId, physicalCounts, isAr]);
 
-  // Handle live modification of physical count
-  const handleUpdatePhysical = (id: string, val: number) => {
-    const cleanVal = isNaN(val) ? 0 : Math.max(0, val);
+  // Update ONLY the edited row identified by rowKey
+  const handleUpdatePhysical = (rowKey: string, rawVal: string) => {
+    if (rawVal === '') {
+      setPhysicalCounts(prev => ({
+        ...prev,
+        [rowKey]: ''
+      }));
+      return;
+    }
+
+    const numeric = Number(rawVal);
+    if (!Number.isFinite(numeric)) return;
+    const cleanVal = numeric < 0 ? '0' : rawVal;
     setPhysicalCounts(prev => ({
       ...prev,
-      [id]: cleanVal
+      [rowKey]: cleanVal
     }));
   };
 
-  // Filtered rows for table view
   const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return auditItems.filter(item => {
-      const matchesSearch = !searchQuery.trim() ||
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.barcode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.warehouse.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !q ||
+        item.name.toLowerCase().includes(q) ||
+        item.sku.toLowerCase().includes(q) ||
+        item.barcode.toLowerCase().includes(q) ||
+        item.warehouse.toLowerCase().includes(q);
 
       const variance = item.physicalQty - item.systemQty;
-      const matchesStatus = 
+      const matchesStatus =
         statusFilter === 'ALL' ? true :
         statusFilter === 'DISCREPANCY' ? (variance !== 0) :
         (variance === 0);
@@ -176,7 +244,6 @@ export default function StockCountsView({
     });
   }, [auditItems, searchQuery, statusFilter]);
 
-  // Dynamic KPI Metrics calculated live
   const totalItemsCount = auditItems.length;
   const matchedCount = auditItems.filter(i => i.physicalQty === i.systemQty).length;
   const discrepancyItems = auditItems.filter(i => i.physicalQty !== i.systemQty);
@@ -185,28 +252,31 @@ export default function StockCountsView({
   const shortageCount = auditItems.filter(i => i.physicalQty < i.systemQty).length;
   const surplusCount = auditItems.filter(i => i.physicalQty > i.systemQty).length;
 
-  // Real Reconcile Action with Strict Button Gating
   const handleReconcile = async () => {
     if (discrepancyCount === 0 || auditItems.length === 0) return;
 
     setIsSubmitting(true);
 
+    const operatorName = currentUser?.fullName || currentUser?.username || tr('defaultOperator');
     const reconciliationPayload = discrepancyItems.map(item => ({
-      productId: item.id,
+      stocktakeItemId: item.stocktakeItemId,
+      productId: item.productId,
+      warehouseId: item.warehouseId,
+      bookQuantity: item.systemQty,
+      actualQuantity: item.physicalQty,
       newStock: item.physicalQty,
       delta: item.physicalQty - item.systemQty,
       warehouseName: item.warehouse,
-      operatorName: currentUser?.fullName || currentUser?.username || (isAr ? 'لجنة الجرد والمطابقة' : 'Audit Committee')
+      operatorName
     }));
 
     try {
-      // Real or simulated backend call
       await fetch('/api/v1/inventory/reconciliation/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           warehouseId: selectedWarehouseId,
-          operator: currentUser?.fullName || currentUser?.username || 'Audit Committee',
+          operator: operatorName,
           items: reconciliationPayload,
           reconciledAt: new Date().toISOString()
         })
@@ -219,35 +289,32 @@ export default function StockCountsView({
       onBulkReconcileStock(reconciliationPayload);
     }
 
-    // Reset physical counts to match the newly committed balances
-    const newPhysicalMap: Record<string, number> = { ...physicalCounts };
-    discrepancyItems.forEach(item => {
-      newPhysicalMap[item.id] = item.physicalQty;
+    setPhysicalCounts(prev => {
+      const next: Record<string, string> = { ...prev };
+      discrepancyItems.forEach(item => {
+        next[item.rowKey] = String(item.physicalQty);
+      });
+      return next;
     });
-    setPhysicalCounts(newPhysicalMap);
 
     setIsSubmitting(false);
-    setReconciledToast(
-      isAr 
-        ? `تم اعتماد تسوية ${discrepancyCount} صنف بنجاح وتحديث الأرصدة والقيود المالية في النظام!`
-        : `Successfully reconciled ${discrepancyCount} item discrepancies & updated inventory ledgers!`
-    );
+    setReconciledToast(tr('reconcileSuccessToast').replace('{count}', String(discrepancyCount)));
     setTimeout(() => setReconciledToast(''), 4500);
   };
 
   return (
-    <div className="view-content-wrapper fade-in" style={{ paddingBottom: '3rem' }}>
+    <div className="view-content-wrapper fade-in" style={{ paddingBottom: '3rem' }} dir={isAr ? 'rtl' : 'ltr'}>
       {/* Toast Banner */}
       {reconciledToast && (
-        <div 
-          className="toast-banner glass-panel" 
-          style={{ 
-            position: 'fixed', 
-            bottom: '24px', 
-            left: '24px', 
-            zIndex: 99999, 
-            display: 'flex', 
-            alignItems: 'center', 
+        <div
+          className="toast-banner glass-panel"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '24px',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
             gap: '10px',
             padding: '12px 18px',
             borderRadius: '12px',
@@ -269,23 +336,21 @@ export default function StockCountsView({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Calculator size={22} style={{ color: 'var(--primary)' }} />
             <h2 className="view-title" style={{ margin: 0 }}>
-              {isAr ? 'الجرد المخزني والتسويات' : 'Inventory Auditing & Reconciliation'}
+              {tr('title')}
             </h2>
           </div>
           <p className="view-subtitle" style={{ margin: '4px 0 0' }}>
-            {isAr 
-              ? 'مطابقة الأرصدة الدفترية مع الجرد الميداني الفعلي، رصد الفروقات، واعتماد قيود التسوية المالية المعتمدة' 
-              : 'Reconcile system ledger stock with physical counts, record discrepancies, and post adjustments'}
+            {tr('subtitle')}
           </p>
         </div>
 
         <div className="module-actions-wrap" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button 
-            type="button" 
+          <button
+            type="button"
             className="btn-secondary-flat"
             onClick={() => fetchWarehouseItems(selectedWarehouseId)}
             disabled={isLoading}
-            title={isAr ? 'إعادة جلب وتحديث الأرصدة' : 'Refresh balances'}
+            title={tr('refreshTitle')}
             style={{
               padding: '8px 14px',
               borderRadius: '8px',
@@ -301,12 +366,11 @@ export default function StockCountsView({
             }}
           >
             <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-            <span>{isAr ? 'تحديث البيانات' : 'Refresh Data'}</span>
+            <span>{tr('refreshBtn')}</span>
           </button>
 
-          {/* Button strictly gated: disabled if 0 items or 0 discrepancies */}
-          <button 
-            type="button" 
+          <button
+            type="button"
             id="reconcile-stock-btn"
             data-testid="reconcile-stock-btn"
             disabled={discrepancyCount === 0 || totalItemsCount === 0 || isSubmitting}
@@ -328,16 +392,16 @@ export default function StockCountsView({
               transition: 'all 0.2s ease'
             }}
             title={
-              discrepancyCount === 0 
-                ? (isAr ? 'لا توجد أي فروقات جرد لاعتمادها حالياً' : 'No discrepancies to reconcile') 
-                : (isAr ? `اعتماد وتسوية ${discrepancyCount} صنف مع ترحيل القيود للأرصدة` : `Reconcile ${discrepancyCount} items`)
+              discrepancyCount === 0
+                ? tr('reconcileEmptyTitle')
+                : tr('reconcileReadyTitle').replace('{count}', String(discrepancyCount))
             }
           >
             <Check size={16} />
             <span>
-              {isSubmitting 
-                ? (isAr ? 'جاري الاعتماد والترحيل...' : 'Committing...') 
-                : (isAr ? `اعتماد وتسوية فروقات الجرد (${discrepancyCount})` : `Reconcile Discrepancies (${discrepancyCount})`)}
+              {isSubmitting
+                ? tr('reconcilingBtn')
+                : tr('reconcileBtn').replace('{count}', String(discrepancyCount))}
             </span>
           </button>
         </div>
@@ -348,10 +412,10 @@ export default function StockCountsView({
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
             <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              {isAr ? 'إجمالي الأصناف المجرودة' : 'Counted SKUs'}
+              {tr('kpiTotalSkus')}
             </span>
             <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: 'var(--foreground)', marginTop: '4px' }}>
-              {totalItemsCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>{isAr ? 'أصناف' : 'items'}</span>
+              {totalItemsCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>{tr('kpiItemsUnit')}</span>
             </div>
           </div>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -362,7 +426,7 @@ export default function StockCountsView({
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
             <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              {isAr ? 'أصناف مطابقة تماماً' : 'Exact Matched'}
+              {tr('kpiExactMatched')}
             </span>
             <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
               {matchedCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({((matchedCount / (totalItemsCount || 1)) * 100).toFixed(0)}%)</span>
@@ -376,10 +440,10 @@ export default function StockCountsView({
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
             <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              {isAr ? 'أصناف بها فروقات (عجز/زيادة)' : 'Discrepancies'}
+              {tr('kpiDiscrepancies')}
             </span>
             <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: discrepancyCount > 0 ? '#ea580c' : '#64748b', marginTop: '4px' }}>
-              {discrepancyCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({isAr ? `${shortageCount} عجز / ${surplusCount} زيادة` : `${shortageCount} short / ${surplusCount} surplus`})</span>
+              {discrepancyCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({tr('kpiDiscrepancyBreakdown').replace('{short}', String(shortageCount)).replace('{surplus}', String(surplusCount))})</span>
             </div>
           </div>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: discrepancyCount > 0 ? 'rgba(234, 88, 12, 0.1)' : 'rgba(100, 116, 139, 0.1)', color: discrepancyCount > 0 ? '#ea580c' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -390,12 +454,12 @@ export default function StockCountsView({
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
             <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              {isAr ? 'صافي الفارق المالي للتسوية' : 'Net Discrepancy Value'}
+              {tr('kpiNetValue')}
             </span>
             <div className="module-kpi-value" style={{ fontSize: '20px', fontWeight: 800, color: netVarianceValue < 0 ? '#dc2626' : netVarianceValue > 0 ? '#059669' : '#64748b', marginTop: '4px' }}>
               {formatMoney(Math.abs(netVarianceValue))}
               <span style={{ fontSize: '12px', fontWeight: 600, marginInlineStart: '6px', color: netVarianceValue < 0 ? '#dc2626' : netVarianceValue > 0 ? '#059669' : '#64748b' }}>
-                {netVarianceValue < 0 ? (isAr ? '(عجز دفتري)' : '(Deficit)') : netVarianceValue > 0 ? (isAr ? '(فائض دفتري)' : '(Surplus)') : (isAr ? '(متطابق)' : '(Balanced)')}
+                {netVarianceValue < 0 ? tr('statusDeficit') : netVarianceValue > 0 ? tr('statusSurplus') : tr('statusBalanced')}
               </span>
             </div>
           </div>
@@ -406,12 +470,12 @@ export default function StockCountsView({
       </div>
 
       {/* Warehouse Selector & Search Toolbar */}
-      <div 
-        style={{ 
-          background: 'var(--card)', 
-          border: '1px solid var(--border)', 
-          borderRadius: '12px', 
-          padding: '14px 16px', 
+      <div
+        style={{
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: '12px',
+          padding: '14px 16px',
           marginBottom: '14px',
           display: 'flex',
           justifyContent: 'space-between',
@@ -420,12 +484,11 @@ export default function StockCountsView({
           gap: '12px'
         }}
       >
-        {/* Search Input */}
         <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '380px' }}>
           <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: isAr ? '12px' : 'auto', left: isAr ? 'auto' : '12px', color: '#94a3b8' }} />
-          <input 
-            type="text" 
-            placeholder={isAr ? 'بحث بالاسم، الباركود، كود الصنف SKU...' : 'Search by name, barcode, SKU...'} 
+          <input
+            type="text"
+            placeholder={tr('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -442,7 +505,6 @@ export default function StockCountsView({
           />
         </div>
 
-        {/* Warehouse Tabs Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -459,7 +521,7 @@ export default function StockCountsView({
               fontWeight: 600
             }}
           >
-            {isAr ? 'جميع المستودعات' : 'All Warehouses'}
+            {tr('allWarehouses')}
           </button>
 
           {allWarehouses.map(wh => (
@@ -484,7 +546,6 @@ export default function StockCountsView({
           ))}
         </div>
 
-        {/* Status Filter Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button
             type="button"
@@ -504,7 +565,7 @@ export default function StockCountsView({
             }}
           >
             <Filter size={14} />
-            <span>{isAr ? 'عرض الفروقات فقط' : 'Discrepancies Only'}</span>
+            <span>{tr('discrepanciesOnly')}</span>
             {discrepancyCount > 0 && (
               <span style={{ background: '#ea580c', color: '#ffffff', borderRadius: '10px', padding: '1px 6px', fontSize: '10px', fontWeight: 800 }}>
                 {discrepancyCount}
@@ -515,12 +576,12 @@ export default function StockCountsView({
       </div>
 
       {/* Main Reconciliation Audit Table */}
-      <div 
-        className="transactions-table-card" 
-        style={{ 
-          background: 'var(--card)', 
-          border: '1px solid var(--border)', 
-          borderRadius: '12px', 
+      <div
+        className="transactions-table-card"
+        style={{
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: '12px',
           overflow: 'hidden',
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
         }}
@@ -530,15 +591,15 @@ export default function StockCountsView({
             <thead>
               <tr style={{ background: 'var(--muted, #f8fafc)', borderBottom: '1px solid var(--border)' }}>
                 <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '50px' }}>#</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{isAr ? 'الباركود ورمز SKU' : 'Barcode & SKU'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'اسم الصنف والمواصفات' : 'Item Description'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '180px' }}>{isAr ? 'المستودع والموقع' : 'Warehouse & Shelf'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '90px' }}>{isAr ? 'الوحدة' : 'Unit'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{isAr ? 'الرصيد الدفتري' : 'System Qty'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{isAr ? 'الجرد الفعلي الميداني' : 'Counted Qty'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{isAr ? 'فارق الجرد' : 'Variance'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{isAr ? 'الأثر المالي' : 'Financial Impact'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '110px' }}>{isAr ? 'الحالة' : 'Status'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{tr('colBarcodeSku')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{tr('colItemDesc')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '180px' }}>{tr('colWarehouseShelf')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '90px' }}>{tr('colUnit')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colSystemQty')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{tr('colActualQty')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colVariance')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colFinancialImpact')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '110px' }}>{tr('colStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -548,10 +609,10 @@ export default function StockCountsView({
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                       <AlertTriangle size={32} color="#94a3b8" />
                       <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--foreground)' }}>
-                        {isAr ? 'لا توجد أصناف تطابق معايير البحث أو الجرد المحددة' : 'No items match the search or filter criteria'}
+                        {tr('emptyTitle')}
                       </p>
                       <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-                        {isAr ? 'تأكد من اختيار المستودع الصحيح أو مسح عبارة البحث' : 'Please check warehouse selection or clear search term'}
+                        {tr('emptySubtitle')}
                       </p>
                     </div>
                   </td>
@@ -563,9 +624,9 @@ export default function StockCountsView({
                   const hasDiscrepancy = variance !== 0;
 
                   return (
-                    <tr 
-                      key={item.id}
-                      style={{ 
+                    <tr
+                      key={item.rowKey}
+                      style={{
                         borderBottom: '1px solid var(--border)',
                         background: hasDiscrepancy ? (variance < 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)') : 'transparent',
                         transition: 'background-color 0.15s ease'
@@ -576,30 +637,30 @@ export default function StockCountsView({
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', fontSize: '12px' }}>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', fontSize: '12px' }} dir="ltr">
                           {item.sku}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }} dir="ltr">
                           <BarcodeIcon size={12} />
                           <span>{item.barcode}</span>
                         </div>
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontWeight: 700, color: 'var(--foreground)', fontSize: '13px' }} dir="auto">
-                          {item.name}
+                        <div style={{ fontWeight: 700, color: 'var(--foreground)', fontSize: '13px' }}>
+                          <bdi dir="auto">{item.name}</bdi>
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                          {isAr ? 'التكلفة المعيارية:' : 'Standard Cost:'} {formatMoney(item.unitCost)}
+                          {tr('standardCostPrefix')} <span dir="ltr">{formatMoney(item.unitCost)}</span>
                         </div>
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--foreground)' }} dir="auto">
-                          {item.warehouse}
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--foreground)' }}>
+                          <bdi dir="auto">{item.warehouse}</bdi>
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
-                          {isAr ? 'الرف / القاطع:' : 'Shelf / Bay:'} <strong>{item.shelf}</strong>
+                          {tr('shelfPrefix')} <strong dir="ltr">{item.shelf}</strong>
                         </div>
                       </td>
 
@@ -607,30 +668,30 @@ export default function StockCountsView({
                         {item.unit}
                       </td>
 
-                      {/* System Qty (Readonly) */}
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--foreground)', fontFamily: 'monospace' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--foreground)', fontFamily: 'monospace' }} dir="ltr">
                           {item.systemQty}
                         </div>
                         <div style={{ fontSize: '10px', color: '#64748b' }}>
-                          {isAr ? 'مسجل بالنظام' : 'System Ledger'}
+                          {tr('systemLedgerHint')}
                         </div>
                       </td>
 
-                      {/* Counted Qty Input */}
                       <td style={{ padding: '12px 14px' }}>
-                        <input 
+                        <input
                           type="number"
-                          id={`counted-input-${item.id}`}
-                          data-testid={`counted-input-${item.id}`}
+                          id={`counted-input-${item.rowKey}`}
+                          data-testid={`counted-input-${item.rowKey}`}
                           min="0"
-                          value={item.physicalQty}
-                          onChange={(e) => handleUpdatePhysical(item.id, parseInt(e.target.value) || 0)}
+                          step="1"
+                          value={item.physicalCountInput}
+                          onChange={(e) => handleUpdatePhysical(item.rowKey, e.target.value)}
+                          dir="ltr"
                           style={{
                             width: '90px',
                             height: '36px',
                             background: 'var(--card, #ffffff)',
-                            border: hasDiscrepancy 
+                            border: hasDiscrepancy
                               ? (variance < 0 ? '2px solid #ef4444' : '2px solid #10b981')
                               : '1px solid var(--border, #cbd5e1)',
                             color: 'var(--foreground, #0f172a)',
@@ -644,7 +705,6 @@ export default function StockCountsView({
                         />
                       </td>
 
-                      {/* Variance Indicator */}
                       <td style={{ padding: '12px 14px' }}>
                         {variance === 0 ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#f1f5f9', color: '#475569' }}>
@@ -652,28 +712,29 @@ export default function StockCountsView({
                           </span>
                         ) : variance > 0 ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
-                            +{variance} ({isAr ? 'فائض' : 'Surplus'})
+                            +{variance} ({tr('varianceSurplus')})
                           </span>
                         ) : (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
-                            {variance} ({isAr ? 'عجز' : 'Shortage'})
+                            {variance} ({tr('varianceShortage')})
                           </span>
                         )}
                       </td>
 
-                      {/* Financial Variance Value */}
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ 
-                          fontWeight: 800, 
-                          fontSize: '12px',
-                          color: variance === 0 ? '#64748b' : variance > 0 ? '#059669' : '#dc2626',
-                          fontFamily: 'monospace'
-                        }}>
+                        <div
+                          dir="ltr"
+                          style={{
+                            fontWeight: 800,
+                            fontSize: '12px',
+                            color: variance === 0 ? '#64748b' : variance > 0 ? '#059669' : '#dc2626',
+                            fontFamily: 'monospace'
+                          }}
+                        >
                           {variance === 0 ? '-' : (variance > 0 ? `+${formatMoney(varianceValue)}` : `-${formatMoney(Math.abs(varianceValue))}`)}
                         </div>
                       </td>
 
-                      {/* Status */}
                       <td style={{ padding: '12px 14px' }}>
                         <span style={{
                           display: 'inline-block',
@@ -685,7 +746,7 @@ export default function StockCountsView({
                           color: variance === 0 ? '#047857' : '#b45309',
                           border: `1px solid ${variance === 0 ? '#a7f3d0' : '#fde68a'}`
                         }}>
-                          {variance === 0 ? (isAr ? 'مطابق تماماً' : 'Matched') : (isAr ? 'فارق جرد' : 'Discrepancy')}
+                          {variance === 0 ? tr('badgeMatched') : tr('badgeDiscrepancy')}
                         </span>
                       </td>
                     </tr>

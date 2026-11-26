@@ -120,11 +120,20 @@ export function getStoredProducts(): Product[] {
 
   if (existing !== null && Array.isArray(existing)) {
     let hasRepairedWarehouse = false;
-    const mapped = existing.map(p => {
+    const seenIds = new Set<string>();
+    const mapped = existing.map((p, idx) => {
+      let resolvedId = p.id ? String(p.id).trim() : '';
+      if (!resolvedId || seenIds.has(resolvedId)) {
+        resolvedId = `PRD-${Date.now()}-${idx}-${Math.floor(1000 + Math.random() * 9000)}`;
+        hasRepairedWarehouse = true;
+      }
+      seenIds.add(resolvedId);
+
       // Virtual bundles are warehouse-agnostic and derive stock dynamically from their components
       if (p.isBundle) {
         return {
           ...p,
+          id: resolvedId,
           warehouseId: 'ALL',
           warehouseName: p.warehouseName || 'حزمة مركبة (افتراضي)',
           warehouseNameEn: p.warehouseNameEn || 'Virtual Bundle',
@@ -152,6 +161,7 @@ export function getStoredProducts(): Product[] {
 
       return {
         ...p,
+        id: resolvedId,
         warehouseId: targetWhId,
         warehouseName: resolvedWarehouseName,
         warehouseNameEn: resolvedWarehouseNameEn,
@@ -1014,7 +1024,7 @@ export function executePurchaseInvoiceTransaction(
   const updatedProducts = [...products];
   const newTransactions: TransactionDetail[] = [];
 
-  invoice.items.forEach(item => {
+  invoice.items.forEach((item, idx) => {
     const existingIndex = updatedProducts.findIndex(
       p => (item.productId && p.id === item.productId) || 
            (item.sku && p.sku.toLowerCase() === item.sku.toLowerCase()) ||
@@ -1047,8 +1057,11 @@ export function executePurchaseInvoiceTransaction(
       };
       updatedProducts[existingIndex] = nextProduct;
     } else {
-      // Create new product on the fly
-      const newProductId = item.productId || `PRD-${Date.now().toString().slice(-4)}`;
+      // Create new product on the fly with guaranteed unique ID per line item
+      let newProductId = item.productId || `PRD-${Date.now()}-${idx}-${Math.floor(1000 + Math.random() * 9000)}`;
+      while (updatedProducts.some(p => p.id === newProductId)) {
+        newProductId = `PRD-${Date.now()}-${idx}-${Math.floor(1000 + Math.random() * 9000)}`;
+      }
       const unitCost = Number(item.unitCost) || 0;
       const newProduct: Product = {
         id: newProductId,

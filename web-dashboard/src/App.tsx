@@ -1356,24 +1356,30 @@ function DashboardApp() {
   };
 
   const handleBulkReconcileStock = (
-    reconciledItems: { productId: string; newStock: number; delta: number; warehouseName: string; operatorName?: string }[]
+    reconciledItems: { productId: string; warehouseId?: string; newStock: number; delta: number; warehouseName: string; operatorName?: string }[]
   ) => {
     if (reconciledItems.length === 0) return;
 
     // 1. Update live products catalog with audited counted quantities
     setProducts(prev => {
-      const stockMap = new Map(reconciledItems.map(r => [r.productId, r.newStock]));
-      return prev.map(p => {
-        if (stockMap.has(p.id)) {
-          const updated = Math.max(0, stockMap.get(p.id)!);
+      const next: Product[] = prev.map(p => {
+        const matched = reconciledItems.find(
+          r => r.productId === p.id && (!r.warehouseId || p.warehouseId === r.warehouseId)
+        );
+        if (matched) {
+          const updated = Math.max(0, matched.newStock);
+          const nextStatus: Product['status'] =
+            updated <= 0 ? 'out_of_stock' : updated <= p.minStockAlert ? 'low' : 'available';
           return {
             ...p,
             currentStock: updated,
-            status: updated <= 0 ? 'out_of_stock' : updated <= p.minStockAlert ? 'low' : 'available'
+            status: nextStatus
           };
         }
         return p;
       });
+      saveStoredProducts(next);
+      return next;
     });
 
     // 2. Generate formal atomic stock adjustment journal records in transaction ledger

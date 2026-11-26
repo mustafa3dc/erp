@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search,
@@ -53,107 +53,139 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
 
   const [racks, setRacks] = useState<RackBayItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [racksViewMode, setRacksViewMode] = useState<'pallets' | 'bins'>('pallets');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [racksViewMode, setRacksViewMode] = useState<'units' | 'pallets'>('units');
   const [rackSearchTerm, setRackSearchTerm] = useState<string>('');
   const [selectedRackDrawer, setSelectedRackDrawer] = useState<RackBayItem | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
-  const fetchRacks = useCallback(async () => {
-    if (!warehouse?.id) return;
-    setIsLoading(true);
+  const productsRef = useRef<Product[]>(products);
+  productsRef.current = products;
+
+  const onRacksLoadedRef = useRef(onRacksLoaded);
+  onRacksLoadedRef.current = onRacksLoaded;
+
+  const productsSignature = useMemo(
+    () =>
+      products
+        .map(p => `${p.id}:${p.shelf ?? ''}:${p.currentStock ?? 0}`)
+        .join('|'),
+    [products]
+  );
+
+  const fetchRacks = useCallback(async (isManualRefresh = false) => {
+    if (!warehouse?.id) {
+      setRacks([]);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
 
     try {
-      const headers = getTenantAuthHeaders();
-      const res = await fetch(`/api/v1/wms/warehouses/${encodeURIComponent(warehouse.id)}/racks`, {
-        method: 'GET',
-        headers
-      });
+      let loadedFromApi = false;
 
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const mappedRacks: RackBayItem[] = data.map((r: any) => {
-            const bayCode = String(r.bayCode || r.code || `BAY-${r.id}`);
-            const shelfCode = String(r.shelfCode || bayCode.replace(/^BAY-/i, ''));
-            const totalCap = Number(r.totalCapacity) || (racksViewMode === 'pallets' ? 32 : 100);
-            const itemsList: Product[] = Array.isArray(r.items) ? r.items : [];
-            const rawUsed = typeof r.usedCapacity === 'number'
-              ? Number(r.usedCapacity)
-              : itemsList.reduce((sum: number, it: any) => sum + (Number(it.currentStock) || 0), 0);
-            const usedCap = Math.max(0, rawUsed);
+      try {
+        const headers = getTenantAuthHeaders();
+        const res = await fetch(`/api/v1/wms/warehouses/${encodeURIComponent(warehouse.id)}/racks`, {
+          method: 'GET',
+          headers
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const mappedRacks: RackBayItem[] = data.map((r: any) => {
+              const bayCode = String(r.bayCode || r.code || `BAY-${r.id}`);
+              const shelfCode = String(r.shelfCode || bayCode.replace(/^BAY-/i, ''));
+              const totalCap = Number(r.totalCapacity) || (racksViewMode === 'pallets' ? 32 : 100);
+              const itemsList: Product[] = Array.isArray(r.items) ? r.items : [];
+              const rawUsed = typeof r.usedCapacity === 'number'
+                ? Number(r.usedCapacity)
+                : itemsList.reduce((sum: number, it: any) => sum + (Number(it.currentStock) || 0), 0);
+              const usedCap = Math.max(0, rawUsed);
+              const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
+
+              return {
+                id: r.id || bayCode,
+                bayCode,
+                shelfCode,
+                label: tr('rackBayLabel').replace('{code}', shelfCode),
+                totalCapacity: totalCap,
+                usedCapacity: usedCap,
+                occupancy: clampedOccupancy,
+                isOverCapacity: usedCap > totalCap,
+                items: itemsList
+              };
+            });
+            setRacks(mappedRacks);
+            onRacksLoadedRef.current?.(warehouse.id, mappedRacks);
+            loadedFromApi = true;
+          }
+        }
+      } catch {
+        // Fallback to live shelf assignments inside this warehouse
+      }
+
+      if (!loadedFromApi) {
+        const currentProducts = productsRef.current || [];
+        const whProducts = currentProducts.filter(
+          p => !p.isBundle && (p.warehouseId === warehouse.id || p.warehouseId === warehouse.code)
+        );
+        const shelfGroups: Record<string, Product[]> = {};
+
+        whProducts.forEach(prod => {
+          if (prod.shelf && prod.shelf.trim().length > 0) {
+            const shelfKey = prod.shelf.trim().toUpperCase();
+            if (!shelfGroups[shelfKey]) {
+              shelfGroups[shelfKey] = [];
+            }
+            shelfGroups[shelfKey].push(prod);
+          }
+        });
+
+        const shelfKeys = Object.keys(shelfGroups);
+        if (shelfKeys.length === 0) {
+          setRacks([]);
+          onRacksLoadedRef.current?.(warehouse.id, []);
+        } else {
+          const derivedRacks: RackBayItem[] = shelfKeys.map(shelfKey => {
+            const bayCode = shelfKey.startsWith('BAY-') ? shelfKey : `BAY-${shelfKey}`;
+            const items = shelfGroups[shelfKey];
+            const usedCap = items.reduce((acc, it) => acc + Math.max(0, Number(it.currentStock) || 0), 0);
+            const totalCap = racksViewMode === 'pallets' ? 32 : 100;
             const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
 
             return {
-              id: r.id || bayCode,
+              id: `rack-${bayCode.toLowerCase()}`,
               bayCode,
-              shelfCode,
-              label: tr('rackBayLabel').replace('{code}', shelfCode),
+              shelfCode: shelfKey,
+              label: tr('rackBayLabel').replace('{code}', shelfKey),
               totalCapacity: totalCap,
               usedCapacity: usedCap,
               occupancy: clampedOccupancy,
               isOverCapacity: usedCap > totalCap,
-              items: itemsList
+              items
             };
           });
-          setRacks(mappedRacks);
-          onRacksLoaded?.(warehouse.id, mappedRacks);
-          setIsLoading(false);
-          return;
+          setRacks(derivedRacks);
+          onRacksLoadedRef.current?.(warehouse.id, derivedRacks);
         }
       }
-    } catch {
-      // Fallback to live shelf assignments inside this warehouse
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
-
-    const whProducts = products.filter(
-      p => !p.isBundle && (p.warehouseId === warehouse.id || p.warehouseId === warehouse.code)
-    );
-    const shelfGroups: Record<string, Product[]> = {};
-
-    whProducts.forEach(prod => {
-      if (prod.shelf && prod.shelf.trim().length > 0) {
-        const shelfKey = prod.shelf.trim().toUpperCase();
-        if (!shelfGroups[shelfKey]) {
-          shelfGroups[shelfKey] = [];
-        }
-        shelfGroups[shelfKey].push(prod);
-      }
-    });
-
-    const shelfKeys = Object.keys(shelfGroups);
-    if (shelfKeys.length === 0) {
-      setRacks([]);
-      onRacksLoaded?.(warehouse.id, []);
-    } else {
-      const derivedRacks: RackBayItem[] = shelfKeys.map(shelfKey => {
-        const bayCode = shelfKey.startsWith('BAY-') ? shelfKey : `BAY-${shelfKey}`;
-        const items = shelfGroups[shelfKey];
-        const usedCap = items.reduce((acc, it) => acc + Math.max(0, Number(it.currentStock) || 0), 0);
-        const totalCap = racksViewMode === 'pallets' ? 32 : 100;
-        const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
-
-        return {
-          id: `rack-${bayCode.toLowerCase()}`,
-          bayCode,
-          shelfCode: shelfKey,
-          label: tr('rackBayLabel').replace('{code}', shelfKey),
-          totalCapacity: totalCap,
-          usedCapacity: usedCap,
-          occupancy: clampedOccupancy,
-          isOverCapacity: usedCap > totalCap,
-          items
-        };
-      });
-      setRacks(derivedRacks);
-      onRacksLoaded?.(warehouse.id, derivedRacks);
-    }
-
-    setIsLoading(false);
-  }, [warehouse?.id, warehouse?.code, products, racksViewMode, tr, onRacksLoaded]);
+  }, [warehouse?.id, warehouse?.code, productsSignature, racksViewMode, tr]);
 
   useEffect(() => {
-    fetchRacks();
+    void fetchRacks(false);
   }, [fetchRacks]);
 
   const displayedRacks = useMemo(() => {
@@ -197,12 +229,13 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <button
             type="button"
-            onClick={fetchRacks}
+            onClick={() => { void fetchRacks(true); }}
+            disabled={isRefreshing}
             className="btn-outline"
             title={tr('refreshTitle')}
-            style={{ padding: '6px 10px', height: '34px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            style={{ padding: '6px 10px', height: '34px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', opacity: isRefreshing ? 0.75 : 1 }}
           >
-            <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
             <span style={{ fontSize: '0.78rem' }}>{tr('refreshBtn')}</span>
           </button>
 
@@ -261,6 +294,28 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <button
               type="button"
+              onClick={() => setRacksViewMode('units')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '5px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                fontSize: '0.75rem',
+                fontWeight: racksViewMode === 'units' ? 700 : 500,
+                background: racksViewMode === 'units' ? '#ffffff' : 'transparent',
+                color: racksViewMode === 'units' ? '#0f172a' : '#64748b',
+                boxShadow: racksViewMode === 'units' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Box size={13} />
+              <span>{tr('binsMode')}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setRacksViewMode('pallets')}
               style={{
                 display: 'flex',
@@ -280,28 +335,6 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             >
               <Layers size={13} />
               <span>{tr('palletsMode')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRacksViewMode('bins')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '5px 10px',
-                borderRadius: '6px',
-                border: 'none',
-                fontSize: '0.75rem',
-                fontWeight: racksViewMode === 'bins' ? 700 : 500,
-                background: racksViewMode === 'bins' ? '#ffffff' : 'transparent',
-                color: racksViewMode === 'bins' ? '#0f172a' : '#64748b',
-                boxShadow: racksViewMode === 'bins' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <Box size={13} />
-              <span>{tr('binsMode')}</span>
             </button>
           </div>
         </div>
@@ -492,12 +525,17 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   </div>
                 )}
 
-                {/* Capacity breakdown with strict LTR fraction & tabular-nums */}
+                {/* Unambiguous occupied vs. capacity breakdown */}
                 <div style={{ fontSize: '0.72rem', color: '#1e293b', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  <span>{tr('occupiedPrefix')}</span>
                   <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
-                    {bay.usedCapacity} / {bay.totalCapacity}
+                    {bay.usedCapacity}
                   </span>
-                  <span>{unitLabel}</span>
+                  <span style={{ color: '#64748b', fontWeight: 600 }}>{tr('capacityOfSeparator')}</span>
+                  <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
+                    {bay.totalCapacity}
+                  </span>
+                  <span style={{ color: '#475569', fontWeight: 600 }}>{unitLabel}</span>
                 </div>
 
                 {overExtra > 0 ? (

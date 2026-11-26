@@ -148,10 +148,29 @@ export default function WarehousesRacksView({
   }, [selectedWarehouseId, selectedWhId]);
 
   const handleRacksLoaded = useCallback((whId: string, loaded: RackBayItem[]) => {
-    setLiveRacksByWarehouse(prev => ({
-      ...prev,
-      [whId]: loaded
-    }));
+    if (!whId) return;
+    setLiveRacksByWarehouse(prev => {
+      const existing = prev[whId];
+      if (
+        existing &&
+        existing.length === loaded.length &&
+        existing.every(
+          (item, idx) =>
+            item.id === loaded[idx].id &&
+            item.bayCode === loaded[idx].bayCode &&
+            item.usedCapacity === loaded[idx].usedCapacity &&
+            item.totalCapacity === loaded[idx].totalCapacity &&
+            item.occupancy === loaded[idx].occupancy &&
+            item.items.length === loaded[idx].items.length
+        )
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [whId]: loaded
+      };
+    });
   }, []);
 
   const filteredWarehouses = useMemo(() => {
@@ -171,6 +190,13 @@ export default function WarehousesRacksView({
 
   const activeWh = warehouses.find(w => w.id === selectedWhId) || filteredWarehouses[0] || warehouses[0] || null;
 
+  const activeWhProducts = useMemo(() => {
+    if (!activeWh) return [] as Product[];
+    return products.filter(
+      p => !p.isBundle && (p.warehouseId === activeWh.id || p.warehouseId === activeWh.code)
+    );
+  }, [activeWh, products]);
+
   const activeMetrics = useMemo(() => {
     if (!activeWh) {
       return {
@@ -185,7 +211,6 @@ export default function WarehousesRacksView({
     return computeWarehouseMetrics(activeWh, products, liveRacksByWarehouse[activeWh.id]);
   }, [activeWh, products, liveRacksByWarehouse]);
 
-  const activeWhProducts = activeMetrics.whProducts;
   const activeWhTotalStock = activeMetrics.storedStock;
   const hasStockOrProducts = activeWhProducts.length > 0;
   const isOnlyWarehouse = warehouses.length <= 1;

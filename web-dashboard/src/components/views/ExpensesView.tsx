@@ -172,15 +172,15 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   // Handle Create Voucher
   const handleCreateVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vCategory || !vAccount || !vAmount || Number(vAmount) <= 0 || !vRecipient.trim()) {
+    if (!vAccount || !vAmount || Number(vAmount) <= 0 || !vRecipient.trim()) {
       return;
     }
 
-    const selectedCat = categories.find(c => c.id === vCategory);
+    const selectedCat = vCategory ? categories.find(c => c.id === vCategory) : undefined;
     const selectedAcc = treasuryAccounts.find(a => a.id === vAccount);
 
     const payload = {
-      categoryId: vCategory,
+      categoryId: vCategory || null,
       treasuryAccountId: vAccount,
       amount: Number(vAmount),
       recipient: vRecipient.trim(),
@@ -192,8 +192,8 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
       id: `EXP-VOUCH-${Date.now()}`,
       tenantId: 'default',
       voucherNo: `EV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      categoryId: vCategory,
-      categoryName: isAr && selectedCat?.nameAr ? selectedCat.nameAr : selectedCat?.name || '',
+      categoryId: vCategory || '',
+      categoryName: selectedCat ? (isAr && selectedCat.nameAr ? selectedCat.nameAr : selectedCat.name) : '',
       treasuryAccountId: vAccount,
       treasuryAccountName: selectedAcc?.name || '',
       amount: Number(vAmount),
@@ -316,6 +316,9 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
     const next = [...categories, newCat];
     setCategories(next);
     saveStoredExpenseCategories(next);
+    if (isVoucherModalOpen) {
+      setVCategory(newCat.id);
+    }
 
     setIsCategoryModalOpen(false);
     setCCode('');
@@ -528,7 +531,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                         </td>
                         <td>
                           <span className="font-semibold text-foreground" dir="auto">
-                            {v.categoryName || categories.find(c => c.id === v.categoryId)?.name || v.categoryId}
+                            {v.categoryName || categories.find(c => c.id === v.categoryId)?.name || getTranslation(lang, 'expenses.uncategorized')}
                           </span>
                         </td>
                         <td>
@@ -602,6 +605,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           lang={lang}
           categories={categories}
           onExpensesUpdated={() => setVouchers(getStoredExpenseVouchers())}
+          onOpenAddCategory={() => setIsCategoryModalOpen(true)}
         />
       )}
 
@@ -628,6 +632,17 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                         lang={lang}
                         icon={<Tag size={22} />}
                         title={getTranslation(lang, 'expenses.noCategoriesFound')}
+                        subtitle={getTranslation(lang, 'expenses.noCategoriesSubtitle')}
+                        action={
+                          <button
+                            type="button"
+                            onClick={() => setIsCategoryModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-sm transition-all"
+                          >
+                            <Plus size={14} />
+                            <span>{getTranslation(lang, 'expenses.newCategory')}</span>
+                          </button>
+                        }
                       />
                     </td>
                   </tr>
@@ -683,16 +698,25 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
             <form onSubmit={handleCreateVoucher} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                    {getTranslation(lang, 'expenses.category')}
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600 }}>
+                      {getTranslation(lang, 'expenses.category')}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCategoryModalOpen(true)}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      {getTranslation(lang, 'expenses.quickAddCategoryBtn')}
+                    </button>
+                  </div>
                   <select 
                     className="select-clean" 
                     value={vCategory} 
                     onChange={e => setVCategory(e.target.value)} 
-                    required
                     style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
                   >
+                    <option value="">{getTranslation(lang, 'expenses.optionalCategoryOption')}</option>
                     {categories.map(c => (
                       <option key={c.id} value={c.id}>
                         {isAr && c.nameAr ? c.nameAr : c.name}

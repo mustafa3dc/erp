@@ -549,17 +549,7 @@ DECLARE
     t RECORD;
 BEGIN
     FOR t IN SELECT id FROM tenants LOOP
-        -- Seed Standard Expense Categories
-        INSERT INTO expense_categories (tenant_id, code, name, description)
-        VALUES 
-            (t.id, 'EXP-RENT', 'إيجارات ومقرات', 'مصروفات إيجار المحلات والمستودعات والمكاتب'),
-            (t.id, 'EXP-UTIL', 'فواتير وطاقة وخدمات', 'كهرباء، ماء، إنترنت، ومولدات'),
-            (t.id, 'EXP-SAL', 'رواتب وأجور تشغيلية', 'رواتب الكوادر، مكافآت، وبدلات تشغيل'),
-            (t.id, 'EXP-MAINT', 'صيانة وتشغيل', 'صيانة المعدات، تجديدات الديكور، ومستلزمات الورش'),
-            (t.id, 'EXP-LOG', 'شحن ونقل ولوجستيات', 'أجور التوصيل، بنزين المركبات، والجمارك')
-        ON CONFLICT (tenant_id, lower(code)) DO NOTHING;
-
-        -- Seed Standard Price Lists
+        -- Seed Standard Price Lists only (Tenants configure expense categories manually)
         INSERT INTO price_lists (tenant_id, code, name, is_default, description)
         VALUES
             (t.id, 'PL-RETAIL', 'سعر البيع بالتجزئة (قطاعي)', TRUE, 'قائمة أسعار البيع المباشر للمستهلك'),

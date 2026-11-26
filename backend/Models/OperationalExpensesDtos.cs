@@ -28,7 +28,7 @@ public record ExpenseVoucherDto(
     Guid Id,
     string VoucherNumber,
     DateTime VoucherDate,
-    Guid ExpenseCategoryId,
+    Guid? ExpenseCategoryId,
     string CategoryName,
     Guid? CashBoxId,
     string? CashBoxName,
@@ -48,7 +48,7 @@ public record ExpenseVoucherDto(
 );
 
 public record CreateExpenseVoucherRequest(
-    [Required] Guid ExpenseCategoryId,
+    Guid? ExpenseCategoryId,
     Guid? CashBoxId,
     [Range(0.0001, double.MaxValue)] decimal Amount,
     string Currency = "IQD",
@@ -61,7 +61,7 @@ public record CreateExpenseVoucherRequest(
 );
 
 public record UpdateExpenseVoucherRequest(
-    Guid ExpenseCategoryId,
+    Guid? ExpenseCategoryId,
     Guid? CashBoxId,
     [Range(0.0001, double.MaxValue)] decimal Amount,
     string Currency,

@@ -259,7 +259,7 @@ public class AppDbContext : DbContext
             entity.HasMany(ec => ec.Vouchers)
                 .WithOne(v => v.ExpenseCategory)
                 .HasForeignKey(v => v.ExpenseCategoryId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ExpenseVoucher>(entity =>

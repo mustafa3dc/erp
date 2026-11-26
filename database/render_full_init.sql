@@ -1456,7 +1456,7 @@ CREATE TABLE IF NOT EXISTS expense_vouchers (
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     voucher_number VARCHAR(50) NOT NULL,
     voucher_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expense_category_id UUID NOT NULL REFERENCES expense_categories(id) ON DELETE RESTRICT,
+    expense_category_id UUID REFERENCES expense_categories(id) ON DELETE SET NULL,
     cash_box_id UUID REFERENCES cash_boxes(id) ON DELETE RESTRICT,
     amount NUMERIC(18, 4) NOT NULL CHECK (amount > 0),
     currency VARCHAR(10) NOT NULL DEFAULT 'IQD',
@@ -1979,22 +1979,9 @@ ON CONFLICT (user_id, permission_code) DO NOTHING;
 -- 10. Seed Initial Expense Categories & Price Lists
 -- ----------------------------------------------------------------------------
 
-DO $$
-DECLARE
-    t RECORD;
-BEGIN
-    FOR t IN SELECT id FROM tenants LOOP
-        -- Seed Standard Expense Categories
-        INSERT INTO expense_categories (tenant_id, code, name, description)
-        VALUES 
-            (t.id, 'EXP-RENT', 'إيجارات ومقرات', 'مصروفات إيجار المحلات والمستودعات والمكاتب'),
-            (t.id, 'EXP-UTIL', 'فواتير وطاقة وخدمات', 'كهرباء، ماء، إنترنت، ومولدات'),
-            (t.id, 'EXP-SAL', 'رواتب وأجور تشغيلية', 'رواتب الكوادر، مكافآت، وبدلات تشغيل'),
-            (t.id, 'EXP-MAINT', 'صيانة وتشغيل', 'صيانة المعدات، تجديدات الديكور، ومستلزمات الورش'),
-            (t.id, 'EXP-LOG', 'شحن ونقل ولوجستيات', 'أجور التوصيل، بنزين المركبات، والجمارك')
-        ON CONFLICT (tenant_id, lower(code)) DO NOTHING;
-    END LOOP;
-END $$;
+-- ----------------------------------------------------------------------------
+-- Seed Standard Expense Categories disabled intentionally (clean tenant start)
+-- ----------------------------------------------------------------------------
 
 -- ----------------------------------------------------------------------------
 -- 11. Profit-Based Customer Loyalty & Points System

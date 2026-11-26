@@ -233,10 +233,14 @@ public class ExpenseService : IExpenseService
             return ApiResponse<ExpenseVoucherDto>.Fail("ERR_INVALID_EXPENSE_AMOUNT", "EXPENSES");
         }
 
-        var category = await _context.ExpenseCategories.FindAsync(request.ExpenseCategoryId);
-        if (category == null || !category.IsActive)
+        ExpenseCategory? category = null;
+        if (request.ExpenseCategoryId.HasValue && request.ExpenseCategoryId.Value != Guid.Empty)
         {
-            return ApiResponse<ExpenseVoucherDto>.Fail("ERR_EXPENSE_CATEGORY_INVALID", "EXPENSES");
+            category = await _context.ExpenseCategories.FindAsync(request.ExpenseCategoryId.Value);
+            if (category == null || !category.IsActive)
+            {
+                return ApiResponse<ExpenseVoucherDto>.Fail("ERR_EXPENSE_CATEGORY_INVALID", "EXPENSES");
+            }
         }
 
         var exchangeRate = request.ExchangeRate > 0 ? request.ExchangeRate : 1.0000m;
@@ -247,7 +251,7 @@ public class ExpenseService : IExpenseService
         {
             VoucherNumber = voucherNumber,
             VoucherDate = DateTime.UtcNow,
-            ExpenseCategoryId = request.ExpenseCategoryId,
+            ExpenseCategoryId = category?.Id,
             CashBoxId = request.CashBoxId,
             Amount = request.Amount,
             Currency = string.IsNullOrWhiteSpace(request.Currency) ? "IQD" : request.Currency.Trim().ToUpper(),
@@ -276,7 +280,7 @@ public class ExpenseService : IExpenseService
             voucher.VoucherNumber,
             voucher.VoucherDate,
             voucher.ExpenseCategoryId,
-            category.Name,
+            category?.Name ?? string.Empty,
             voucher.CashBoxId,
             null,
             voucher.Amount,
@@ -314,14 +318,18 @@ public class ExpenseService : IExpenseService
             return ApiResponse<ExpenseVoucherDto>.Fail("ERR_VOUCHER_NOT_IN_DRAFT", "EXPENSES");
         }
 
-        var category = await _context.ExpenseCategories.FindAsync(request.ExpenseCategoryId);
-        if (category == null || !category.IsActive)
+        ExpenseCategory? category = null;
+        if (request.ExpenseCategoryId.HasValue && request.ExpenseCategoryId.Value != Guid.Empty)
         {
-            return ApiResponse<ExpenseVoucherDto>.Fail("ERR_EXPENSE_CATEGORY_INVALID", "EXPENSES");
+            category = await _context.ExpenseCategories.FindAsync(request.ExpenseCategoryId.Value);
+            if (category == null || !category.IsActive)
+            {
+                return ApiResponse<ExpenseVoucherDto>.Fail("ERR_EXPENSE_CATEGORY_INVALID", "EXPENSES");
+            }
         }
 
         var exchangeRate = request.ExchangeRate > 0 ? request.ExchangeRate : 1.0000m;
-        voucher.ExpenseCategoryId = request.ExpenseCategoryId;
+        voucher.ExpenseCategoryId = category?.Id;
         voucher.CashBoxId = request.CashBoxId;
         voucher.Amount = request.Amount;
         voucher.Currency = string.IsNullOrWhiteSpace(request.Currency) ? "IQD" : request.Currency.Trim().ToUpper();
@@ -340,7 +348,7 @@ public class ExpenseService : IExpenseService
             voucher.VoucherNumber,
             voucher.VoucherDate,
             voucher.ExpenseCategoryId,
-            category.Name,
+            category?.Name ?? string.Empty,
             voucher.CashBoxId,
             voucher.CashBox?.Name,
             voucher.Amount,

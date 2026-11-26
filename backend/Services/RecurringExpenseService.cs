@@ -91,7 +91,7 @@ public class RecurringExpenseService : IRecurringExpenseService
         var entity = new RecurringExpense
         {
             Title = request.Title.Trim(),
-            Category = request.Category.Trim(),
+            Category = (request.Category ?? string.Empty).Trim(),
             Amount = Math.Round(request.Amount, 4, MidpointRounding.AwayFromZero),
             Frequency = frequency,
             DayOfMonth = frequency == RecurringExpenseFrequency.Monthly || frequency == RecurringExpenseFrequency.Yearly
@@ -137,7 +137,7 @@ public class RecurringExpenseService : IRecurringExpenseService
         var mode = NormalizeExecutionMode(request.ExecutionMode);
 
         entity.Title = request.Title.Trim();
-        entity.Category = request.Category.Trim();
+        entity.Category = (request.Category ?? string.Empty).Trim();
         entity.Amount = Math.Round(request.Amount, 4, MidpointRounding.AwayFromZero);
         entity.Frequency = frequency;
         entity.DayOfMonth = frequency == RecurringExpenseFrequency.Monthly || frequency == RecurringExpenseFrequency.Yearly
@@ -370,26 +370,15 @@ public class RecurringExpenseService : IRecurringExpenseService
         CancellationToken ct)
     {
         var tenantId = rule.TenantId;
-        var normCategory = rule.Category.Trim();
+        var normCategory = (rule.Category ?? string.Empty).Trim();
 
-        var category = await _context.ExpenseCategories
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.IsActive &&
-                                      (c.Name.ToLower() == normCategory.ToLower() || c.Code.ToLower() == normCategory.ToLower()), ct);
-
-        if (category == null)
+        ExpenseCategory? category = null;
+        if (!string.IsNullOrWhiteSpace(normCategory))
         {
-            category = new ExpenseCategory
-            {
-                TenantId = tenantId,
-                Code = $"REC-{Math.Abs(normCategory.GetHashCode()):X6}",
-                Name = normCategory,
-                Description = "Auto-created category for recurring fixed expenses",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _context.ExpenseCategories.Add(category);
+            category = await _context.ExpenseCategories
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.IsActive &&
+                                          (c.Name.ToLower() == normCategory.ToLower() || c.Code.ToLower() == normCategory.ToLower()), ct);
         }
 
         CashBox? cashBox = null;
@@ -423,7 +412,7 @@ public class RecurringExpenseService : IRecurringExpenseService
             TenantId = tenantId,
             VoucherNumber = voucherNumber,
             VoucherDate = cycleDate.UtcDateTime,
-            ExpenseCategoryId = category.Id,
+            ExpenseCategoryId = category?.Id,
             CashBoxId = cashBox?.Id,
             Amount = Math.Round(amount, 4, MidpointRounding.AwayFromZero),
             Currency = "IQD",
@@ -467,7 +456,7 @@ public class RecurringExpenseService : IRecurringExpenseService
             voucher.VoucherNumber,
             voucher.VoucherDate,
             voucher.ExpenseCategoryId,
-            category.Name,
+            category?.Name ?? normCategory,
             voucher.CashBoxId,
             cashBox?.Name,
             voucher.Amount,
@@ -538,10 +527,6 @@ public class RecurringExpenseService : IRecurringExpenseService
         if (string.IsNullOrWhiteSpace(request.Title))
         {
             return "ERR_RECURRING_TITLE_REQUIRED";
-        }
-        if (string.IsNullOrWhiteSpace(request.Category))
-        {
-            return "ERR_RECURRING_CATEGORY_REQUIRED";
         }
         if (request.Amount <= 0)
         {

@@ -3944,18 +3944,24 @@ export function getInstallmentStats(): InstallmentStats {
 }
 
 // ----------------------------------------------------
-// Operational Expenses
+// Operational Expenses (Clean Tenant Start — Zero Pre-Seeded Categories)
 // ----------------------------------------------------
-const DEFAULT_EXPENSE_CATEGORIES: ExpenseCategory[] = [
-  { id: 'EXP-CAT-01', tenantId: 'default', code: 'RENT', name: 'Office & Warehouse Rent', nameAr: 'إيجار المكاتب والمستودعات', description: 'Monthly rent for properties', budgetLimit: 5000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'EXP-CAT-02', tenantId: 'default', code: 'UTILITIES', name: 'Utilities & Internet', nameAr: 'الكهرباء والماء والإنترنت', description: 'Power, water, and broadband expenses', budgetLimit: 1200, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'EXP-CAT-03', tenantId: 'default', code: 'SALARIES', name: 'Staff Salaries & Wages', nameAr: 'رواتب وأجور الموظفين', description: 'Monthly compensation', budgetLimit: 15000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'EXP-CAT-04', tenantId: 'default', code: 'LOGISTICS', name: 'Logistics & Fuel', nameAr: 'مصاريف الشحن والوقود', description: 'Transportation, vehicle fuel and courier', budgetLimit: 2500, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
-  { id: 'EXP-CAT-05', tenantId: 'default', code: 'MAINTENANCE', name: 'Maintenance & Repairs', nameAr: 'الصيانة والتشغيل', description: 'Equipment and warehouse upkeep', budgetLimit: 1000, totalSpent: 0, isActive: true, createdAt: '2026-01-01T00:00:00Z' }
-];
+const LEGACY_SEEDED_CATEGORY_CODES = new Set([
+  'RENT', 'UTILITIES', 'SALARIES', 'LOGISTICS', 'MAINTENANCE',
+  'EXP-RENT', 'EXP-UTIL', 'EXP-SAL', 'EXP-MAINT', 'EXP-LOG'
+]);
 
 export function getStoredExpenseCategories(): ExpenseCategory[] {
-  return safeGet<ExpenseCategory[]>(KEYS.EXPENSE_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES);
+  const stored = safeGet<ExpenseCategory[]>(KEYS.EXPENSE_CATEGORIES, []);
+  if (!Array.isArray(stored) || stored.length === 0) return [];
+  // Filter out legacy seeded defaults if untouched so existing browsers start clean
+  const cleaned = stored.filter(
+    c => !(LEGACY_SEEDED_CATEGORY_CODES.has((c.code || '').toUpperCase()) && c.createdAt === '2026-01-01T00:00:00Z')
+  );
+  if (cleaned.length !== stored.length) {
+    safeSet(KEYS.EXPENSE_CATEGORIES, cleaned);
+  }
+  return cleaned;
 }
 
 export function saveStoredExpenseCategories(categories: ExpenseCategory[]): void {

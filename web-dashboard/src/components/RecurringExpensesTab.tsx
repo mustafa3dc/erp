@@ -39,12 +39,14 @@ interface RecurringExpensesTabProps {
   lang: 'en' | 'ar';
   categories: ExpenseCategory[];
   onExpensesUpdated?: () => void;
+  onOpenAddCategory?: () => void;
 }
 
 export default function RecurringExpensesTab({
   lang,
   categories,
-  onExpensesUpdated
+  onExpensesUpdated,
+  onOpenAddCategory
 }: RecurringExpensesTabProps) {
   const isAr = lang === 'ar';
   const { formatMoney } = useSettings();
@@ -100,22 +102,10 @@ export default function RecurringExpensesTab({
     return rules.filter(r => r.isActive && r.isDue);
   }, [rules]);
 
-  const defaultCategoryLabel = useMemo(() => {
-    const first = categories[0];
-    if (!first) return isAr ? 'إيجارات ومرافق' : 'Rent & Utilities';
-    return isAr && first.nameAr ? first.nameAr : first.name;
-  }, [categories, isAr]);
-
-  const weekdayOptions = useMemo(() => {
-    const normLocale = lang === 'ar' ? 'ar' : 'en';
-    const arr = MESSAGES[normLocale]?.ui?.recurringExpenses?.weekdays as string[] | undefined;
-    return arr || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  }, [lang]);
-
   const openAddModal = () => {
     setEditingRule(null);
     setTitle('');
-    setCategory(defaultCategoryLabel);
+    setCategory('');
     setAmount('');
     setFrequency('Monthly');
     setDayOfMonth(1);
@@ -162,6 +152,12 @@ export default function RecurringExpensesTab({
     }
   };
 
+  const weekdayOptions = useMemo(() => {
+    const normLocale = lang === 'ar' ? 'ar' : 'en';
+    const arr = MESSAGES[normLocale]?.ui?.recurringExpenses?.weekdays as string[] | undefined;
+    return arr || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  }, [lang]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -169,10 +165,6 @@ export default function RecurringExpensesTab({
     const parsedAmount = Number(amount);
     if (!title.trim()) {
       setFormError(getTranslation(lang, 'errors.ERR.RECURRING.ERR_RECURRING_TITLE_REQUIRED'));
-      return;
-    }
-    if (!category.trim()) {
-      setFormError(getTranslation(lang, 'errors.ERR.RECURRING.ERR_RECURRING_CATEGORY_REQUIRED'));
       return;
     }
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
@@ -376,7 +368,9 @@ export default function RecurringExpensesTab({
                   <tr key={rule.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-foreground">{rule.title}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{rule.category}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {rule.category || getTranslation(lang, 'expenses.uncategorized')}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4 text-end font-bold text-foreground tabular-nums" dir="ltr">
                       {formatMoney(rule.amount)}
@@ -588,36 +582,38 @@ export default function RecurringExpensesTab({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    {getTranslation(lang, 'ui.recurringExpenses.fieldCategory')} *
-                  </label>
-                  {categories.length > 0 ? (
-                    <select
-                      value={category}
-                      onChange={e => setCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      {categories.map(c => {
-                        const label = isAr && c.nameAr ? c.nameAr : c.name;
-                        return (
-                          <option key={c.id} value={label}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                      {category && !categories.some(c => (isAr && c.nameAr ? c.nameAr : c.name) === category) && (
-                        <option value={category}>{category}</option>
-                      )}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      required
-                      value={category}
-                      onChange={e => setCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-semibold text-foreground">
+                      {getTranslation(lang, 'ui.recurringExpenses.fieldCategory')}
+                    </label>
+                    {onOpenAddCategory && (
+                      <button
+                        type="button"
+                        onClick={onOpenAddCategory}
+                        className="text-[11px] font-semibold text-primary hover:underline"
+                      >
+                        {getTranslation(lang, 'expenses.quickAddCategoryBtn')}
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={category}
+                    onChange={e => setCategory(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">{getTranslation(lang, 'expenses.optionalCategoryOption')}</option>
+                    {categories.map(c => {
+                      const label = isAr && c.nameAr ? c.nameAr : c.name;
+                      return (
+                        <option key={c.id} value={label}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                    {category && !categories.some(c => (isAr && c.nameAr ? c.nameAr : c.name) === category) && (
+                      <option value={category}>{category}</option>
+                    )}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">

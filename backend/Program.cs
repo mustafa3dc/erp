@@ -377,6 +377,20 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(recurringSqlPath));
                 }
+
+                // Cleanup pre-populated seeded expense categories and allow optional category assignment on expense vouchers
+                string[] cleanupCategoriesSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "17_remove_seeded_expense_categories.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "17_remove_seeded_expense_categories.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "17_remove_seeded_expense_categories.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "17_remove_seeded_expense_categories.sql")
+                };
+                var cleanupCategoriesSqlPath = cleanupCategoriesSqlPaths.FirstOrDefault(File.Exists);
+                if (cleanupCategoriesSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(cleanupCategoriesSqlPath));
+                }
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

@@ -324,7 +324,6 @@ export async function fetchDueRecurringExpenses(): Promise<RecurringExpenseRule[
 
 export async function createRecurringExpense(payload: UpsertRecurringExpensePayload): Promise<RecurringExpenseRule> {
   if (!payload.title.trim()) throw createApiError('ERR_RECURRING_TITLE_REQUIRED');
-  if (!payload.category.trim()) throw createApiError('ERR_RECURRING_CATEGORY_REQUIRED');
   if (payload.amount <= 0) throw createApiError('ERR_INVALID_RECURRING_AMOUNT');
 
   const token = getAuthToken();
@@ -378,7 +377,6 @@ export async function createRecurringExpense(payload: UpsertRecurringExpensePayl
 
 export async function updateRecurringExpense(id: string, payload: UpsertRecurringExpensePayload): Promise<RecurringExpenseRule> {
   if (!payload.title.trim()) throw createApiError('ERR_RECURRING_TITLE_REQUIRED');
-  if (!payload.category.trim()) throw createApiError('ERR_RECURRING_CATEGORY_REQUIRED');
   if (payload.amount <= 0) throw createApiError('ERR_INVALID_RECURRING_AMOUNT');
 
   const token = getAuthToken();

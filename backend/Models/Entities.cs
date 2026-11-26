@@ -1468,7 +1468,7 @@ public class ExpenseVoucher : ITenantEntity
     public DateTime VoucherDate { get; set; } = DateTime.UtcNow;
 
     [Column("expense_category_id")]
-    public Guid ExpenseCategoryId { get; set; }
+    public Guid? ExpenseCategoryId { get; set; }
     public ExpenseCategory? ExpenseCategory { get; set; }
 
     [Column("cash_box_id")]

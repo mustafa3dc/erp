@@ -52,6 +52,16 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
 }) => {
   const isAr = lang === 'ar';
   const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
+  const resolveShelfError = useCallback(
+    (code: string) => {
+      const treasuryMsg = getTranslation(lang, `errors.ERR.TREASURY.${code}`, '');
+      if (treasuryMsg) return treasuryMsg;
+      const directMsg = getTranslation(lang, `errors.${code}`, '');
+      if (directMsg) return directMsg;
+      return getTranslation(lang, 'errors.ERR.TREASURY.ERR_SHELF_ASSIGN_FAILED', code);
+    },
+    [lang]
+  );
 
   const [shelves, setShelves] = useState<RackBayItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -250,7 +260,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     e.preventDefault();
     const trimmedName = shelfNameInput.trim();
     if (!trimmedName) {
-      setShelfFormError(getTranslation(lang, 'errors.ERR_SHELF_NAME_REQUIRED'));
+      setShelfFormError(resolveShelfError('ERR_SHELF_NAME_REQUIRED'));
       return;
     }
 
@@ -280,14 +290,14 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         const code = err?.errorCode || 'ERR_SHELF_ASSIGN_FAILED';
-        setShelfFormError(getTranslation(lang, `errors.${code}`));
+        setShelfFormError(resolveShelfError(code));
         return;
       }
 
       setIsShelfModalOpen(false);
       await fetchShelves(true);
     } catch {
-      setShelfFormError(getTranslation(lang, 'errors.ERR_SHELF_ASSIGN_FAILED'));
+      setShelfFormError(resolveShelfError('ERR_SHELF_ASSIGN_FAILED'));
     } finally {
       setIsSavingShelf(false);
     }
@@ -313,14 +323,14 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         const code = err?.errorCode || 'ERR_SHELF_ASSIGN_FAILED';
-        setDrawerError(getTranslation(lang, `errors.${code}`));
+        setDrawerError(resolveShelfError(code));
         return;
       }
 
       setSelectedAssignIds([]);
       await fetchShelves(true);
     } catch {
-      setDrawerError(getTranslation(lang, 'errors.ERR_SHELF_ASSIGN_FAILED'));
+      setDrawerError(resolveShelfError('ERR_SHELF_ASSIGN_FAILED'));
     } finally {
       setIsAssigning(false);
     }
@@ -606,7 +616,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                     onClick={() => setIsShelfModalOpen(false)}
                     className="px-4 h-9 rounded-lg border border-border bg-muted text-foreground text-xs font-bold"
                   >
-                    {getTranslation(lang, 'common.cancel')}
+                    {tr('cancelBtn')}
                   </button>
                   <button
                     type="submit"

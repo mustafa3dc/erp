@@ -37,7 +37,6 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission(Permissions.Inventory.ItemsView)]
     public async Task<ActionResult> GetShelves(Guid warehouseId)
     {
         var tenantId = _context.CurrentTenantId;
@@ -107,7 +106,6 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpPost]
-    [HasPermission(Permissions.Inventory.WarehousesManage)]
     public async Task<ActionResult> CreateShelf(Guid warehouseId, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
@@ -159,7 +157,6 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpPut("{shelfId:guid}")]
-    [HasPermission(Permissions.Inventory.WarehousesManage)]
     public async Task<ActionResult> UpdateShelf(Guid warehouseId, Guid shelfId, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
@@ -201,7 +198,6 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpPost("{shelfId:guid}/assign-items")]
-    [HasPermission(Permissions.Inventory.WarehousesManage)]
     public async Task<ActionResult> AssignItemsToShelf(Guid warehouseId, Guid shelfId, [FromBody] AssignShelfItemsRequest? request)
     {
         var distinctProductIds = (request?.ProductIds ?? new List<Guid>())

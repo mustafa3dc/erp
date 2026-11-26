@@ -1079,6 +1079,7 @@
       "shelfNotesPlaceholder": "Optional notes about this shelf...",
       "saveShelfBtn": "Save Shelf",
       "savingBtn": "Saving...",
+      "cancelBtn": "Cancel",
       "emptyTitle": "No shelves configured in this warehouse yet",
       "emptySubtitle": "Create shelves to organize item locations for easier picking and stocktaking, or leave empty if your store does not organize by shelves.",
       "itemsCountLabel": "Items",

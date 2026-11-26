@@ -692,23 +692,35 @@ public class PurchaseBill : ITenantEntity
     [Column("payment_terms")]
     public string PaymentTerms { get; set; } = "CASH"; // CASH, CREDIT, PARTIAL
 
-    [Column("subtotal")]
+    [Required]
+    [MaxLength(20)]
+    [Column("payment_type")]
+    public string PaymentType { get; set; } = "Cash"; // Cash, Credit, Partial
+
+    [Column("subtotal", TypeName = "numeric(18, 4)")]
     public decimal Subtotal { get; set; }
 
-    [Column("discount_amount")]
+    [Column("discount_amount", TypeName = "numeric(18, 4)")]
     public decimal DiscountAmount { get; set; }
 
-    [Column("shipping_cost")]
+    [Column("shipping_cost", TypeName = "numeric(18, 4)")]
     public decimal ShippingCost { get; set; }
 
-    [Column("net_total")]
+    [Column("net_total", TypeName = "numeric(18, 4)")]
     public decimal NetTotal { get; set; }
 
-    [Column("paid_amount")]
+    [Column("paid_amount", TypeName = "numeric(18, 4)")]
     public decimal PaidAmount { get; set; }
 
-    [Column("balance_due")]
+    [Column("balance_due", TypeName = "numeric(18, 4)")]
     public decimal BalanceDue { get; set; }
+
+    [Column("remaining_amount", TypeName = "numeric(18, 4)")]
+    public decimal RemainingAmount { get; set; }
+
+    [Column("cash_account_id")]
+    public Guid? CashAccountId { get; set; }
+    public CashBox? CashAccount { get; set; }
 
     [MaxLength(100)]
     [Column("treasury_account_id")]
@@ -717,6 +729,17 @@ public class PurchaseBill : ITenantEntity
     [MaxLength(50)]
     [Column("bill_status")]
     public string BillStatus { get; set; } = "POSTED";
+
+    [Column("cancelled_at")]
+    public DateTimeOffset? CancelledAt { get; set; }
+
+    [MaxLength(150)]
+    [Column("cancelled_by")]
+    public string? CancelledBy { get; set; }
+
+    [MaxLength(500)]
+    [Column("cancel_reason")]
+    public string? CancelReason { get; set; }
 
     [Column("notes")]
     public string? Notes { get; set; }
@@ -889,7 +912,29 @@ public record CreatePurchaseBillDto(
     List<PurchaseBillItemInputDto> Items,
     string? NewSupplierName = null,
     string? NewSupplierPhone = null,
-    string? Currency = null
+    string? Currency = null,
+    string? PaymentType = null,
+    decimal? RemainingAmount = null,
+    Guid? CashAccountId = null
+);
+
+public record CancelPurchaseBillDto(
+    string? Reason = null
+);
+
+public record CreateSupplierDto(
+    string CompanyName,
+    string? ContactPerson = null,
+    string? Phone = null,
+    string? Email = null
+);
+
+public record SupplierPaymentRequestDto(
+    decimal Amount,
+    Guid CashAccountId,
+    DateTime? PaymentDate = null,
+    string? ReferenceNumber = null,
+    string? Notes = null
 );
 
 public record PurchaseBillItemInputDto(
@@ -1053,6 +1098,14 @@ public class TreasuryTransaction : ITenantEntity
     [Column("expense_voucher_id")]
     public Guid? ExpenseVoucherId { get; set; }
     public ExpenseVoucher? ExpenseVoucher { get; set; }
+
+    [Column("purchase_bill_id")]
+    public Guid? PurchaseBillId { get; set; }
+    public PurchaseBill? PurchaseBill { get; set; }
+
+    [Column("supplier_id")]
+    public Guid? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
 
     [Required]
     [MaxLength(30)]

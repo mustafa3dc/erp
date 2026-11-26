@@ -570,10 +570,29 @@ public class AppDbContext : DbContext
             entity.Property(re => re.Amount).HasColumnType("numeric(18, 4)");
         });
 
+        modelBuilder.Entity<PurchaseBill>(entity =>
+        {
+            entity.HasIndex(pb => new { pb.TenantId, pb.CashAccountId, pb.BillStatus });
+            entity.Property(pb => pb.Subtotal).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.DiscountAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.ShippingCost).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.NetTotal).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.PaidAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.BalanceDue).HasColumnType("numeric(18, 4)");
+            entity.Property(pb => pb.RemainingAmount).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(pb => pb.CashAccount)
+                .WithMany()
+                .HasForeignKey(pb => pb.CashAccountId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<TreasuryTransaction>(entity =>
         {
             entity.HasIndex(tt => new { tt.TenantId, tt.CashBoxId, tt.CreatedAt });
             entity.HasIndex(tt => tt.ExpenseVoucherId);
+            entity.HasIndex(tt => tt.PurchaseBillId);
+            entity.HasIndex(tt => tt.SupplierId);
             entity.Property(tt => tt.Amount).HasColumnType("numeric(18, 4)");
             entity.Property(tt => tt.BalanceAfter).HasColumnType("numeric(18, 4)");
 
@@ -585,6 +604,16 @@ public class AppDbContext : DbContext
             entity.HasOne(tt => tt.ExpenseVoucher)
                 .WithMany()
                 .HasForeignKey(tt => tt.ExpenseVoucherId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(tt => tt.PurchaseBill)
+                .WithMany()
+                .HasForeignKey(tt => tt.PurchaseBillId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(tt => tt.Supplier)
+                .WithMany()
+                .HasForeignKey(tt => tt.SupplierId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
     }

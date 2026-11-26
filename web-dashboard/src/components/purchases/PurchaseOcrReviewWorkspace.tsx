@@ -27,14 +27,18 @@ import {
   X
 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
-import { PurchaseInvoice, PurchaseInvoiceItem } from '../../types/purchases';
+import { PurchaseInvoice, PurchaseInvoiceItem, PurchasePaymentTerm, PurchasePaymentType } from '../../types/purchases';
 import {
   getStoredSuppliers,
   createSupplier,
-  executePurchaseInvoiceTransaction,
-  getStoredTreasuryAccounts,
   PurchaseInvoiceTransactionResult
 } from '../../services/storageService';
+import {
+  fetchTreasuryAccounts,
+  createPurchaseBill,
+  formatPurchaseErrorMessage,
+  TreasuryCashBoxOption
+} from '../../services/purchasesService';
 import { getTranslation } from '../../lib/i18n';
 import { OcrReviewSessionData } from './PurchaseOcrUploadModal';
 
@@ -94,8 +98,23 @@ export default function PurchaseOcrReviewWorkspace({
 
   // Form State
   const suppliers = useMemo(() => getStoredSuppliers(), []);
-  const treasuryAccounts = useMemo(() => getStoredTreasuryAccounts(), []);
+  const [treasuryAccounts, setTreasuryAccounts] = useState<TreasuryCashBoxOption[]>([]);
   const nonBundleProducts = useMemo(() => products.filter(p => !p.isBundle), [products]);
+
+  useEffect(() => {
+    let active = true;
+    fetchTreasuryAccounts().then(accs => {
+      if (!active || accs.length === 0) return;
+      setTreasuryAccounts(accs);
+      setTreasuryAccountId(prev => {
+        if (prev && accs.some(a => a.id === prev)) return prev;
+        return (accs.find(a => a.isPrimary) || accs[0])?.id || '';
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const [createNewSupplier, setCreateNewSupplier] = useState<boolean>(
     !extracted.matchedSupplierId && Boolean(extracted.supplierName?.trim())
@@ -118,10 +137,8 @@ export default function PurchaseOcrReviewWorkspace({
   const [currency, setCurrency] = useState<'IQD' | 'USD'>(
     extracted.currency?.toUpperCase() === 'USD' ? 'USD' : 'IQD'
   );
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit'>('cash');
-  const [treasuryAccountId, setTreasuryAccountId] = useState<string>(
-    treasuryAccounts.find(a => a.id === 'ACC-01' || a.type === 'CASH')?.id || treasuryAccounts[0]?.id || 'ACC-01'
-  );
+  const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentTerm>('cash');
+  const [treasuryAccountId, setTreasuryAccountId] = useState<string>('');
   const [invoiceDiscount, setInvoiceDiscount] = useState<number>(
     Number(extracted.invoiceDiscount) || 0
   );
@@ -178,12 +195,18 @@ export default function PurchaseOcrReviewWorkspace({
   useEffect(() => {
     if (paymentMethod === 'cash') {
       setPaidAmountInput(String(netTotal));
+    } else if (paymentMethod === 'credit') {
+      setPaidAmountInput('0');
     }
   }, [netTotal, paymentMethod]);
 
-  const handlePaymentMethodChange = (method: 'cash' | 'credit') => {
+  const handlePaymentMethodChange = (method: PurchasePaymentTerm) => {
     setPaymentMethod(method);
-    setPaidAmountInput(method === 'cash' ? String(netTotal) : '0');
+    if (method === 'cash') {
+      setPaidAmountInput(String(netTotal));
+    } else if (method === 'credit') {
+      setPaidAmountInput('0');
+    }
   };
 
   const parsedPaidAmount = useMemo(() => {
@@ -353,67 +376,28 @@ export default function PurchaseOcrReviewWorkspace({
       return;
     }
 
-    const finalPaid = Number(Math.min(rawPaid, netTotal).toFixed(4));
+    const finalPaid = paymentMethod === 'cash' ? netTotal : paymentMethod === 'credit' ? 0 : Number(Math.min(rawPaid, netTotal).toFixed(4));
     const finalBalanceDue = Math.max(0, Number((netTotal - finalPaid).toFixed(4)));
+
+    if (paymentMethod === 'partial' && (finalPaid <= 0 || finalPaid >= netTotal)) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_INVALID_PARTIAL_PAYMENT_AMOUNT' }, lang));
+      return;
+    }
+
+    if (finalPaid > 0 && !treasuryAccountId) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_TREASURY_ACCOUNT_REQUIRED' }, lang));
+      return;
+    }
+
+    const selectedCashBox = treasuryAccounts.find(a => a.id === treasuryAccountId) || treasuryAccounts[0];
+    if (finalPaid > 0 && selectedCashBox && selectedCashBox.currentBalance < finalPaid) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_INSUFFICIENT_TREASURY_BALANCE' }, lang));
+      return;
+    }
 
     setIsPosting(true);
     try {
       const targetWh = warehouses.find(w => w.id === targetWarehouseId) || warehouses[0];
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-        : null;
-
-      // 1. Submit to Purchase Invoice ACID Backend API if online with warehouse UUID
-      if (token && targetWh && uuidRegex.test(targetWh.id)) {
-        const res = await fetch('/api/purchases', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            supplierId: (!createNewSupplier && uuidRegex.test(selectedSupplierId)) ? selectedSupplierId : null,
-            newSupplierName: createNewSupplier ? newSupplierName.trim() : null,
-            newSupplierPhone: createNewSupplier ? newSupplierPhone.trim() : null,
-            supplierRefNo: supplierInvoiceNumber.trim(),
-            invoiceDate: new Date(invoiceDate).toISOString(),
-            targetWarehouseId: targetWh.id,
-            paymentTerms: paymentMethod === 'cash' && finalBalanceDue === 0 ? 'CASH' : 'CREDIT',
-            currency,
-            subtotal,
-            discountAmount: Number(invoiceDiscount) || 0,
-            shippingCost: 0,
-            netTotal,
-            paidAmount: finalPaid,
-            balanceDue: finalBalanceDue,
-            treasuryAccountId: finalPaid > 0 ? treasuryAccountId : null,
-            notes: `AI OCR Verified (${fileName})`,
-            items: items.map(it => ({
-              productId: (!it.isNewProduct && it.matchedProductId && uuidRegex.test(it.matchedProductId)) ? it.matchedProductId : null,
-              sku: it.sku.trim(),
-              barcode: it.barcode.trim(),
-              name: it.name.trim(),
-              categoryName: isAr ? 'توريدات عامة' : 'General Supplies',
-              unitOfMeasure: it.uom,
-              quantity: Number(it.quantity),
-              unitCost: Number(it.unitCostPrice),
-              sellingPrice: parsePositiveSellingPrice(it.sellingPriceInput),
-              lineTotal: Number(it.lineTotal),
-              isNewProduct: Boolean(it.isNewProduct)
-            }))
-          })
-        });
-
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => null);
-          setErrorMessage(resolveApiErrorText(errBody?.errorCode, errBody?.message));
-          setIsPosting(false);
-          return;
-        }
-      }
-
-      // 2. Commit locally inside single workflow
       let finalSupplierId = selectedSupplierId;
       let finalSupplierName = suppliers.find(s => s.id === selectedSupplierId)?.company || '';
 
@@ -431,8 +415,10 @@ export default function PurchaseOcrReviewWorkspace({
         finalSupplierName = createdSup.company;
       }
 
-      const billId = `BILL-${Date.now().toString().slice(-6)}`;
-      const billNumber = `BILL-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const billId = `PUR-${Date.now().toString().slice(-6)}`;
+      const billNumber = `PUR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const paymentTypeEnum: PurchasePaymentType =
+        paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'credit' ? 'Credit' : 'Partial';
 
       const purchaseItems: PurchaseInvoiceItem[] = items.map((it, idx) => {
         const manualSelling = parsePositiveSellingPrice(it.sellingPriceInput) || 0;
@@ -461,8 +447,9 @@ export default function PurchaseOcrReviewWorkspace({
         supplierRefNo: supplierInvoiceNumber.trim(),
         invoiceDate,
         warehouseId: targetWh?.id || 'WH-01',
-        warehouseName: targetWh ? (isAr ? targetWh.nameAr : (targetWh.nameEn || targetWh.nameAr)) : (isAr ? 'المستودع الرئيسي' : 'Main Warehouse'),
-        paymentTerms: finalBalanceDue === 0 ? 'cash' : (finalPaid > 0 ? 'partial' : 'credit'),
+        warehouseName: targetWh ? (isAr ? targetWh.nameAr : (targetWh.nameEn || targetWh.nameAr)) : '',
+        paymentTerms: paymentMethod,
+        paymentType: paymentTypeEnum,
         items: purchaseItems,
         itemsCount: purchaseItems.reduce((acc, row) => acc + (Number(row.quantity) || 0), 0),
         subtotal,
@@ -471,19 +458,41 @@ export default function PurchaseOcrReviewWorkspace({
         netTotal,
         amountPaid: finalPaid,
         balanceDue: finalBalanceDue,
+        remainingAmount: finalBalanceDue,
+        cashAccountId: finalPaid > 0 ? treasuryAccountId : null,
+        cashAccountName: finalPaid > 0 ? (selectedCashBox?.name || null) : null,
         paidFromAccount: finalPaid > 0 ? treasuryAccountId : undefined,
         status: 'POSTED',
         createdAt: new Date().toISOString(),
         notes: `AI OCR Verified (${currency} • ${fileName})`
       };
 
-      const txResult = executePurchaseInvoiceTransaction(localInvoice);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('erp_purchases_updated'));
-      }
+      const txResult = await createPurchaseBill({
+        supplierId: (!createNewSupplier && selectedSupplierId) ? selectedSupplierId : null,
+        newSupplierName: createNewSupplier ? newSupplierName.trim() : null,
+        newSupplierPhone: createNewSupplier ? newSupplierPhone.trim() : null,
+        supplierRefNo: supplierInvoiceNumber.trim(),
+        invoiceDate: new Date(invoiceDate).toISOString(),
+        targetWarehouseId: targetWh?.id || 'WH-01',
+        warehouseName: localInvoice.warehouseName,
+        paymentType: paymentTypeEnum,
+        subtotal,
+        discountAmount: Number(invoiceDiscount) || 0,
+        shippingCost: 0,
+        netTotal,
+        paidAmount: finalPaid,
+        remainingAmount: finalBalanceDue,
+        cashAccountId: finalPaid > 0 ? treasuryAccountId : null,
+        cashAccountName: finalPaid > 0 ? (selectedCashBox?.name || null) : null,
+        notes: `AI OCR Verified (${fileName})`,
+        currency,
+        items: purchaseItems,
+        localFallbackInvoice: localInvoice
+      });
+
       onPosted(txResult);
     } catch (err: any) {
-      setErrorMessage(resolveApiErrorText(err?.errorCode, err?.message));
+      setErrorMessage(resolveApiErrorText(err?.errorCode || err?.message, err?.message));
       setIsPosting(false);
     }
   };
@@ -665,7 +674,7 @@ export default function PurchaseOcrReviewWorkspace({
               <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
                 {tr('paymentMethodLabel')}
               </label>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1">
                 <button
                   type="button"
                   onClick={() => handlePaymentMethodChange('cash')}
@@ -676,7 +685,7 @@ export default function PurchaseOcrReviewWorkspace({
                   }`}
                 >
                   <Banknote className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{tr('paymentCashSafe')}</span>
+                  <span className="truncate">{getTranslation(lang, 'purchasesModule.paymentCashFull')}</span>
                 </button>
                 <button
                   type="button"
@@ -688,12 +697,23 @@ export default function PurchaseOcrReviewWorkspace({
                   }`}
                 >
                   <CreditCard className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{tr('paymentCreditSupplier')}</span>
+                  <span className="truncate">{getTranslation(lang, 'purchasesModule.paymentCredit')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePaymentMethodChange('partial')}
+                  className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
+                    paymentMethod === 'partial'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60'
+                      : 'border-border bg-background text-muted-foreground'
+                  }`}
+                >
+                  <span className="truncate">{getTranslation(lang, 'purchasesModule.paymentPartial')}</span>
                 </button>
               </div>
             </div>
 
-            {paymentMethod === 'cash' && (
+            {paymentMethod !== 'credit' && (
               <div>
                 <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
                   {tr('treasurySafeLabel')}
@@ -705,7 +725,7 @@ export default function PurchaseOcrReviewWorkspace({
                 >
                   {treasuryAccounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
-                      {isAr ? (acc.nameAr || acc.name) : (acc.nameEn || acc.name)}
+                      {acc.name} ({formatAmount(acc.currentBalance)})
                     </option>
                   ))}
                 </select>

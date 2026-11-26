@@ -521,8 +521,14 @@ CREATE TABLE IF NOT EXISTS purchase_bills (
     net_total NUMERIC(18, 4) NOT NULL DEFAULT 0.0000 CHECK (net_total >= 0.0000),
     paid_amount NUMERIC(18, 4) NOT NULL DEFAULT 0.0000 CHECK (paid_amount >= 0.0000),
     balance_due NUMERIC(18, 4) NOT NULL DEFAULT 0.0000 CHECK (balance_due >= 0.0000),
+    payment_type VARCHAR(20) NOT NULL DEFAULT 'Cash' CHECK (payment_type IN ('Cash', 'Credit', 'Partial')),
+    remaining_amount NUMERIC(18, 4) NOT NULL DEFAULT 0.0000 CHECK (remaining_amount >= 0.0000),
+    cash_account_id UUID NULL REFERENCES cash_boxes(id) ON DELETE SET NULL,
     treasury_account_id VARCHAR(100),
     bill_status VARCHAR(50) NOT NULL DEFAULT 'POSTED' CHECK (bill_status IN ('DRAFT', 'POSTED', 'CANCELLED')),
+    cancelled_at TIMESTAMPTZ NULL,
+    cancelled_by VARCHAR(150) NULL,
+    cancel_reason VARCHAR(500) NULL,
     notes TEXT,
     created_by VARCHAR(100) NOT NULL DEFAULT 'Admin',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2206,6 +2212,8 @@ CREATE TABLE IF NOT EXISTS treasury_transactions (
     tenant_id UUID NULL,
     cash_box_id UUID NOT NULL REFERENCES cash_boxes(id) ON DELETE RESTRICT,
     expense_voucher_id UUID NULL REFERENCES expense_vouchers(id) ON DELETE SET NULL,
+    purchase_bill_id UUID NULL REFERENCES purchase_bills(id) ON DELETE SET NULL,
+    supplier_id UUID NULL REFERENCES suppliers(id) ON DELETE SET NULL,
     transaction_type VARCHAR(30) NOT NULL DEFAULT 'PAYMENT',
     amount NUMERIC(18, 4) NOT NULL CHECK (amount > 0),
     balance_after NUMERIC(18, 4) NOT NULL,
@@ -2220,3 +2228,9 @@ CREATE INDEX IF NOT EXISTS ix_treasury_transactions_tenant_box
 
 CREATE INDEX IF NOT EXISTS ix_treasury_transactions_expense_voucher
     ON treasury_transactions (expense_voucher_id);
+
+CREATE INDEX IF NOT EXISTS ix_treasury_transactions_purchase_bill
+    ON treasury_transactions (purchase_bill_id);
+
+CREATE INDEX IF NOT EXISTS ix_treasury_transactions_supplier
+    ON treasury_transactions (supplier_id);

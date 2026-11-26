@@ -144,9 +144,10 @@ public class FinanceController : ControllerBase
     [HttpGet("treasury-accounts")]
     public async Task<ActionResult<IEnumerable<object>>> GetTreasuryAccounts()
     {
+        var tenantId = _context.CurrentTenantId;
         var boxes = await _context.CashBoxes
             .AsNoTracking()
-            .Where(cb => cb.IsActive)
+            .Where(cb => cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value))
             .OrderBy(cb => cb.Code)
             .Select(cb => new
             {
@@ -159,6 +160,45 @@ public class FinanceController : ControllerBase
             .ToListAsync();
 
         return Ok(boxes);
+    }
+
+    /// <summary>
+    /// GET /api/finance/treasury-transactions
+    /// Lists recent treasury cashbox inflows, outflows, supplier settlements, purchase deductions, and refunds.
+    /// </summary>
+    [HttpGet("treasury-transactions")]
+    public async Task<ActionResult<IEnumerable<object>>> GetTreasuryTransactions()
+    {
+        var tenantId = _context.CurrentTenantId;
+        var txs = await _context.TreasuryTransactions
+            .AsNoTracking()
+            .Where(tt => !tenantId.HasValue || tt.TenantId == tenantId.Value)
+            .Include(tt => tt.CashBox)
+            .Include(tt => tt.Supplier)
+            .OrderByDescending(tt => tt.CreatedAt)
+            .Take(200)
+            .Select(tt => new
+            {
+                tt.Id,
+                tt.CashBoxId,
+                CashBoxName = tt.CashBox != null ? tt.CashBox.Name : string.Empty,
+                CashBoxCode = tt.CashBox != null ? tt.CashBox.Code : string.Empty,
+                Currency = tt.CashBox != null ? tt.CashBox.Currency : "IQD",
+                tt.ExpenseVoucherId,
+                tt.PurchaseBillId,
+                tt.SupplierId,
+                SupplierName = tt.Supplier != null ? tt.Supplier.CompanyName : null,
+                tt.TransactionType,
+                tt.Amount,
+                tt.BalanceAfter,
+                tt.ReferenceNumber,
+                tt.Notes,
+                tt.CreatedBy,
+                tt.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(txs);
     }
 
     /// <summary>

@@ -1082,11 +1082,51 @@ export interface PurchaseInvoiceTransactionResult {
 }
 
 export function executePurchaseInvoiceTransaction(
-  invoice: PurchaseInvoice
+  invoice: PurchaseInvoice,
+  options?: { skipTreasuryDeduction?: boolean }
 ): PurchaseInvoiceTransactionResult {
+  // 0. Validate Treasury Balance & Deduct Cash Outflow if amountPaid > 0 (unless already deducted atomically on backend)
+  const paidAmt = Number(invoice.amountPaid) || 0;
+  let targetCashAccount: any = null;
+  if (paidAmt > 0 && !options?.skipTreasuryDeduction) {
+    const accounts = getStoredTreasuryAccounts();
+    const preferredId = invoice.cashAccountId || invoice.paidFromAccount;
+    targetCashAccount = preferredId
+      ? accounts.find(a => a.id === preferredId)
+      : accounts.find(a => a.id === 'ACC-01' || a.type === 'CASH');
+    if (!targetCashAccount) {
+      throw new Error('ERR_TREASURY_ACCOUNT_NOT_FOUND');
+    }
+    const availableBalance = Number(targetCashAccount.balanceIqd ?? targetCashAccount.balanceUsd ?? 0);
+    if (availableBalance < paidAmt) {
+      throw new Error('ERR_INSUFFICIENT_TREASURY_BALANCE');
+    }
+    recordTreasuryOutflow('CASH', paidAmt, targetCashAccount.id);
+
+    const existingVouchers = getStoredTreasuryVouchers();
+    saveStoredTreasuryVouchers([
+      {
+        id: `TV-PUR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+        voucherNo: invoice.billNumber,
+        type: 'PAYMENT',
+        partyName: invoice.supplierName,
+        amount: paidAmt,
+        currency: 'IQD',
+        accountName: targetCashAccount.nameAr || targetCashAccount.name || preferredId || 'ACC-01',
+        date: new Date().toLocaleString(),
+        notes: `${invoice.billNumber} - ${invoice.supplierName}`
+      },
+      ...existingVouchers
+    ]);
+  }
+
   // 1. Save purchase invoice
   const currentInvoices = getStoredPurchaseInvoices();
-  const updatedInvoices = [invoice, ...currentInvoices];
+  const normalizedInvoice: PurchaseInvoice = {
+    ...invoice,
+    cashAccountName: invoice.cashAccountName || targetCashAccount?.nameAr || targetCashAccount?.name || undefined
+  };
+  const updatedInvoices = [normalizedInvoice, ...currentInvoices];
   saveStoredPurchaseInvoices(updatedInvoices);
 
   // 2. Update or create products
@@ -1241,10 +1281,86 @@ export function executePurchaseInvoiceTransaction(
   }
 
   return {
-    invoice,
+    invoice: normalizedInvoice,
     updatedProducts,
     createdTransactions: newTransactions
   };
+}
+
+export function cancelLocalPurchaseInvoice(billId: string, reason?: string): PurchaseInvoice {
+  const invoices = getStoredPurchaseInvoices();
+  const target = invoices.find(inv => inv.id === billId || inv.billNumber === billId);
+  if (!target) throw new Error('ERR_PURCHASE_BILL_NOT_FOUND');
+  if (target.status === 'CANCELLED') throw new Error('ERR_PURCHASE_ALREADY_CANCELLED');
+
+  const products = getStoredProducts();
+  const nextProducts = [...products];
+  for (const item of target.items) {
+    const idx = nextProducts.findIndex(
+      p => (item.productId && p.id === item.productId) ||
+           (item.sku && p.sku.toLowerCase() === item.sku.toLowerCase())
+    );
+    if (idx >= 0) {
+      const currentQty = Number(nextProducts[idx].currentStock) || 0;
+      if (currentQty < item.quantity) {
+        throw new Error('ERR_INSUFFICIENT_STOCK_FOR_VOID');
+      }
+      const nextQty = currentQty - item.quantity;
+      nextProducts[idx] = {
+        ...nextProducts[idx],
+        currentStock: nextQty,
+        status: nextQty > (nextProducts[idx].minStockAlert || 5) ? 'available' : (nextQty > 0 ? 'low' : 'out_of_stock')
+      };
+    }
+  }
+  saveStoredProducts(nextProducts);
+
+  const due = Number(target.remainingAmount ?? target.balanceDue) || 0;
+  if (target.supplierId && due > 0) {
+    const suppliers = getStoredSuppliers();
+    const sIdx = suppliers.findIndex(s => s.id === target.supplierId);
+    if (sIdx >= 0) {
+      const prevBal = Number(suppliers[sIdx].currentBalance || 0);
+      suppliers[sIdx].currentBalance = Math.max(0, Number((prevBal - due).toFixed(4)));
+      saveStoredSuppliers(suppliers);
+    }
+  }
+
+  const paid = Number(target.amountPaid) || 0;
+  const accountId = target.cashAccountId || target.paidFromAccount;
+  if (paid > 0 && accountId) {
+    recordTreasuryInflow('CASH', paid, accountId);
+    const accounts = getStoredTreasuryAccounts();
+    const matchedAcc = accounts.find(a => a.id === accountId);
+    const existingVouchers = getStoredTreasuryVouchers();
+    saveStoredTreasuryVouchers([
+      {
+        id: `TV-REF-${Date.now()}`,
+        voucherNo: target.billNumber,
+        type: 'RECEIPT',
+        partyName: target.supplierName,
+        amount: paid,
+        currency: 'IQD',
+        accountName: matchedAcc?.nameAr || matchedAcc?.name || accountId,
+        date: new Date().toLocaleString(),
+        notes: reason?.trim() || target.billNumber
+      },
+      ...existingVouchers
+    ]);
+  }
+
+  const cancelledInvoice: PurchaseInvoice = {
+    ...target,
+    status: 'CANCELLED',
+    cancelledAt: new Date().toISOString(),
+    cancelReason: reason?.trim() || null
+  };
+  saveStoredPurchaseInvoices(invoices.map(inv => (inv.id === target.id ? cancelledInvoice : inv)));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('erp_purchases_updated'));
+    window.dispatchEvent(new CustomEvent('erp_treasury_updated'));
+  }
+  return cancelledInvoice;
 }
 
 export interface PosSaleTransactionRequest {

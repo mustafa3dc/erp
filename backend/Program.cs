@@ -419,6 +419,20 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(serialLifecycleSqlPath));
                 }
+
+                // Ensure Purchase Invoice Treasury Deduction & Supplier Settlement schema upgrades are idempotently applied
+                string[] purchaseTreasurySqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql")
+                };
+                var purchaseTreasurySqlPath = purchaseTreasurySqlPaths.FirstOrDefault(File.Exists);
+                if (purchaseTreasurySqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(purchaseTreasurySqlPath));
+                }
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

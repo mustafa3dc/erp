@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, Calendar, FileText, CheckCircle2, 
-  ArrowRight, Scale, AlertCircle, Plus, X, Sparkles, Receipt
+  ArrowRight, Scale, AlertCircle, Plus, X, Sparkles, Receipt, Wallet
 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
-import { PurchaseInvoice, PurchaseInvoiceItem, PurchasePaymentTerm, PurchaseJournalEntry } from '../../types/purchases';
+import { PurchaseInvoice, PurchaseInvoiceItem, PurchasePaymentTerm, PurchasePaymentType, PurchaseJournalEntry } from '../../types/purchases';
 import { 
   getStoredSuppliers, 
-  createSupplier, 
-  executePurchaseInvoiceTransaction,
   saveNewProductToCatalog,
   PurchaseInvoiceTransactionResult 
 } from '../../services/storageService';
+import {
+  fetchTreasuryAccounts,
+  fetchSuppliers,
+  createSupplierRemote,
+  createPurchaseBill,
+  formatPurchaseErrorMessage,
+  TreasuryCashBoxOption
+} from '../../services/purchasesService';
 import PurchaseInvoiceItemsGrid, { formatIQD } from './PurchaseInvoiceItemsGrid';
 import { localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
@@ -39,13 +45,6 @@ interface CreatePurchaseInvoiceFormProps {
   onCancel: () => void;
 }
 
-const TREASURY_ACCOUNTS_DEF = [
-  { id: 'ACC-01', nameAr: 'قاصة الخزينة النقدية الرئيسية', nameEn: 'Main Commercial Cash Vault' },
-  { id: 'ACC-02', nameAr: 'حساب العمليات المصرفي التجاري', nameEn: 'Primary Commercial Bank Account' },
-  { id: 'ACC-03', nameAr: 'حساب التحويلات والخزينة الثانوي', nameEn: 'Corporate Treasury & Wire Account' },
-  { id: 'ACC-04', nameAr: 'محفظة زين كاش التجارية', nameEn: 'ZainCash Merchant Wallet', iraqOnly: true }
-];
-
 export default function CreatePurchaseInvoiceForm({
   products,
   warehouses,
@@ -54,10 +53,10 @@ export default function CreatePurchaseInvoiceForm({
   onInvoiceCreated,
   onCancel
 }: CreatePurchaseInvoiceFormProps) {
-  const { tenantCountryCode, settings, currencySymbol, formatMoney } = useSettings();
+  const lang = isAr ? 'ar' : 'en';
+  const { settings, currencySymbol, formatMoney } = useSettings();
   const { isFeatureEnabled } = useTenantFeatures();
   const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
-  const isIraqTenant = (tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ');
   const isIqd = (settings?.baseCurrency === 'IQD');
   const effectiveSymbol = currencySymbol || (isIqd ? (isAr ? 'د.ع' : 'IQD') : '$');
 
@@ -67,17 +66,8 @@ export default function CreatePurchaseInvoiceForm({
 
   const [showJournalPreview, setShowJournalPreview] = useState(false);
 
-  const availableTreasuryAccounts = useMemo(() => {
-    return TREASURY_ACCOUNTS_DEF.filter(acc => {
-      if (acc.iraqOnly && !isIraqTenant) return false;
-      return true;
-    }).map(acc => ({
-      id: acc.id,
-      name: isAr ? acc.nameAr : acc.nameEn
-    }));
-  }, [isIraqTenant, isAr]);
-
-  // Suppliers
+  // Live Treasury Cashboxes & Suppliers
+  const [treasuryAccounts, setTreasuryAccounts] = useState<TreasuryCashBoxOption[]>([]);
   const [suppliers, setSuppliers] = useState(() => getStoredSuppliers());
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(() => {
     if (initialData?.supplierId) return initialData.supplierId;
@@ -138,10 +128,55 @@ export default function CreatePurchaseInvoiceForm({
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [amountPaidNow, setAmountPaidNow] = useState<number>(0);
-  const [treasuryAccount, setTreasuryAccount] = useState<string>('ACC-01');
+  const [treasuryAccount, setTreasuryAccount] = useState<string>('');
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchTreasuryAccounts().then(accs => {
+      if (!active || accs.length === 0) return;
+      setTreasuryAccounts(accs);
+      setTreasuryAccount(prev => {
+        if (prev && accs.some(a => a.id === prev)) return prev;
+        const primary = accs.find(a => a.isPrimary) || accs[0];
+        return primary?.id || '';
+      });
+    });
+
+    fetchSuppliers().then(remoteSuppliers => {
+      if (!active || remoteSuppliers.length === 0) return;
+      setSuppliers(
+        remoteSuppliers.map(s => ({
+          id: s.id,
+          company: s.companyName,
+          contact: s.contactPerson || s.companyName,
+          phone: s.phone || '',
+          email: s.email || '',
+          country: s.country || '',
+          category: s.category || '',
+          rating: s.rating || 5.0,
+          activePOs: s.activePOs || 0,
+          currentBalance: s.currentBalance
+        }))
+      );
+      setSelectedSupplierId(prev => {
+        if (prev && remoteSuppliers.some(s => s.id === prev)) return prev;
+        if (initialData?.supplierName) {
+          const match = remoteSuppliers.find(s =>
+            s.companyName.toLowerCase().includes(initialData.supplierName!.toLowerCase())
+          );
+          if (match) return match.id;
+        }
+        return remoteSuppliers[0]?.id || '';
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [initialData?.supplierName]);
 
   // Financial Totals
   const subtotal = lineItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
@@ -157,10 +192,18 @@ export default function CreatePurchaseInvoiceForm({
       setAmountPaidNow(netTotal);
     } else if (paymentTerms === 'credit') {
       setAmountPaidNow(0);
+    } else if (paymentTerms === 'partial') {
+      setAmountPaidNow(prev => Math.min(netTotal, Math.max(0, prev)));
     }
   }, [paymentTerms, netTotal]);
 
-  const balanceDue = Math.max(0, netTotal - (amountPaidNow || 0));
+  const effectivePaidNow = paymentTerms === 'cash' ? netTotal : paymentTerms === 'credit' ? 0 : Math.min(netTotal, Math.max(0, Number(amountPaidNow) || 0));
+  const balanceDue = Math.max(0, Number((netTotal - effectivePaidNow).toFixed(4)));
+  const selectedCashAccount = useMemo(
+    () => treasuryAccounts.find(a => a.id === treasuryAccount) || treasuryAccounts[0] || null,
+    [treasuryAccounts, treasuryAccount]
+  );
+  const hasInsufficientTreasury = effectivePaidNow > 0 && Boolean(selectedCashAccount) && (selectedCashAccount!.currentBalance < effectivePaidNow);
 
   const selectedWarehouse = warehouses.find(w => w.id === destinationWarehouseId) || warehouses[0] || {
     id: 'WH-01',
@@ -287,39 +330,75 @@ export default function CreatePurchaseInvoiceForm({
     setInlineProductName('');
   };
 
-  const handleQuickSupplierSubmit = (e: React.FormEvent) => {
+  const handleQuickSupplierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupplierCompany.trim()) return;
 
-    const created = createSupplier({
-      company: newSupplierCompany.trim(),
-      contact: newSupplierCompany.trim(),
-      contactPerson: newSupplierCompany.trim(),
-      phone: newSupplierPhone.trim() || '—',
-      email: '',
-      category: isAr ? 'توريدات عامة' : 'General Supplies',
-      country: isAr ? 'دولي / عام' : 'Global / General'
-    });
+    try {
+      const created = await createSupplierRemote({
+        companyName: newSupplierCompany.trim(),
+        contactPerson: newSupplierCompany.trim(),
+        phone: newSupplierPhone.trim() || '—',
+        category: isAr ? 'توريدات عامة' : 'General Supplies',
+        country: isAr ? 'دولي / عام' : 'Global / General'
+      });
 
-    setSuppliers(getStoredSuppliers());
-    setSelectedSupplierId(created.id);
-    setIsQuickSupplierOpen(false);
-    setNewSupplierCompany('');
-    setNewSupplierPhone('');
+      setSuppliers(prev => [
+        {
+          id: created.id,
+          company: created.companyName,
+          contact: created.contactPerson || created.companyName,
+          phone: created.phone || '',
+          email: created.email || '',
+          country: '',
+          category: '',
+          rating: 5.0,
+          activePOs: 0,
+          currentBalance: created.currentBalance
+        },
+        ...prev
+      ]);
+      setSelectedSupplierId(created.id);
+      setIsQuickSupplierOpen(false);
+      setNewSupplierCompany('');
+      setNewSupplierPhone('');
+    } catch (err: any) {
+      setErrorMessage(formatPurchaseErrorMessage(err, lang));
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
     if (!supplierRefNo.trim()) {
-      setErrorMessage(isAr ? 'يرجى إدخال رقم قائمة التاجر الورقية (وصل المورد)' : 'Please enter Supplier Ref / Bill number');
+      setErrorMessage(getTranslation(lang, 'purchasesModule.errSupplierRefRequired'));
       return;
     }
 
     const validItems = lineItems.filter(it => it.nameAr.trim() && it.quantity > 0 && it.unitCost >= 0);
     if (validItems.length === 0) {
-      setErrorMessage(isAr ? 'يرجى إدخال مادة واحدة على الأقل ببيانات صحيحة' : 'Please enter at least one valid item');
+      setErrorMessage(getTranslation(lang, 'purchasesModule.errItemsRequired'));
+      return;
+    }
+
+    if (netTotal <= 0) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_INVALID_PAYMENT_AMOUNT' }, lang));
+      return;
+    }
+
+    if (paymentTerms === 'partial' && (effectivePaidNow <= 0 || effectivePaidNow >= netTotal)) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_INVALID_PARTIAL_PAYMENT_AMOUNT' }, lang));
+      return;
+    }
+
+    if ((paymentTerms === 'cash' || paymentTerms === 'partial') && !treasuryAccount) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_TREASURY_ACCOUNT_REQUIRED' }, lang));
+      return;
+    }
+
+    if (hasInsufficientTreasury) {
+      setErrorMessage(formatPurchaseErrorMessage({ errorCode: 'ERR_INSUFFICIENT_TREASURY_BALANCE' }, lang));
       return;
     }
 
@@ -333,15 +412,18 @@ export default function CreatePurchaseInvoiceForm({
       it => it.serialNumbers && it.serialNumbers.length > 0 && it.serialNumbers.length !== Math.max(1, Math.round(Number(it.quantity) || 1))
     );
     if (mismatchedSerialRow) {
-      setErrorMessage(getTranslation(isAr ? 'ar' : 'en', 'errors.ERR_SERIAL_COUNT_MISMATCH'));
+      setErrorMessage(getTranslation(lang, 'errors.ERR_SERIAL_COUNT_MISMATCH'));
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const billId = `BILL-${Date.now().toString().slice(-6)}`;
-      const billNumber = `BILL-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+      const billId = `PUR-${Date.now().toString().slice(-6)}`;
+      const billNumber = `PUR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const paymentTypeEnum: PurchasePaymentType =
+        paymentTerms === 'cash' ? 'Cash' : paymentTerms === 'credit' ? 'Credit' : 'Partial';
+      const cashAccountDisplayName = selectedCashAccount?.name || '';
 
       const journalLines = [
         {
@@ -350,19 +432,18 @@ export default function CreatePurchaseInvoiceForm({
           accountNameEn: 'Merchandise Inventory (Debit)',
           debit: netTotal,
           credit: 0,
-          notes: `توريد بضاعة مشتريات - قائمة ${billNumber}`
+          notes: `${billNumber}`
         }
       ];
 
-      if (amountPaidNow > 0) {
-        const treasuryObj = availableTreasuryAccounts.find(a => a.id === treasuryAccount);
+      if (effectivePaidNow > 0) {
         journalLines.push({
-          accountCode: '1101',
-          accountNameAr: `حـ/ الخزينة والصندوق (${treasuryObj?.name.split('(')[0].trim() || 'الصندوق'}) (دائن)`,
-          accountNameEn: 'Cash / Treasury Account (Credit)',
+          accountCode: selectedCashAccount?.code || '1101',
+          accountNameAr: `حـ/ الخزينة والصندوق (${cashAccountDisplayName}) (دائن)`,
+          accountNameEn: `Cash / Treasury Account (${cashAccountDisplayName}) (Credit)`,
           debit: 0,
-          credit: amountPaidNow,
-          notes: 'دفعة نقدية مسددة للمورد'
+          credit: effectivePaidNow,
+          notes: billNumber
         });
       }
 
@@ -373,7 +454,7 @@ export default function CreatePurchaseInvoiceForm({
           accountNameEn: `Accounts Payable - ${selectedSupplier.company} (Credit)`,
           debit: 0,
           credit: balanceDue,
-          notes: 'رصيد آجل بذمة المحل للمورد'
+          notes: billNumber
         });
       }
 
@@ -384,8 +465,8 @@ export default function CreatePurchaseInvoiceForm({
         entryDate: invoiceDate,
         lines: journalLines,
         totalDebit: netTotal,
-        totalCredit: (amountPaidNow || 0) + (balanceDue || 0),
-        isBalanced: Math.abs(netTotal - ((amountPaidNow || 0) + (balanceDue || 0))) < 0.01
+        totalCredit: effectivePaidNow + balanceDue,
+        isBalanced: Math.abs(netTotal - (effectivePaidNow + balanceDue)) < 0.01
       };
 
       const invoice: PurchaseInvoice = {
@@ -398,75 +479,49 @@ export default function CreatePurchaseInvoiceForm({
         warehouseId: destinationWarehouseId,
         warehouseName: selectedWarehouse.nameAr,
         paymentTerms,
+        paymentType: paymentTypeEnum,
         items: completeItems,
         itemsCount: completeItems.reduce((acc, it) => acc + it.quantity, 0),
         subtotal,
         discount: calculatedDiscount,
         shippingCost: shippingCost || 0,
         netTotal,
-        amountPaid: amountPaidNow || 0,
+        amountPaid: effectivePaidNow,
         balanceDue,
-        paidFromAccount: amountPaidNow > 0 ? treasuryAccount : undefined,
+        remainingAmount: balanceDue,
+        cashAccountId: effectivePaidNow > 0 ? (treasuryAccount || null) : null,
+        cashAccountName: effectivePaidNow > 0 ? cashAccountDisplayName : null,
+        paidFromAccount: effectivePaidNow > 0 ? treasuryAccount : undefined,
         status: 'POSTED',
         createdAt: new Date().toISOString(),
         notes: invoiceNotes.trim() || undefined,
         journalEntry
       };
 
-      const result = executePurchaseInvoiceTransaction(invoice);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('erp_purchases_updated'));
+      const result = await createPurchaseBill({
+        supplierId: selectedSupplierId || null,
+        newSupplierName: selectedSupplierId ? null : selectedSupplier.company,
+        supplierRefNo: supplierRefNo.trim(),
+        invoiceDate,
+        targetWarehouseId: destinationWarehouseId,
+        warehouseName: selectedWarehouse.nameAr,
+        paymentType: paymentTypeEnum,
+        subtotal,
+        discountAmount: calculatedDiscount,
+        shippingCost: shippingCost || 0,
+        netTotal,
+        paidAmount: effectivePaidNow,
+        remainingAmount: balanceDue,
+        cashAccountId: effectivePaidNow > 0 ? treasuryAccount : null,
+        cashAccountName: effectivePaidNow > 0 ? cashAccountDisplayName : null,
+        notes: invoiceNotes.trim() || null,
+        items: completeItems,
+        localFallbackInvoice: invoice
+      });
 
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        const token =
-          localStorage.getItem('zilox_auth_token') ||
-          localStorage.getItem('logistock_erp_jwt_token') ||
-          localStorage.getItem('token') ||
-          localStorage.getItem('zilox_token');
-        if (token && uuidRegex.test(destinationWarehouseId)) {
-          fetch('/api/purchases', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              supplierId: uuidRegex.test(selectedSupplierId) ? selectedSupplierId : null,
-              newSupplierName: !uuidRegex.test(selectedSupplierId) ? selectedSupplier.company : null,
-              supplierRefNo: supplierRefNo.trim(),
-              invoiceDate,
-              targetWarehouseId: destinationWarehouseId,
-              paymentTerms: paymentTerms.toUpperCase(),
-              subtotal,
-              discountAmount: calculatedDiscount,
-              shippingCost: shippingCost || 0,
-              netTotal,
-              paidAmount: amountPaidNow || 0,
-              balanceDue,
-              treasuryAccountId: amountPaidNow > 0 ? treasuryAccount : null,
-              notes: invoiceNotes.trim() || null,
-              items: completeItems.map(it => ({
-                productId: it.productId && uuidRegex.test(it.productId) ? it.productId : null,
-                sku: it.sku,
-                barcode: it.barcode,
-                name: it.nameAr || it.nameEn,
-                unitOfMeasure: it.uom,
-                quantity: it.quantity,
-                unitCost: it.unitCost,
-                sellingPrice: it.newSellingPrice || it.currentSellingPrice || 0,
-                lineTotal: it.lineTotal,
-                isNewProduct: Boolean(it.isNewProduct),
-                serialNumbers: it.serialNumbers && it.serialNumbers.length > 0 ? it.serialNumbers : null,
-                requiresSerialTracking: it.requiresSerialNumber ?? null,
-                warrantyMonths: it.warrantyMonths ?? null,
-              })),
-            }),
-          }).catch(() => {});
-        }
-      }
       onInvoiceCreated(result, initialData?.sourcePoId);
     } catch (err: any) {
-      setErrorMessage(err.message || 'حدث خطأ أثناء حفظ القائمة');
+      setErrorMessage(formatPurchaseErrorMessage(err, lang));
       setIsSubmitting(false);
     }
   };
@@ -651,85 +706,125 @@ export default function CreatePurchaseInvoiceForm({
           </div>
         </div>
 
-        {/* 1.5 Inline Payment Terms Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/70">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs font-semibold text-foreground/85 shrink-0">
-              {isAr ? 'شروط الدفع:' : 'Payment Terms:'}
-            </span>
-            <div className="inline-flex rounded-xl border border-border/80 p-1 bg-muted/40 text-xs gap-1 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setPaymentTerms('cash')}
-                className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
-                  paymentTerms === 'cash'
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {isAr ? 'نقدي / كاش' : 'Cash on Delivery'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentTerms('credit')}
-                className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
-                  paymentTerms === 'credit'
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {isAr ? 'آجل / ذمم (A/P)' : 'Full Credit (A/P)'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentTerms('partial')}
-                className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
-                  paymentTerms === 'partial'
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {isAr ? 'دفع جزئي' : 'Partial Payment'}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Partial Cash Input */}
-            {paymentTerms === 'partial' && (
-              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl">
-                <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                  {isAr ? 'المسدد حالياً:' : 'Paid Now:'}
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  max={netTotal}
-                  value={amountPaidNow}
-                  onChange={(e) => setAmountPaidNow(Math.min(netTotal, Math.max(0, parseFloat(e.target.value) || 0)))}
-                  className="h-7 w-28 px-2 rounded-lg border border-amber-500/30 bg-background text-foreground font-mono font-bold text-xs outline-none focus:border-amber-500"
-                />
-              </div>
-            )}
-
-            {/* Treasury Safe Selector */}
-            {amountPaidNow > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-foreground/85">
-                  {isAr ? 'حساب الخزينة / الصندوق:' : 'Treasury Account:'}
-                </span>
-                <select
-                  value={treasuryAccount}
-                  onChange={(e) => setTreasuryAccount(e.target.value)}
-                  className="h-8.5 px-3 rounded-lg border border-border/80 bg-background text-foreground text-xs font-medium outline-none focus:border-primary cursor-pointer max-w-[220px] shadow-2xs"
+        {/* 1.5 Payment Mode & Treasury Cashbox Deduction Section */}
+        <div className="pt-3 border-t border-border/70 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-xs font-semibold text-foreground/85 shrink-0">
+                {getTranslation(lang, 'purchasesModule.paymentModeLabel')}:
+              </span>
+              <div className="inline-flex rounded-xl border border-border/80 p-1 bg-muted/40 text-xs gap-1 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setPaymentTerms('cash')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
+                    paymentTerms === 'cash'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  {availableTreasuryAccounts.map(acc => (
-                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                  ))}
-                </select>
+                  {getTranslation(lang, 'purchasesModule.paymentCashFull')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentTerms('credit')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
+                    paymentTerms === 'credit'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {getTranslation(lang, 'purchasesModule.paymentCredit')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentTerms('partial')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
+                    paymentTerms === 'partial'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {getTranslation(lang, 'purchasesModule.paymentPartial')}
+                </button>
+              </div>
+            </div>
+
+            {paymentTerms !== 'credit' && (
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Partial Paid Amount Input + Remaining Supplier Debt */}
+                {paymentTerms === 'partial' && (
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl">
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        {getTranslation(lang, 'purchasesModule.paidAmountLabel')}:
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={netTotal}
+                        step="0.01"
+                        value={amountPaidNow || ''}
+                        onChange={(e) => setAmountPaidNow(Math.min(netTotal, Math.max(0, parseFloat(e.target.value) || 0)))}
+                        className="h-7 w-32 px-2 rounded-lg border border-amber-500/30 bg-background text-foreground font-mono tabular-nums font-bold text-xs outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[11px] font-mono tabular-nums text-amber-700 dark:text-amber-300" dir="ltr">
+                        ({effectivePaidNow.toLocaleString('en-US', { maximumFractionDigits: 2 })})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
+                      <span className="font-semibold text-rose-700 dark:text-rose-400">
+                        {getTranslation(lang, 'purchasesModule.remainingSupplierDebtLabel')}:
+                      </span>
+                      <span className="font-mono tabular-nums font-extrabold text-rose-700 dark:text-rose-300" dir="ltr">
+                        {formatCurrency(balanceDue)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Required Treasury Account Selector with Live Balance */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-semibold text-foreground/85 inline-flex items-center gap-1">
+                    <Wallet className="w-3.5 h-3.5 text-primary" />
+                    <span>{getTranslation(lang, 'purchasesModule.treasuryAccountLabel')}</span>
+                    <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={treasuryAccount}
+                    onChange={(e) => setTreasuryAccount(e.target.value)}
+                    required
+                    className="h-9 px-3 rounded-lg border border-border/80 bg-background text-foreground text-xs font-semibold outline-none focus:border-primary cursor-pointer min-w-[230px] shadow-2xs"
+                  >
+                    {treasuryAccounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({getTranslation(lang, 'purchasesModule.availableBalanceShort')}: {formatCurrency(acc.currentBalance)})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCashAccount && (
+                    <span
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-mono tabular-nums font-bold border ${
+                        hasInsufficientTreasury
+                          ? 'bg-destructive/10 text-destructive border-destructive/30'
+                          : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                      }`}
+                    >
+                      {getTranslation(lang, 'purchasesModule.availableBalanceShort')}: {formatCurrency(selectedCashAccount.currentBalance)}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
+
+          {hasInsufficientTreasury && (
+            <div className="px-3 py-2 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{formatPurchaseErrorMessage({ errorCode: 'ERR_INSUFFICIENT_TREASURY_BALANCE' }, lang)}</span>
+            </div>
+          )}
         </div>
 
       </div>

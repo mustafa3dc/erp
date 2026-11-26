@@ -38,10 +38,11 @@ export interface PurchaseInvoiceItem {
 }
 
 export type PurchasePaymentTerm = 'cash' | 'credit' | 'partial';
+export type PurchasePaymentType = 'Cash' | 'Credit' | 'Partial';
 
 export interface PurchaseInvoice {
   id: string;
-  billNumber: string; // كود الفاتورة في النظام مثلاً BILL-2026-0105
+  billNumber: string; // كود الفاتورة في النظام مثلاً PUR-20261126-1054
   supplierId: string;
   supplierName: string;
   supplierRefNo: string; // رقم قائمة التاجر الورقية (Supplier Ref / Invoice No)
@@ -49,6 +50,7 @@ export interface PurchaseInvoice {
   warehouseId: string; // كود المستودع المستلم
   warehouseName: string; // اسم المستودع المستلم
   paymentTerms: PurchasePaymentTerm;
+  paymentType?: PurchasePaymentType;
   items: PurchaseInvoiceItem[];
   itemsCount: number;
   subtotal: number; // إجمالي قيمة البضاعة
@@ -57,8 +59,14 @@ export interface PurchaseInvoice {
   netTotal: number; // الصافي النهائي المطلوب
   amountPaid: number; // المبلغ المدفوع كاش حالياً
   balanceDue: number; // المتبقي بذمة المحل (دين مستحق للمورد)
+  remainingAmount?: number;
+  cashAccountId?: string | null;
+  cashAccountName?: string | null;
+  cashAccountCode?: string | null;
   paidFromAccount?: string; // الخزينة / الصندوق الذي تم الدفع منه
-  status: 'POSTED' | 'DRAFT';
+  status: 'POSTED' | 'DRAFT' | 'CANCELLED';
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
   createdAt: string;
   notes?: string;
   journalEntry?: PurchaseJournalEntry;

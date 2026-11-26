@@ -937,7 +937,13 @@
         "ERR_PURCHASE_ITEMS_REQUIRED": "At least one line item is required.",
         "ERR_SUPPLIER_REF_REQUIRED": "Supplier invoice number is required.",
         "ERR_SUPPLIER_NOT_FOUND": "Selected supplier was not found.",
-        "INVALID_WAREHOUSE": "Selected warehouse is missing or inactive."
+        "INVALID_WAREHOUSE": "Selected warehouse is missing or inactive.",
+        "ERR_TREASURY_ACCOUNT_REQUIRED": "Please select a Treasury account for cash or partial payment.",
+        "ERR_TREASURY_ACCOUNT_NOT_FOUND": "Selected Treasury account was not found or is inactive.",
+        "ERR_INSUFFICIENT_TREASURY_BALANCE": "Insufficient balance in the selected Treasury cashbox for this payment.",
+        "ERR_INVALID_PAYMENT_TYPE": "Invalid payment mode.",
+        "ERR_INVALID_PAYMENT_AMOUNT": "Payment amount does not match invoice total.",
+        "ERR_INVALID_PARTIAL_PAYMENT_AMOUNT": "Partial payment amount must be greater than 0 and less than invoice total."
       }
     },
     "stockCounts": {
@@ -1435,5 +1441,53 @@
     "paymentVoucher": "Payment Voucher",
     "receiptVoucherToast": "New Receipt Voucher Form",
     "paymentVoucherToast": "New Payment Voucher Form"
+  },
+  "purchasesModule": {
+    "paymentModeLabel": "Payment Mode",
+    "paymentCashFull": "Paid in Full",
+    "paymentCredit": "On Credit",
+    "paymentPartial": "Partial Payment",
+    "paidAmountLabel": "Paid Amount",
+    "remainingSupplierDebtLabel": "Remaining Supplier Debt",
+    "treasuryAccountLabel": "Treasury Account",
+    "availableBalanceShort": "Available Balance",
+    "badgeCash": "Paid in Full",
+    "badgeCredit": "On Credit",
+    "badgePartial": "Partial Payment",
+    "badgeCancelled": "Cancelled",
+    "defaultTreasuryName": "Main Cash Safe",
+    "cancelBillAction": "Cancel / Void Invoice",
+    "cancelModalTitle": "Cancel & Reverse Purchase Invoice",
+    "cancelModalDesc": "Inventory quantities will be reversed, supplier debt reduced, and any paid amount refunded to the Treasury cashbox for {billNumber}.",
+    "cancelReasonLabel": "Cancellation Reason (Optional)",
+    "cancelReasonPlaceholder": "e.g. Entry mistake or cancelled delivery...",
+    "confirmCancelBtn": "Confirm Void & Refund",
+    "cancelledSuccessToast": "Purchase invoice cancelled, stock reversed, and Treasury refunded.",
+    "errSupplierRefRequired": "Please enter Supplier Ref / Bill number.",
+    "errItemsRequired": "Please enter at least one valid item."
+  },
+  "suppliersModule": {
+    "defaultCategory": "Electronics & Hardware",
+    "payableBalanceLabel": "Supplier Payable Balance:",
+    "settleDebtBtn": "Settle Debt",
+    "settleDebtTitle": "Supplier Debt Settlement Voucher",
+    "statementBtn": "Statement",
+    "statementTitle": "Supplier Account Statement",
+    "paymentAmountLabel": "Payment Amount",
+    "payFullDebtBtn": "Pay Full Debt",
+    "paymentNotesLabel": "Voucher Notes",
+    "paymentNotesPlaceholder": "e.g. Settlement against credit invoices...",
+    "confirmPaymentBtn": "Confirm & Deduct Treasury",
+    "paymentSuccessToast": "Supplier payment ({voucher}) of {amount} deducted from Treasury.",
+    "addedSuccessToast": "Supplier {name} added and saved!",
+    "errCompanyRequired": "Please enter company name.",
+    "errContactRequired": "Please enter contact person name.",
+    "errPhoneRequired": "Please enter phone number.",
+    "colReference": "Reference",
+    "colType": "Type",
+    "colDebit": "Debit (Paid)",
+    "colCredit": "Credit (Invoice)",
+    "colRunningBalance": "Running Balance",
+    "emptyLedger": "No ledger transactions recorded for this supplier yet."
   }
 }

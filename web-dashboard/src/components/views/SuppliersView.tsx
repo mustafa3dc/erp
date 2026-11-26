@@ -1,33 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Phone, Mail, MapPin, Plus, Star, ShieldCheck, 
-  X, Check, Building2, AlertCircle 
+  Users, Phone, Mail, MapPin, Plus, Star, 
+  X, Check, Building2, AlertCircle, Wallet, FileText, Banknote
 } from 'lucide-react';
-import { getStoredSuppliers, saveStoredSuppliers, initialSuppliers } from '../../services/storageService';
-import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
+import { DialogPortal, DialogOverlay, DialogContent, ModalBackdropPortal } from '../ui/dialog';
+import {
+  fetchSuppliers,
+  createSupplierRemote,
+  fetchTreasuryAccounts,
+  fetchSupplierLedger,
+  settleSupplierDebt,
+  formatPurchaseErrorMessage,
+  SupplierDirectoryRecord,
+  SupplierLedgerEntryRecord,
+  TreasuryCashBoxOption
+} from '../../services/purchasesService';
+import { useSettings } from '../../context/settings-context';
+import { getTranslation } from '../../lib/i18n';
 
 interface SuppliersViewProps {
   lang: 'en' | 'ar';
 }
 
-interface SupplierItem {
-  id: string;
-  company: string;
-  contact: string;
-  phone: string;
-  email: string;
-  country: string;
-  category: string;
-  rating: number;
-  activePOs: number;
-}
-
 export default function SuppliersView({ lang }: SuppliersViewProps) {
   const isAr = lang === 'ar';
+  const { formatMoney } = useSettings();
 
-  const [suppliers, setSuppliers] = useState<SupplierItem[]>(() => getStoredSuppliers());
+  const [suppliers, setSuppliers] = useState<SupplierDirectoryRecord[]>([]);
+  const [treasuryAccounts, setTreasuryAccounts] = useState<TreasuryCashBoxOption[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Debt Settlement Modal State
+  const [payTarget, setPayTarget] = useState<SupplierDirectoryRecord | null>(null);
+  const [payAmount, setPayAmount] = useState<number>(0);
+  const [payCashAccountId, setPayCashAccountId] = useState<string>('');
+  const [payNotes, setPayNotes] = useState<string>('');
+  const [payError, setPayError] = useState<string>('');
+  const [isPaying, setIsPaying] = useState(false);
+
+  // Ledger Statement Modal State
+  const [ledgerTarget, setLedgerTarget] = useState<SupplierDirectoryRecord | null>(null);
+  const [ledgerEntries, setLedgerEntries] = useState<SupplierLedgerEntryRecord[]>([]);
+  const [isLoadingLedger, setIsLoadingLedger] = useState(false);
 
   // Form State
   const [company, setCompany] = useState('');
@@ -35,13 +50,30 @@ export default function SuppliersView({ lang }: SuppliersViewProps) {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [country, setCountry] = useState('');
-  const [category, setCategory] = useState(isAr ? 'تجهيزات ومعدات إلكترونية' : 'Electronics & Hardware');
+  const [category, setCategory] = useState(getTranslation(lang, 'suppliersModule.defaultCategory'));
   const [rating, setRating] = useState('4.8');
   const [formError, setFormError] = useState('');
 
+  const loadSuppliersAndTreasury = useCallback(async () => {
+    const [supList, cashList] = await Promise.all([fetchSuppliers(), fetchTreasuryAccounts()]);
+    setSuppliers(supList);
+    setTreasuryAccounts(cashList);
+    setPayCashAccountId(prev => {
+      if (prev && cashList.some(a => a.id === prev)) return prev;
+      return (cashList.find(a => a.isPrimary) || cashList[0])?.id || '';
+    });
+  }, []);
+
   useEffect(() => {
-    saveStoredSuppliers(suppliers);
-  }, [suppliers]);
+    loadSuppliersAndTreasury();
+    const handler = () => loadSuppliersAndTreasury();
+    window.addEventListener('erp_purchases_updated', handler);
+    window.addEventListener('erp_treasury_updated', handler);
+    return () => {
+      window.removeEventListener('erp_purchases_updated', handler);
+      window.removeEventListener('erp_treasury_updated', handler);
+    };
+  }, [loadSuppliersAndTreasury]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -54,47 +86,111 @@ export default function SuppliersView({ lang }: SuppliersViewProps) {
     setPhone('');
     setEmail('');
     setCountry('');
-    setCategory(isAr ? 'تجهيزات ومعدات إلكترونية' : 'Electronics & Hardware');
+    setCategory(getTranslation(lang, 'suppliersModule.defaultCategory'));
     setRating('4.8');
     setFormError('');
     setIsAddModalOpen(true);
   };
 
-  const handleAddSupplier = (e: React.FormEvent) => {
+  const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company.trim()) {
-      setFormError(isAr ? 'يرجى إدخال اسم شركة التوريد' : 'Please enter company name');
+      setFormError(getTranslation(lang, 'suppliersModule.errCompanyRequired'));
       return;
     }
     if (!contact.trim()) {
-      setFormError(isAr ? 'يرجى إدخال اسم جهة الاتصال / الشخص المسؤول' : 'Please enter contact person name');
+      setFormError(getTranslation(lang, 'suppliersModule.errContactRequired'));
       return;
     }
     if (!phone.trim()) {
-      setFormError(isAr ? 'يرجى إدخال رقم الهاتف' : 'Please enter phone number');
+      setFormError(getTranslation(lang, 'suppliersModule.errPhoneRequired'));
       return;
     }
 
-    const nextIdNum = suppliers.length + 1;
-    const newId = `SUP-${nextIdNum < 10 ? `0${nextIdNum}` : nextIdNum}`;
+    try {
+      const newSupplier = await createSupplierRemote({
+        companyName: company.trim(),
+        contactPerson: contact.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        country: country.trim() || undefined,
+        category: category.trim() || undefined,
+        rating: Number(rating) || 4.8
+      });
 
-    const newSupplier: SupplierItem = {
-      id: newId,
-      company: company.trim(),
-      contact: contact.trim(),
-      phone: phone.trim(),
-      email: email.trim() || 'contact@supplier.com',
-      country: country.trim() || (isAr ? 'عالمي' : 'International'),
-      category: category.trim(),
-      rating: Number(rating) || 4.8,
-      activePOs: 1
-    };
+      setSuppliers(prev => [newSupplier, ...prev]);
+      setIsAddModalOpen(false);
+      showToast(
+        getTranslation(lang, 'suppliersModule.addedSuccessToast').replace('{name}', newSupplier.companyName)
+      );
+    } catch (err: any) {
+      setFormError(formatPurchaseErrorMessage(err, lang));
+    }
+  };
 
-    const updated = [newSupplier, ...suppliers];
-    setSuppliers(updated);
-    saveStoredSuppliers(updated);
-    setIsAddModalOpen(false);
-    showToast(isAr ? `تمت إضافة المورد (${newSupplier.company}) وحفظه في النظام بنجاح!` : `Supplier ${newSupplier.company} added and saved!`);
+  const handleOpenPayModal = (sup: SupplierDirectoryRecord) => {
+    setPayTarget(sup);
+    setPayAmount(sup.currentBalance > 0 ? sup.currentBalance : 0);
+    setPayNotes('');
+    setPayError('');
+    if (!payCashAccountId && treasuryAccounts.length > 0) {
+      setPayCashAccountId((treasuryAccounts.find(a => a.isPrimary) || treasuryAccounts[0]).id);
+    }
+  };
+
+  const handleConfirmPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payTarget || isPaying) return;
+    setPayError('');
+
+    if (payAmount <= 0) {
+      setPayError(formatPurchaseErrorMessage({ errorCode: 'ERR_INVALID_PAYMENT_AMOUNT' }, lang));
+      return;
+    }
+    if (!payCashAccountId) {
+      setPayError(formatPurchaseErrorMessage({ errorCode: 'ERR_TREASURY_ACCOUNT_REQUIRED' }, lang));
+      return;
+    }
+    const chosenBox = treasuryAccounts.find(a => a.id === payCashAccountId);
+    if (chosenBox && chosenBox.currentBalance < payAmount) {
+      setPayError(formatPurchaseErrorMessage({ errorCode: 'ERR_INSUFFICIENT_TREASURY_BALANCE' }, lang));
+      return;
+    }
+    if (payAmount > payTarget.currentBalance) {
+      setPayError(formatPurchaseErrorMessage({ errorCode: 'ERR_PAYMENT_EXCEEDS_SUPPLIER_BALANCE' }, lang));
+      return;
+    }
+
+    setIsPaying(true);
+    try {
+      const res = await settleSupplierDebt(payTarget.id, {
+        amount: payAmount,
+        cashAccountId: payCashAccountId,
+        notes: payNotes
+      });
+      await loadSuppliersAndTreasury();
+      setPayTarget(null);
+      showToast(
+        getTranslation(lang, 'suppliersModule.paymentSuccessToast')
+          .replace('{voucher}', res.voucherNumber)
+          .replace('{amount}', formatMoney(payAmount))
+      );
+    } catch (err: any) {
+      setPayError(formatPurchaseErrorMessage(err, lang));
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  const handleOpenLedgerModal = async (sup: SupplierDirectoryRecord) => {
+    setLedgerTarget(sup);
+    setIsLoadingLedger(true);
+    try {
+      const rows = await fetchSupplierLedger(sup.id);
+      setLedgerEntries(rows);
+    } finally {
+      setIsLoadingLedger(false);
+    }
   };
 
   return (
@@ -129,40 +225,74 @@ export default function SuppliersView({ lang }: SuppliersViewProps) {
                 <Building2 size={22} className="text-cyan" />
               </div>
               <div>
-                <span className="code-badge font-mono">{s.id}</span>
-                <h3 className="wh-card-title"><span dir="auto">{s.company}</span></h3>
-                <small className="category-tag">{s.category}</small>
+                <span className="code-badge font-mono">{s.code || s.id}</span>
+                <h3 className="wh-card-title"><span dir="auto">{s.companyName}</span></h3>
+                {s.category && <small className="category-tag">{s.category}</small>}
               </div>
             </div>
 
             <div className="wh-meta-list">
               <div className="wh-meta-row">
                 <Users size={15} />
-                <span dir="auto">{s.contact}</span>
+                <span dir="auto">{s.contactPerson}</span>
               </div>
-              <div className="wh-meta-row">
-                <Phone size={15} />
-                <span><bdi>{s.phone}</bdi></span>
-              </div>
-              <div className="wh-meta-row">
-                <Mail size={15} />
-                <span>{s.email}</span>
-              </div>
-              <div className="wh-meta-row">
-                <MapPin size={15} />
-                <span dir="auto">{s.country}</span>
-              </div>
+              {s.phone && (
+                <div className="wh-meta-row">
+                  <Phone size={15} />
+                  <span><bdi>{s.phone}</bdi></span>
+                </div>
+              )}
+              {s.email && (
+                <div className="wh-meta-row">
+                  <Mail size={15} />
+                  <span>{s.email}</span>
+                </div>
+              )}
+              {s.country && (
+                <div className="wh-meta-row">
+                  <MapPin size={15} />
+                  <span dir="auto">{s.country}</span>
+                </div>
+              )}
             </div>
 
             <div className="wh-occupancy-section">
               <div className="occ-labels">
-                <span>{isAr ? 'تقييم المورد:' : 'Supplier Rating:'}</span>
-                <strong className="green-text">{s.rating} / 5.0</strong>
+                <span>{getTranslation(lang, 'suppliersModule.payableBalanceLabel')}</span>
+                <strong
+                  className={`font-mono tabular-nums ${
+                    s.currentBalance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  {formatMoney(s.currentBalance)}
+                </strong>
               </div>
-              <div className="occ-labels">
-                <span>{isAr ? 'أوامر الشراء النشطة:' : 'Active Purchase Orders:'}</span>
-                <strong className="orange-text">{s.activePOs} {isAr ? 'شحنات قيد التوريد' : 'orders in transit'}</strong>
-              </div>
+              {s.rating !== undefined && (
+                <div className="occ-labels">
+                  <span>{isAr ? 'تقييم المورد:' : 'Supplier Rating:'}</span>
+                  <strong className="green-text">{s.rating} / 5.0</strong>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-3 mt-2 border-t border-border/70">
+              <button
+                type="button"
+                onClick={() => handleOpenPayModal(s)}
+                disabled={s.currentBalance <= 0}
+                className="flex-1 h-8 px-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                <span>{getTranslation(lang, 'suppliersModule.settleDebtBtn')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenLedgerModal(s)}
+                className="h-8 px-3 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>{getTranslation(lang, 'suppliersModule.statementBtn')}</span>
+              </button>
             </div>
           </div>
         ))}
@@ -364,6 +494,178 @@ export default function SuppliersView({ lang }: SuppliersViewProps) {
             </form>
           </DialogContent>
         </DialogPortal>
+      )}
+
+      {/* Supplier Debt Settlement Modal */}
+      {payTarget && (
+        <ModalBackdropPortal onClose={() => !isPaying && setPayTarget(null)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 text-foreground" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-border pb-3">
+              <div>
+                <h3 className="font-extrabold text-sm flex items-center gap-2">
+                  <Banknote className="w-4 h-4 text-primary" />
+                  <span>{getTranslation(lang, 'suppliersModule.settleDebtTitle')}</span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{payTarget.companyName}</p>
+              </div>
+              <button type="button" onClick={() => !isPaying && setPayTarget(null)} className="p-1 hover:bg-muted rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmPayment} className="space-y-3">
+              {payError && (
+                <div className="p-2.5 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{payError}</span>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-muted/50 border border-border flex items-center justify-between text-xs">
+                <span className="font-semibold text-muted-foreground">{getTranslation(lang, 'suppliersModule.payableBalanceLabel')}</span>
+                <span className="font-mono tabular-nums font-extrabold text-rose-600 dark:text-rose-400">
+                  {formatMoney(payTarget.currentBalance)}
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">
+                    {getTranslation(lang, 'suppliersModule.paymentAmountLabel')} <span className="text-destructive">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setPayAmount(payTarget.currentBalance)}
+                    className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                  >
+                    {getTranslation(lang, 'suppliersModule.payFullDebtBtn')}
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min="0.01"
+                  max={payTarget.currentBalance}
+                  step="0.01"
+                  required
+                  value={payAmount || ''}
+                  onChange={e => setPayAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="h-9 w-full px-3 rounded-lg border border-border bg-background text-foreground font-mono tabular-nums font-bold text-xs outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground inline-flex items-center gap-1">
+                  <Wallet className="w-3.5 h-3.5 text-primary" />
+                  <span>{getTranslation(lang, 'purchasesModule.treasuryAccountLabel')}</span>
+                  <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={payCashAccountId}
+                  onChange={e => setPayCashAccountId(e.target.value)}
+                  required
+                  className="h-9 w-full px-3 rounded-lg border border-border bg-background text-foreground text-xs font-semibold outline-none focus:border-primary cursor-pointer"
+                >
+                  {treasuryAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({getTranslation(lang, 'purchasesModule.availableBalanceShort')}: {formatMoney(acc.currentBalance)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">
+                  {getTranslation(lang, 'suppliersModule.paymentNotesLabel')}
+                </label>
+                <input
+                  type="text"
+                  value={payNotes}
+                  onChange={e => setPayNotes(e.target.value)}
+                  placeholder={getTranslation(lang, 'suppliersModule.paymentNotesPlaceholder')}
+                  className="h-9 w-full px-3 rounded-lg border border-border bg-background text-foreground text-xs outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  disabled={isPaying}
+                  onClick={() => setPayTarget(null)}
+                  className="px-4 py-2 rounded-lg border border-border bg-card hover:bg-muted text-xs font-bold"
+                >
+                  {getTranslation(lang, 'actions.cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPaying}
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold disabled:opacity-50"
+                >
+                  {getTranslation(lang, 'suppliersModule.confirmPaymentBtn')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </ModalBackdropPortal>
+      )}
+
+      {/* Supplier Ledger Statement Modal */}
+      {ledgerTarget && (
+        <ModalBackdropPortal onClose={() => setLedgerTarget(null)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col text-foreground" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-border pb-3 shrink-0">
+              <div>
+                <h3 className="font-extrabold text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  <span>{getTranslation(lang, 'suppliersModule.statementTitle')} — {ledgerTarget.companyName}</span>
+                </h3>
+              </div>
+              <button type="button" onClick={() => setLedgerTarget(null)} className="p-1 hover:bg-muted rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 border border-border rounded-xl">
+              <table className="w-full text-xs text-start border-collapse">
+                <thead>
+                  <tr className="bg-muted/60 text-muted-foreground font-bold border-b border-border">
+                    <th className="py-2.5 px-3 text-start">{getTranslation(lang, 'suppliersModule.colReference')}</th>
+                    <th className="py-2.5 px-3 text-start">{getTranslation(lang, 'suppliersModule.colType')}</th>
+                    <th className="py-2.5 px-3 text-end">{getTranslation(lang, 'suppliersModule.colDebit')}</th>
+                    <th className="py-2.5 px-3 text-end">{getTranslation(lang, 'suppliersModule.colCredit')}</th>
+                    <th className="py-2.5 px-3 text-end">{getTranslation(lang, 'suppliersModule.colRunningBalance')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {isLoadingLedger ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground">{getTranslation(lang, 'common.loading')}</td>
+                    </tr>
+                  ) : ledgerEntries.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground">{getTranslation(lang, 'suppliersModule.emptyLedger')}</td>
+                    </tr>
+                  ) : (
+                    ledgerEntries.map(entry => (
+                      <tr key={entry.id}>
+                        <td className="py-2 px-3 font-mono font-bold text-primary">{entry.referenceNumber}</td>
+                        <td className="py-2 px-3 text-muted-foreground">{entry.transactionType}</td>
+                        <td className="py-2 px-3 text-end font-mono tabular-nums text-emerald-600">
+                          {entry.debit > 0 ? formatMoney(entry.debit) : '—'}
+                        </td>
+                        <td className="py-2 px-3 text-end font-mono tabular-nums text-rose-600">
+                          {entry.credit > 0 ? formatMoney(entry.credit) : '—'}
+                        </td>
+                        <td className="py-2 px-3 text-end font-mono tabular-nums font-bold">
+                          {formatMoney(entry.runningBalance)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </ModalBackdropPortal>
       )}
     </div>
   );

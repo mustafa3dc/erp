@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   getStoredTreasuryAccounts, 
-  saveStoredTreasuryAccounts, 
-  getStoredTreasuryVouchers, 
-  saveStoredTreasuryVouchers 
+  getStoredTreasuryVouchers
 } from '../../services/storageService';
+import {
+  fetchTreasuryAccounts,
+  fetchTreasuryTransactions,
+  getAuthToken
+} from '../../services/purchasesService';
 import { 
   Wallet, 
   DollarSign, 
@@ -73,18 +76,68 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
     }
   }, [initialTab]);
 
+  const loadLiveTreasury = useCallback(async () => {
+    const token = getAuthToken();
+    if (token) {
+      const [remoteBoxes, remoteTxs] = await Promise.all([
+        fetchTreasuryAccounts(),
+        fetchTreasuryTransactions()
+      ]);
+      if (remoteBoxes.length > 0) {
+        setAccounts(
+          remoteBoxes.map(b => ({
+            id: b.id,
+            name: b.name,
+            nameAr: b.nameAr || b.name,
+            nameEn: b.nameEn || b.name,
+            type: b.code.toUpperCase().startsWith('BNK') || b.name.includes('بنك') || b.name.toLowerCase().includes('bank')
+              ? 'BANK'
+              : b.code.toUpperCase().startsWith('WAL') || b.name.includes('محفظ')
+              ? 'WALLET'
+              : 'CASH',
+            balanceUsd: isIqdBase ? Math.round(b.currentBalance / 1520) : b.currentBalance,
+            balanceIqd: isIqdBase ? b.currentBalance : Math.round(b.currentBalance * 1520),
+            currency: b.currency || 'IQD',
+            accountNumber: b.code
+          }))
+        );
+      }
+      if (remoteTxs.length > 0) {
+        setVouchers(
+          remoteTxs.map(tx => ({
+            id: tx.id,
+            voucherNo: tx.referenceNumber || tx.id.slice(0, 8),
+            type: tx.transactionType === 'RECEIPT' || tx.transactionType === 'REFUND' ? 'RECEIPT' : 'PAYMENT',
+            partyName: tx.supplierName || tx.notes || tx.cashBoxName,
+            amount: tx.amount,
+            currency: (tx.currency === 'USD' ? 'USD' : 'IQD') as 'USD' | 'IQD',
+            accountName: tx.cashBoxName || tx.cashBoxCode,
+            date: new Date(tx.createdAt).toLocaleString(),
+            notes: tx.notes || tx.referenceNumber || ''
+          }))
+        );
+      }
+      return;
+    }
+
+    setAccounts(getStoredTreasuryAccounts());
+    setVouchers(getStoredTreasuryVouchers());
+  }, [isIqdBase]);
+
   useEffect(() => {
+    loadLiveTreasury();
     const handleTreasuryUpdate = () => {
-      setAccounts(getStoredTreasuryAccounts());
-      setVouchers(getStoredTreasuryVouchers());
+      loadLiveTreasury();
     };
     window.addEventListener('erp_treasury_updated', handleTreasuryUpdate);
+    window.addEventListener('erp_purchases_updated', handleTreasuryUpdate);
     window.addEventListener('storage', handleTreasuryUpdate);
     return () => {
       window.removeEventListener('erp_treasury_updated', handleTreasuryUpdate);
+      window.removeEventListener('erp_purchases_updated', handleTreasuryUpdate);
       window.removeEventListener('storage', handleTreasuryUpdate);
     };
-  }, []);
+  }, [loadLiveTreasury]);
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMsg, setToastMsg] = useState('');
 

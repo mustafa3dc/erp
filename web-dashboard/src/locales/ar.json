@@ -937,7 +937,13 @@
         "ERR_PURCHASE_ITEMS_REQUIRED": "يجب أن تحتوي الفاتورة على مادة واحدة على الأقل.",
         "ERR_SUPPLIER_REF_REQUIRED": "رقم وصل أو قائمة المورد إلزامي للمطابقة.",
         "ERR_SUPPLIER_NOT_FOUND": "المورد المحدد غير موجود بالنظام.",
-        "INVALID_WAREHOUSE": "المستودع المحدد غير موجود أو معطل."
+        "INVALID_WAREHOUSE": "المستودع المحدد غير موجود أو معطل.",
+        "ERR_TREASURY_ACCOUNT_REQUIRED": "يرجى اختيار الصندوق أو الحساب المالي لإتمام الدفع.",
+        "ERR_TREASURY_ACCOUNT_NOT_FOUND": "الصندوق أو الحساب المحدد غير موجود أو غير نشط.",
+        "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الصندوق المحدد غير كافٍ لتغطية المبلغ المدفوع.",
+        "ERR_INVALID_PAYMENT_TYPE": "طريقة الدفع المحددة غير صالحة.",
+        "ERR_INVALID_PAYMENT_AMOUNT": "المبلغ المدفوع لا يتطابق مع شروط وإجمالي الفاتورة.",
+        "ERR_INVALID_PARTIAL_PAYMENT_AMOUNT": "مبلغ الدفع الجزئي يجب أن يكون أكبر من الصفر وأقل من صافي الفاتورة."
       }
     },
     "stockCounts": {
@@ -1435,5 +1441,53 @@
     "paymentVoucher": "سند صرف",
     "receiptVoucherToast": "نموذج إصدار سند قبض جديد",
     "paymentVoucherToast": "نموذج إصدار سند صرف جديد"
+  },
+  "purchasesModule": {
+    "paymentModeLabel": "طريقة الدفع",
+    "paymentCashFull": "نقدي",
+    "paymentCredit": "آجل / دين",
+    "paymentPartial": "دفع جزئي",
+    "paidAmountLabel": "المبلغ المدفوع",
+    "remainingSupplierDebtLabel": "المتبقي ذمة للمورد",
+    "treasuryAccountLabel": "الصندوق / الحساب",
+    "availableBalanceShort": "الرصيد المتاح",
+    "badgeCash": "مدفوع نقداً",
+    "badgeCredit": "آجل",
+    "badgePartial": "مدفوع جزئياً",
+    "badgeCancelled": "ملغاة",
+    "defaultTreasuryName": "صندوق الكاش الرئيسي",
+    "cancelBillAction": "إلغاء / عكس الفاتورة",
+    "cancelModalTitle": "إلغاء وعكس فاتورة المشتريات",
+    "cancelModalDesc": "سيتم عكس الكميات من المخزون وتقليل ذمة المورد وإرجاع المبلغ المدفوع إلى الصندوق للفاتورة {billNumber}.",
+    "cancelReasonLabel": "سبب الإلغاء (اختياري)",
+    "cancelReasonPlaceholder": "مثال: خطأ في التسجيل أو إلغاء الشحنة...",
+    "confirmCancelBtn": "تأكيد الإلغاء والعكس",
+    "cancelledSuccessToast": "تم إلغاء الفاتورة وعكس المخزون واسترجاع المبلغ إلى الخزينة بنجاح.",
+    "errSupplierRefRequired": "يرجى إدخال رقم قائمة التاجر الورقية (وصل المورد).",
+    "errItemsRequired": "يرجى إدخال مادة واحدة على الأقل ببيانات صحيحة."
+  },
+  "suppliersModule": {
+    "defaultCategory": "تجهيزات ومعدات إلكترونية",
+    "payableBalanceLabel": "الرصيد المستحق / ذمة للمورد:",
+    "settleDebtBtn": "سند دفع لمورد",
+    "settleDebtTitle": "إصدار سند دفع لمورد",
+    "statementBtn": "كشف الحساب",
+    "statementTitle": "كشف حساب المورد",
+    "paymentAmountLabel": "المبلغ المدفوع",
+    "payFullDebtBtn": "تسديد كامل الرصيد",
+    "paymentNotesLabel": "البيان والملاحظات",
+    "paymentNotesPlaceholder": "مثال: دفعة تسديد عن فواتير آجلة...",
+    "confirmPaymentBtn": "تأكيد الصرف والخصم من الخزينة",
+    "paymentSuccessToast": "تم إصدار سند الدفع ({voucher}) بمبلغ {amount} وخصمه من الخزينة بنجاح.",
+    "addedSuccessToast": "تمت إضافة المورد ({name}) وحفظه في النظام بنجاح!",
+    "errCompanyRequired": "يرجى إدخال اسم شركة التوريد.",
+    "errContactRequired": "يرجى إدخال اسم جهة الاتصال / الشخص المسؤول.",
+    "errPhoneRequired": "يرجى إدخال رقم الهاتف.",
+    "colReference": "المرجع",
+    "colType": "الحركة",
+    "colDebit": "مدين (سداد)",
+    "colCredit": "دائن (فاتورة)",
+    "colRunningBalance": "الرصيد المتراكم",
+    "emptyLedger": "لا توجد قيود مسجلة لهذا المورد بعد."
   }
 }

@@ -84,7 +84,7 @@ import PricingCalculatorView from './components/views/PricingCalculatorView';
 import SelfServiceRegisterView from './components/views/SelfServiceRegisterView';
 import UsersStaffView from './components/views/UsersStaffView';
 import { UserRole, UserProfile, UserAccount, SYSTEM_ROLES_CONFIG, buildUserProfileFromAccount } from './types/rbac';
-import { getPermittedNavigation, isRouteAllowed } from './config/navigationSchema';
+import { getPermittedNavigation, isRouteAllowed, NAVIGATION_GROUPS } from './config/navigationSchema';
 import InvoiceDetailsModal from './components/modals/InvoiceDetailsModal';
 import CreateInvoiceModal from './components/modals/CreateInvoiceModal';
 import WarehousesRacksView from './components/views/WarehousesRacksView';
@@ -223,6 +223,15 @@ function DashboardApp() {
   const { effectiveLanguage, updateSetting, isAr, settings, formatMoney, currencySymbol, currencyLabel, effectiveTheme, setTheme, setLocale } = useSettings();
   const lang: 'ar' | 'en' = effectiveLanguage === 'ar' ? 'ar' : 'en';
   const [activeNav, setActiveNav] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+      if (currentPath !== '/' && currentPath !== '/dashboard') {
+        for (const group of NAVIGATION_GROUPS) {
+          const matchedItem = group.items.find(it => it.path.toLowerCase() === currentPath);
+          if (matchedItem) return matchedItem.id;
+        }
+      }
+    }
     const session = getStoredAuthSession();
     if (session) {
       return getRoleDefaultNav(session.role);

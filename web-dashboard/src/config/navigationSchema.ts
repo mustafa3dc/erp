@@ -16,7 +16,7 @@ export interface NavGroupDef {
   key: string;
   titleAr: string;
   titleEn: string;
-  iconName: 'Zap' | 'ShoppingCart' | 'ShoppingBag' | 'Package' | 'Box' | 'Wallet' | 'Settings';
+  iconName: 'Zap' | 'ShoppingCart' | 'ShoppingBag' | 'Truck' | 'Package' | 'Box' | 'Wallet' | 'Settings';
   requiredFeature?: keyof CompanyFeatures;
   items: NavItemDef[];
 }
@@ -126,7 +126,7 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
     key: 'purchases',
     titleAr: 'المشتريات',
     titleEn: 'Purchases',
-    iconName: 'Package',
+    iconName: 'Truck',
     items: [
       {
         id: 'Purchases & POs',

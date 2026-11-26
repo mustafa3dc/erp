@@ -4,11 +4,14 @@ import {
   Zap,
   ShoppingCart,
   ShoppingBag,
+  Truck,
   Package,
   Box,
   Wallet,
   Settings,
   ChevronRight,
+  ChevronLeft,
+  ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -31,8 +34,12 @@ export interface AppSidebarProps {
   onToggleCollapse?: () => void;
 }
 
-const renderGroupIcon = (iconName: NavGroupDef['iconName'], size = 16) => {
-  const props = { size, strokeWidth: 1.8, className: 'nav-icon' };
+const renderGroupIcon = (
+  iconName: NavGroupDef['iconName'],
+  size = 16,
+  className = 'shrink-0 transition-colors'
+) => {
+  const props = { size, strokeWidth: 1.8, className };
   switch (iconName) {
     case 'Zap':
       return <Zap {...props} />;
@@ -40,6 +47,8 @@ const renderGroupIcon = (iconName: NavGroupDef['iconName'], size = 16) => {
       return <ShoppingCart {...props} />;
     case 'ShoppingBag':
       return <ShoppingBag {...props} />;
+    case 'Truck':
+      return <Truck {...props} />;
     case 'Package':
       return <Package {...props} />;
     case 'Box':
@@ -109,6 +118,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     ? getTranslation(lang, 'ui.sidebar.expand')
     : getTranslation(lang, 'ui.sidebar.collapse');
 
+  const isDashboardActive = activeNav === 'Dashboard' || activeNav === '/' || activeNav === '/dashboard';
+
   return (
     <aside
       className={`sidebar bg-sidebar text-sidebar-foreground border-sidebar-border ${isCollapsed ? 'collapsed' : ''}`}
@@ -136,15 +147,23 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       {/* Navigation Items */}
       <nav className="sidebar-nav">
-        {/* Main Dashboard */}
+        {/* Main Dashboard (Highlighted ONLY when on root / or /dashboard) */}
         {permittedNav.isDashboardAllowed && (
           <button
             type="button"
-            className={`nav-btn ${activeNav === 'Dashboard' ? 'active' : ''}`}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2'} rounded-lg text-sm transition-all text-start cursor-pointer mb-1 ${
+              isDashboardActive
+                ? 'bg-primary/10 text-primary font-semibold'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40 font-semibold'
+            }`}
             onClick={() => setActiveNav('Dashboard')}
             title={getTranslation(lang, 'ui.sidebar.mainDashboard')}
           >
-            <LayoutGrid size={17} strokeWidth={1.8} className="nav-icon" />
+            <LayoutGrid
+              size={17}
+              strokeWidth={1.85}
+              className={`shrink-0 transition-colors ${isDashboardActive ? 'text-primary' : 'text-muted-foreground'}`}
+            />
             {!isCollapsed && (
               <span className="truncate">{getTranslation(lang, 'ui.sidebar.mainDashboard')}</span>
             )}
@@ -153,20 +172,35 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
         {/* Hierarchical Nav Groups */}
         {permittedNav.groups.map(group => {
-          const isGroupActive = group.items.some(i => i.id === activeNav);
+          const isGroupActive = group.items.some(i => activeNav === i.id || activeNav === i.path);
           const isExpanded = expandedGroups[group.key] ?? false;
           const groupTitle = isAr ? group.titleAr : group.titleEn;
+          const isOpenGroup = !isCollapsed && isExpanded;
 
           return (
             <div
               key={group.key}
-              className="nav-group-container"
+              className={`nav-group-container transition-all ${
+                isOpenGroup
+                  ? 'bg-muted/40 dark:bg-muted/20 border border-border/60 rounded-xl p-1.5 my-1'
+                  : 'my-0.5'
+              }`}
               onMouseEnter={() => isCollapsed && setHoveredGroupKey(group.key)}
               onMouseLeave={() => isCollapsed && setHoveredGroupKey(prev => (prev === group.key ? null : prev))}
             >
               <button
                 type="button"
-                className={`nav-group-header ${isGroupActive ? 'has-active' : ''}`}
+                className={`w-full flex items-center ${
+                  isCollapsed ? 'justify-center p-2.5' : 'justify-between px-2.5 py-1.5'
+                } rounded-lg text-sm font-semibold transition-all cursor-pointer select-none ${
+                  isCollapsed
+                    ? isGroupActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                    : isExpanded
+                      ? 'text-foreground hover:bg-muted/50'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                }`}
                 onClick={() => {
                   if (isCollapsed) {
                     setHoveredGroupKey(prev => (prev === group.key ? null : group.key));
@@ -178,22 +212,43 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 title={isCollapsed ? groupTitle : undefined}
               >
                 <div className="nav-group-left">
-                  {renderGroupIcon(group.iconName, isCollapsed ? 18 : 15)}
+                  {renderGroupIcon(
+                    group.iconName,
+                    isCollapsed ? 18 : 15,
+                    `shrink-0 transition-colors ${
+                      isGroupActive && isCollapsed
+                        ? 'text-primary'
+                        : isOpenGroup
+                          ? 'text-primary'
+                          : 'text-muted-foreground'
+                    }`
+                  )}
                   {!isCollapsed && <span className="truncate">{groupTitle}</span>}
                 </div>
                 {!isCollapsed && (
-                  <ChevronRight
-                    size={13}
-                    strokeWidth={2}
-                    className={`nav-group-chevron ${isExpanded ? 'expanded' : ''}`}
-                  />
+                  <span
+                    className={`inline-flex items-center justify-center w-5 h-5 rounded-md shrink-0 transition-colors ${
+                      isExpanded
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown size={13} strokeWidth={2.2} />
+                    ) : isAr ? (
+                      <ChevronLeft size={13} strokeWidth={2} />
+                    ) : (
+                      <ChevronRight size={13} strokeWidth={2} />
+                    )}
+                  </span>
                 )}
               </button>
 
-              {/* Expanded Sub-menu */}
-              {!isCollapsed && isExpanded && (
-                <div className="nav-sub-menu">
+              {/* Expanded Sub-menu with indentation, dot indicator & vertical guide line */}
+              {isOpenGroup && (
+                <div className="mt-1 space-y-0.5 relative before:content-[''] before:absolute before:top-1.5 before:bottom-1.5 before:start-3.5 before:w-px before:bg-border/70">
                   {group.items.map(item => {
+                    const isItemActive = activeNav === item.id || activeNav === item.path;
                     const badgeContent =
                       item.id === 'Transfers & In-Transit'
                         ? inTransitTransfersCount > 0
@@ -207,10 +262,23 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                       <button
                         key={item.id}
                         type="button"
-                        className={`nav-sub-btn ${activeNav === item.id ? 'active' : ''}`}
+                        className={`group w-full flex items-center justify-between gap-2 ps-7 pe-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
+                          isItemActive
+                            ? 'bg-primary/10 text-primary font-semibold'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
+                        }`}
                         onClick={() => setActiveNav(item.id)}
                       >
-                        <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                              isItemActive
+                                ? 'bg-primary'
+                                : 'bg-muted-foreground/45 group-hover:bg-foreground/60'
+                            }`}
+                          />
+                          <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
+                        </span>
                         {badgeContent && (
                           <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
                             {badgeContent}
@@ -228,6 +296,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   <div className="sidebar-rail-flyout-title">{groupTitle}</div>
                   <div className="flex flex-col gap-0.5">
                     {group.items.map(item => {
+                      const isItemActive = activeNav === item.id || activeNav === item.path;
                       const badgeContent =
                         item.id === 'Transfers & In-Transit'
                           ? inTransitTransfersCount > 0
@@ -241,13 +310,24 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                         <button
                           key={item.id}
                           type="button"
-                          className={`nav-sub-btn ${activeNav === item.id ? 'active' : ''}`}
+                          className={`group w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
+                            isItemActive
+                              ? 'bg-primary/10 text-primary font-semibold'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
+                          }`}
                           onClick={() => {
                             setActiveNav(item.id);
                             setHoveredGroupKey(null);
                           }}
                         >
-                          <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                isItemActive ? 'bg-primary' : 'bg-muted-foreground/45'
+                              }`}
+                            />
+                            <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
+                          </span>
                           {badgeContent && (
                             <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
                               {badgeContent}

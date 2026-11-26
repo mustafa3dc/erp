@@ -194,10 +194,11 @@ public class ExpensesController : ControllerBase
         }
 
         var perms = User.FindAll("Permission").Select(c => c.Value)
+            .Concat(User.FindAll("permission").Select(c => c.Value))
             .Concat(User.FindAll("permissions").Select(c => c.Value));
 
         return perms.Any(p =>
-            string.Equals(p, Permissions.SystemUsersManage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p, Permissions.System.UsersManage, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p, "*", StringComparison.OrdinalIgnoreCase));
     }
 

@@ -67,6 +67,7 @@ builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<ILoyaltyRewardsService, LoyaltyRewardsService>();
+builder.Services.AddScoped<IPartnersService, PartnersService>();
 builder.Services.AddScoped<IInvoiceOcrService, GeminiInvoiceOcrService>();
 
 // JWT Authentication Configuration
@@ -345,6 +346,20 @@ using (var scope = app.Services.CreateScope())
                 if (rewardsSqlPath != null)
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(rewardsSqlPath));
+                }
+
+                // Ensure incremental Partners & Profit Sharing schema upgrades are idempotently applied
+                string[] partnersSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "15_partners_and_profit_distribution.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "15_partners_and_profit_distribution.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "15_partners_and_profit_distribution.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "15_partners_and_profit_distribution.sql")
+                };
+                var partnersSqlPath = partnersSqlPaths.FirstOrDefault(File.Exists);
+                if (partnersSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(partnersSqlPath));
                 }
             }
 

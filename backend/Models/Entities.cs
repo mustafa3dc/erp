@@ -2329,3 +2329,89 @@ public class LoyaltyRedemptionVoucher : ITenantEntity
     [Column("claimed_by_shift_id")]
     public Guid? ClaimedByShiftId { get; set; }
 }
+
+// ============================================================================
+// Multi-Tenant Partners, Equity Shares & Live Profit Distribution
+// ============================================================================
+
+public static class PartnerTransactionTypes
+{
+    public const string Withdrawal = "Withdrawal";
+    public const string ProfitPayout = "ProfitPayout";
+    public const string CapitalInjection = "CapitalInjection";
+}
+
+[Table("partners")]
+public class Partner : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("phone")]
+    public string? Phone { get; set; }
+
+    [Column("capital_amount", TypeName = "numeric(18, 4)")]
+    public decimal CapitalAmount { get; set; } = 0.0000m;
+
+    [Column("profit_share_percent", TypeName = "numeric(5, 2)")]
+    public decimal ProfitSharePercent { get; set; }
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [MaxLength(1000)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+[Table("partner_transactions")]
+public class PartnerTransaction : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("partner_id")]
+    public Guid PartnerId { get; set; }
+    public Partner? Partner { get; set; }
+
+    [Required]
+    [MaxLength(40)]
+    [Column("transaction_type")]
+    public string TransactionType { get; set; } = PartnerTransactionTypes.Withdrawal;
+
+    [Column("amount", TypeName = "numeric(18, 4)")]
+    public decimal Amount { get; set; }
+
+    [MaxLength(1000)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("shift_id")]
+    public Guid? ShiftId { get; set; }
+
+    [Column("created_by")]
+    public Guid CreatedBy { get; set; }
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}

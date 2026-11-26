@@ -85,6 +85,8 @@ export const KEYS = {
   get LOYALTY_TRANSACTIONS() { return getScopedKey('loyalty_transactions'); },
   get LOYALTY_REWARDS() { return getScopedKey('loyalty_rewards'); },
   get LOYALTY_VOUCHERS() { return getScopedKey('loyalty_vouchers'); },
+  get PARTNERS() { return getScopedKey('partners'); },
+  get PARTNER_TRANSACTIONS() { return getScopedKey('partner_transactions'); },
 };
 
 
@@ -2114,6 +2116,41 @@ export function recordTreasuryInflow(method: string, amount: number, preferredAc
         ...acc,
         balanceIqd: (Number(acc.balanceIqd) || 0) + addedIqd,
         balanceUsd: (Number(acc.balanceUsd) || 0) + addedUsd
+      };
+    }
+    return acc;
+  });
+
+  saveStoredTreasuryAccounts(updated);
+}
+
+/**
+ * Deducts cash/bank outflow from Treasury (used for partner withdrawals/payouts, NOT logged as store expense).
+ */
+export function recordTreasuryOutflow(method: string, amount: number, preferredAccountId?: string): void {
+  const normMethod = (method || '').toUpperCase();
+  const numAmount = Number(amount) || 0;
+  if (numAmount <= 0) return;
+
+  const accounts = getStoredTreasuryAccounts();
+  const isCash = normMethod === 'CASH' || normMethod === 'نقد' || normMethod === 'نقداً';
+  const targetId = preferredAccountId
+    ? preferredAccountId
+    : isCash
+    ? 'ACC-01'
+    : (accounts.find(a => a.type === 'BANK')?.id || 'ACC-01');
+  let matched = false;
+
+  const updated = accounts.map(acc => {
+    if (acc.id === targetId || (!matched && !preferredAccountId && isCash && (acc.type === 'CASH' || acc.id === 'ACC-01'))) {
+      matched = true;
+      const isLargeIqd = numAmount > 10000;
+      const deductIqd = isLargeIqd ? numAmount : Math.round(numAmount * 1520);
+      const deductUsd = isLargeIqd ? Math.round(numAmount / 1520) : numAmount;
+      return {
+        ...acc,
+        balanceIqd: Math.max(0, (Number(acc.balanceIqd) || 0) - deductIqd),
+        balanceUsd: Math.max(0, (Number(acc.balanceUsd) || 0) - deductUsd)
       };
     }
     return acc;

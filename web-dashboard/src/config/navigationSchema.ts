@@ -244,6 +244,13 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Receipt & Payment Vouchers',
         path: '/finance/vouchers',
         requiredPermission: 'finance.ledger'
+      },
+      {
+        id: 'Partners & Profit Sharing',
+        titleAr: 'الشركاء وتوزيع الأرباح',
+        titleEn: 'Partners & Profit Sharing',
+        path: '/finance/partners',
+        requiredPermission: 'finance.partners.manage'
       }
     ]
   },
@@ -329,6 +336,9 @@ export function checkUserHasPermission(permissions: string[], required: string):
     case 'finance.ledger':
     case 'treasury.accounts.view':
       return set.has('treasury.accounts.view') || set.has('finance.ledger');
+    case 'finance.partners.manage':
+    case 'treasury.partners.manage':
+      return set.has('treasury.partners.manage') || set.has('finance.partners.manage') || set.has('partners.manage') || set.has('system.users.manage');
     case 'reports.executive':
     case 'reports.executive.view':
       return set.has('reports.executive.view') || set.has('reports.executive');

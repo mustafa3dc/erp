@@ -106,6 +106,7 @@ public class PermissionAuthorizationFilter : IAsyncAuthorizationFilter
             "sales.returns.manage" => userPerms.Contains("returns.manage") || userPerms.Contains("Permissions.Returns.Manage"),
             "purchases.bills.view" or "purchases.bills.create" => userPerms.Contains("purchases.manage") || userPerms.Contains("Permissions.Purchases.Manage"),
             "treasury.accounts.view" => userPerms.Contains("finance.ledger") || userPerms.Contains("Permissions.Finance.Ledger"),
+            "treasury.partners.manage" => userPerms.Contains("finance.partners.manage") || userPerms.Contains("partners.manage") || userPerms.Contains("system.users.manage"),
             "system.dashboard.view" => userPerms.Contains("dashboard.view") || userPerms.Contains("Permissions.Dashboard.View"),
             "system.audit.view" => userPerms.Contains("settings.audit") || userPerms.Contains("Permissions.Settings.Audit"),
             _ => false

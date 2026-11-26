@@ -62,6 +62,15 @@
       "ERR_NO_ACTIVE_SHIFT": "An active open POS cashier shift is required before handing over rewards.",
       "ERR_CONCURRENCY_LOCK_TIMEOUT": "Reward inventory is busy being processed; please retry.",
       "ERR_INVALID_REWARD_CONFIG": "Please enter a reward title and a points price greater than zero."
+    },
+    "PARTNERS": {
+      "ERR_PARTNER_SHARE_EXCEEDS_100": "Total active partner shares cannot exceed 100%. Remaining unallocated share: {remaining}%.",
+      "ERR_INVALID_PARTNER_SHARE": "Profit share percentage must be greater than 0% and at most 100%.",
+      "ERR_PARTNER_NAME_REQUIRED": "Partner name is required.",
+      "ERR_PARTNER_NOT_FOUND": "Requested partner record was not found.",
+      "ERR_INVALID_TRANSACTION_AMOUNT": "Transaction amount must be greater than zero.",
+      "ERR_INVALID_PARTNER_TRANSACTION_TYPE": "Invalid partner transaction type.",
+      "ERR_INVALID_CAPITAL_AMOUNT": "Invested capital amount cannot be negative."
     }
   }
 }

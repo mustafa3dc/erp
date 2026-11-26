@@ -58,6 +58,7 @@ import BarcodeSvg from './components/BarcodeSvg';
 import WarehouseCapacityBars from './components/WarehouseCapacityBars';
 import WeeklyStockChart from './components/WeeklyStockChart';
 import { RecentTransactionsTable } from './components/RecentTransactionsTable';
+import DashboardPartnersWidget from './components/DashboardPartnersWidget';
 import TransactionModal, { TransactionDetail } from './components/TransactionModal';
 import BarcodeScannerModal from './components/BarcodeScannerModal';
 import { UserNav } from './components/UserNav';
@@ -105,6 +106,7 @@ import PurchaseOrdersView from './components/views/PurchaseOrdersView';
 import CustomersLoyaltyView from './components/views/CustomersLoyaltyView';
 import FinanceTreasuryView from './components/views/FinanceTreasuryView';
 import ExpensesView from './components/views/ExpensesView';
+import PartnersView from './components/views/PartnersView';
 import QuotationsView from './components/views/QuotationsView';
 import PriceListsView from './components/views/PriceListsView';
 import PurchaseReturnsView from './components/views/PurchaseReturnsView';
@@ -184,6 +186,7 @@ const NAV_TITLES: Record<string, { ar: string; en: string }> = {
   'Finance & Treasury': { ar: 'الصناديق والبنوك', en: 'Cash & Banks' },
   'Operational Expenses': { ar: 'المصروفات التشغيلية', en: 'Operational Expenses' },
   'Finance Vouchers': { ar: 'سندات القبض والصرف', en: 'Receipt & Payment Vouchers' },
+  'Partners & Profit Sharing': { ar: 'الشركاء وتوزيع الأرباح', en: 'Partners & Profit Sharing' },
   'Reports': { ar: 'التقارير', en: 'Reports' },
   'Users & Staff': { ar: 'المستخدمون والصلاحيات', en: 'Users & Permissions' },
   'Settings': { ar: 'الإعدادات العامة', en: 'General Settings' },
@@ -572,7 +575,7 @@ function DashboardApp() {
       setExpandedGroups(prev => ({ ...prev, purchases: true }));
     } else if (['Inventory & Items', 'Transfers & In-Transit', 'Stock Counts', 'Warehouses & Racks', 'Dispatch Queue', 'Serial & Warranty Tracking'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, warehouse: true }));
-    } else if (['Finance & Treasury', 'Finance Vouchers', 'Operational Expenses'].includes(activeNav)) {
+    } else if (['Finance & Treasury', 'Finance Vouchers', 'Operational Expenses', 'Partners & Profit Sharing'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, finance: true }));
     } else if (['Reports', 'Users & Staff', 'Settings'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, system: true }));
@@ -2025,6 +2028,14 @@ function DashboardApp() {
               </div>
             </div>
 
+            {/* Executive Partners & Profit Sharing Summary (Owner/Manager RBAC only) */}
+            <DashboardPartnersWidget
+              lang={lang}
+              currentUser={currentUser}
+              selectedDateRangeId={selectedDateRangeId}
+              onNavigatePartners={() => setActiveNav('Partners & Profit Sharing')}
+            />
+
             {/* Row 3: Recent Stock Transactions Table (9 Mandatory Columns & 1-Click Copy ID) */}
             <RecentTransactionsTable
               transactions={filteredTransactions}
@@ -2232,6 +2243,11 @@ function DashboardApp() {
         {/* View: Operational Expenses */}
         {activeNav === 'Operational Expenses' && (
           <ExpensesView lang={lang} />
+        )}
+
+        {/* View: Partners & Profit Sharing */}
+        {activeNav === 'Partners & Profit Sharing' && (
+          <PartnersView lang={lang} />
         )}
 
         {/* View: Sales Quotations */}

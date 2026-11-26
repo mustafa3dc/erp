@@ -62,6 +62,15 @@
       "ERR_NO_ACTIVE_SHIFT": "يجب فتح وردية كاشير نشطة أولاً لتسليم المكافأة.",
       "ERR_CONCURRENCY_LOCK_TIMEOUT": "المكافأة قيد المعالجة الآن، يرجى المحاولة مرة أخرى.",
       "ERR_INVALID_REWARD_CONFIG": "يرجى إدخال عنوان المكافأة وسعر نقاط أكبر من صفر."
+    },
+    "PARTNERS": {
+      "ERR_PARTNER_SHARE_EXCEEDS_100": "مجموع حصص الشركاء النشطين يتجاوز 100%. النسبة المتاحة المتبقية هي {remaining}%.",
+      "ERR_INVALID_PARTNER_SHARE": "نسبة الشراكة يجب أن تكون أكبر من 0% ولا تتجاوز 100%.",
+      "ERR_PARTNER_NAME_REQUIRED": "اسم الشريك مطلوب.",
+      "ERR_PARTNER_NOT_FOUND": "لم يتم العثور على سجل الشريك المطلوب.",
+      "ERR_INVALID_TRANSACTION_AMOUNT": "مبلغ الحركة المالية يجب أن يكون أكبر من صفر.",
+      "ERR_INVALID_PARTNER_TRANSACTION_TYPE": "نوع حركة الشريك غير صالح.",
+      "ERR_INVALID_CAPITAL_AMOUNT": "مبلغ رأس المال لا يمكن أن يكون سالباً."
     }
   }
 }

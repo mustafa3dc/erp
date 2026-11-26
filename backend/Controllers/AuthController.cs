@@ -928,7 +928,8 @@ public class AuthController : ControllerBase
                     Permissions.InventoryManage,
                     Permissions.TransfersManage,
                     Permissions.ReportsExecutive,
-                    Permissions.InventoryCostPriceView
+                    Permissions.InventoryCostPriceView,
+                    Permissions.Treasury.PartnersManage
                 }
             },
 
@@ -963,7 +964,8 @@ public class AuthController : ControllerBase
                     Permissions.FinanceLedger,
                     Permissions.CustomersManage,
                     Permissions.ReportsExecutive,
-                    Permissions.SettingsAudit
+                    Permissions.SettingsAudit,
+                    Permissions.Treasury.PartnersManage
                 }
             }
         };

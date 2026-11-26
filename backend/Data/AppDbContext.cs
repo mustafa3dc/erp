@@ -62,6 +62,8 @@ public class AppDbContext : DbContext
     public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
     public DbSet<LoyaltyReward> LoyaltyRewards => Set<LoyaltyReward>();
     public DbSet<LoyaltyRedemptionVoucher> LoyaltyRedemptionVouchers => Set<LoyaltyRedemptionVoucher>();
+    public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -532,6 +534,24 @@ public class AppDbContext : DbContext
             entity.HasOne(v => v.Reward)
                 .WithMany()
                 .HasForeignKey(v => v.RewardId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Partner>(entity =>
+        {
+            entity.HasIndex(p => new { p.TenantId, p.IsActive });
+            entity.Property(p => p.CapitalAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(p => p.ProfitSharePercent).HasColumnType("numeric(5, 2)");
+        });
+
+        modelBuilder.Entity<PartnerTransaction>(entity =>
+        {
+            entity.HasIndex(pt => new { pt.TenantId, pt.PartnerId, pt.CreatedAt });
+            entity.Property(pt => pt.Amount).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(pt => pt.Partner)
+                .WithMany()
+                .HasForeignKey(pt => pt.PartnerId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

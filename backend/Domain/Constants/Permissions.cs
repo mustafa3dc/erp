@@ -89,6 +89,7 @@ public static class Permissions
         public const string ExpensesEdit = "treasury.expenses.edit";
         public const string ExpensesDelete = "treasury.expenses.delete";
         public const string ExpensesApprove = "treasury.expenses.approve";
+        public const string PartnersManage = "treasury.partners.manage";
     }
 
     // =========================================================================
@@ -194,6 +195,7 @@ public static class Permissions
             Treasury.ExpensesEdit,
             Treasury.ExpensesDelete,
             Treasury.ExpensesApprove,
+            Treasury.PartnersManage,
 
             Reports.ExecutiveView,
             Reports.SalesReports,
@@ -243,6 +245,7 @@ public static class Permissions
         Inventory.CostPriceView,
         Treasury.AccountsView,
         Treasury.VouchersManage,
+        Treasury.PartnersManage,
         Treasury.DebtsView,
         Reports.ExecutiveView,
         Reports.SalesReports,
@@ -274,6 +277,7 @@ public static class Permissions
         Inventory.WarehousesManage,
         Treasury.AccountsView,
         Treasury.VouchersManage,
+        Treasury.PartnersManage,
         Reports.ExecutiveView,
         Reports.SalesReports,
         Reports.InventoryReports

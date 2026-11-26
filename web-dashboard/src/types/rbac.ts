@@ -32,7 +32,8 @@ export type PermissionKey =
   | 'pricelists.manage'
   | 'purchases.returns'
   | 'serials.manage'
-  | 'expenses.manage';
+  | 'expenses.manage'
+  | 'finance.partners.manage';
 
 export type BusinessPreset = 
   | 'Custom' 
@@ -180,6 +181,7 @@ export const SYSTEM_ROLES_CONFIG: Record<UserRole, UserProfile> = {
       'transfers.manage',
       'reports.executive',
       'inventory.cost_price.view',
+      'finance.partners.manage',
       'settings.audit'
     ]
   },
@@ -234,6 +236,7 @@ export const SYSTEM_ROLES_CONFIG: Record<UserRole, UserProfile> = {
       'purchases.manage',
       'customers.manage',
       'finance.ledger',
+      'finance.partners.manage',
       'reports.executive',
       'settings.audit'
     ]

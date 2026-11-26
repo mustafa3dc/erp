@@ -1047,6 +1047,8 @@ public class DiscountEngineService : IDiscountEngineService
                 Name = trimmedName,
                 IsDefaultCashCustomer = false,
                 LoyaltyPointsBalance = 0.0000m,
+                LoyaltyMemberCode = LoyaltyTokenHelper.GenerateMemberCode(),
+                LoyaltyCardToken = LoyaltyTokenHelper.GenerateUrlSafeCardToken(),
                 IsActive = true,
                 CreatedBy = actor,
                 CurrentBalance = 0m,

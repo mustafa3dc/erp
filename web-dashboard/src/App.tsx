@@ -109,6 +109,7 @@ import QuotationsView from './components/views/QuotationsView';
 import PriceListsView from './components/views/PriceListsView';
 import PurchaseReturnsView from './components/views/PurchaseReturnsView';
 import SerialTrackingView from './components/views/SerialTrackingView';
+import PublicLoyaltyCardPage from './components/views/PublicLoyaltyCardPage';
 import SaasAdminLayout, { SaasAdminTab } from './layouts/SaasAdminLayout';
 import TenantsManagementView from './components/views/superadmin/TenantsManagementView';
 import PlatformUsersView from './components/views/superadmin/PlatformUsersView';
@@ -192,6 +193,19 @@ const NAV_TITLES: Record<string, { ar: string; en: string }> = {
   'Dispatch Queue': { ar: 'أوامر التجهيز والصرف', en: 'Dispatch Orders' }
 };
 
+function getPublicCardTokenFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const match = window.location.pathname.match(/^\/card\/([^/?#]+)\/?$/i);
+  if (match && match[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
+  return null;
+}
+
 function getInitialPublicRoute(): 'landing' | 'login' | 'pricing' | 'register' {
   if (typeof window === 'undefined') return 'landing';
   const path = window.location.pathname.toLowerCase();
@@ -248,7 +262,8 @@ function DashboardApp() {
   const [selectedDateRangeId, setSelectedDateRangeId] = useState<string>('today');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login)
+  // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login, Digital Loyalty Wallet)
+  const [publicCardToken, setPublicCardToken] = useState<string | null>(() => getPublicCardTokenFromUrl());
   const [publicRoute, setPublicRoute] = useState<'landing' | 'login' | 'pricing' | 'register'>(() => getInitialPublicRoute());
   const [registerParams, setRegisterParams] = useState<any>(() => parseRegisterParamsFromUrl());
 
@@ -276,6 +291,7 @@ function DashboardApp() {
 
   useEffect(() => {
     const handlePopState = () => {
+      setPublicCardToken(getPublicCardTokenFromUrl());
       setPublicRoute(getInitialPublicRoute());
       setRegisterParams(parseRegisterParamsFromUrl());
     };
@@ -1417,6 +1433,25 @@ function DashboardApp() {
     });
     showToast(isAr ? `تم اعتماد تسوية ${reconciledItems.length} صنف بنجاح وتحديث الأرصدة والقيود في النظام!` : `Successfully reconciled ${reconciledItems.length} items & updated stock!`);
   };
+
+  // Public Mobile-First Customer Loyalty Wallet Route (/card/[token]) — Strictly Standalone & Anonymous
+  if (publicCardToken) {
+    return (
+      <PublicLoyaltyCardPage
+        token={publicCardToken}
+        onNavigateToken={(nextToken) => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState(
+              { publicCardToken: nextToken },
+              '',
+              `/card/${encodeURIComponent(nextToken)}`
+            );
+          }
+          setPublicCardToken(nextToken);
+        }}
+      />
+    );
+  }
 
   // If no user is authenticated, render Public Routing (Landing Page, Pricing, Register, or Login)
   if (!currentUser) {

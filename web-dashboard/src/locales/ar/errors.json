@@ -50,6 +50,18 @@
     },
     "POS": {
       "INVALID_CURRENCY_DENOMINATION": "الرصيد النقدي الافتتاحي غير صالح: يجب أن يكون صفراً أو أكبر ومن مضاعفات 250 د.ع (ERR_INVALID_CURRENCY_DENOMINATION)."
+    },
+    "LOYALTY": {
+      "ERR_LOYALTY_CARD_NOT_FOUND": "بطاقة الولاء الرقمية غير موجودة أو غير نشطة.",
+      "ERR_REWARD_NOT_FOUND": "المكافأة المطلوبة غير موجودة أو غير متاحة حالياً.",
+      "ERR_REWARD_OUT_OF_STOCK": "نفدت الكمية المتوفرة لهذه المكافأة في المستودع.",
+      "ERR_INSUFFICIENT_LOYALTY_POINTS": "رصيد النقاط الحالي لا يكفي لاستبدال هذه المكافأة.",
+      "ERR_LOYALTY_DISABLED": "برنامج نقاط الولاء معطّل حالياً لدى هذا المتجر.",
+      "ERR_VOUCHER_NOT_FOUND": "لم يتم العثور على قسيمة المكافأة بهذا الرمز.",
+      "ERR_VOUCHER_INVALID_OR_CLAIMED": "هذه القسيمة تم تسليمها مسبقاً أو ملغاة ولا يمكن صرفها مرة أخرى.",
+      "ERR_NO_ACTIVE_SHIFT": "يجب فتح وردية كاشير نشطة أولاً لتسليم المكافأة.",
+      "ERR_CONCURRENCY_LOCK_TIMEOUT": "المكافأة قيد المعالجة الآن، يرجى المحاولة مرة أخرى.",
+      "ERR_INVALID_REWARD_CONFIG": "يرجى إدخال عنوان المكافأة وسعر نقاط أكبر من صفر."
     }
   }
 }

@@ -60,6 +60,8 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<LoyaltySettings> LoyaltySettings => Set<LoyaltySettings>();
     public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
+    public DbSet<LoyaltyReward> LoyaltyRewards => Set<LoyaltyReward>();
+    public DbSet<LoyaltyRedemptionVoucher> LoyaltyRedemptionVouchers => Set<LoyaltyRedemptionVoucher>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -229,6 +231,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Customer>(entity =>
         {
             entity.HasIndex(c => new { c.TenantId, c.Code });
+            entity.HasIndex(c => c.LoyaltyMemberCode)
+                .IsUnique()
+                .HasFilter("loyalty_member_code IS NOT NULL");
+            entity.HasIndex(c => c.LoyaltyCardToken)
+                .IsUnique()
+                .HasFilter("loyalty_card_token IS NOT NULL");
+            entity.HasIndex(c => c.NormalizedPhone)
+                .HasFilter("normalized_phone IS NOT NULL");
             entity.Property(c => c.CreditLimit).HasColumnType("numeric(18, 4)");
             entity.Property(c => c.CurrentBalance).HasColumnType("numeric(18, 4)");
             entity.Property(c => c.LoyaltyPointsBalance).HasColumnType("numeric(18, 4)");
@@ -494,6 +504,35 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(lt => lt.ReturnId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<LoyaltyReward>(entity =>
+        {
+            entity.HasIndex(r => new { r.TenantId, r.IsActive, r.IsDeleted, r.DisplayOrder });
+            entity.HasIndex(r => r.ProductId);
+            entity.Property(r => r.PointsCost).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(r => r.Product)
+                .WithMany()
+                .HasForeignKey(r => r.ProductId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<LoyaltyRedemptionVoucher>(entity =>
+        {
+            entity.HasIndex(v => v.VoucherCode).IsUnique();
+            entity.HasIndex(v => new { v.TenantId, v.CustomerId, v.Status, v.CreatedAt });
+            entity.Property(v => v.PointsSpent).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(v => v.Customer)
+                .WithMany()
+                .HasForeignKey(v => v.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(v => v.Reward)
+                .WithMany()
+                .HasForeignKey(v => v.RewardId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

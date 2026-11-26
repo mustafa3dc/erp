@@ -50,6 +50,18 @@
     },
     "POS": {
       "INVALID_CURRENCY_DENOMINATION": "Invalid opening cash balance: must be 0 or greater and strictly divisible by 250 IQD (ERR_INVALID_CURRENCY_DENOMINATION)."
+    },
+    "LOYALTY": {
+      "ERR_LOYALTY_CARD_NOT_FOUND": "Digital loyalty card was not found or is inactive.",
+      "ERR_REWARD_NOT_FOUND": "Requested reward item is unavailable.",
+      "ERR_REWARD_OUT_OF_STOCK": "This reward item is currently out of stock.",
+      "ERR_INSUFFICIENT_LOYALTY_POINTS": "Insufficient loyalty points balance for this reward.",
+      "ERR_LOYALTY_DISABLED": "Customer loyalty program is currently disabled at this store.",
+      "ERR_VOUCHER_NOT_FOUND": "Reward redemption voucher was not found.",
+      "ERR_VOUCHER_INVALID_OR_CLAIMED": "This voucher has already been claimed or cancelled.",
+      "ERR_NO_ACTIVE_SHIFT": "An active open POS cashier shift is required before handing over rewards.",
+      "ERR_CONCURRENCY_LOCK_TIMEOUT": "Reward inventory is busy being processed; please retry.",
+      "ERR_INVALID_REWARD_CONFIG": "Please enter a reward title and a points price greater than zero."
     }
   }
 }

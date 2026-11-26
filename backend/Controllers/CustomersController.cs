@@ -53,12 +53,54 @@ public class CustomersController : ControllerBase
                 c.CreditLimit,
                 c.CurrentBalance,
                 c.LoyaltyPointsBalance,
+                c.LoyaltyMemberCode,
+                c.LoyaltyCardToken,
+                c.NormalizedPhone,
                 c.IsDefaultCashCustomer,
                 c.CreatedAt
             })
             .ToListAsync();
 
         return Ok(items);
+    }
+
+    [HttpGet("by-member-code/{code}")]
+    public async Task<ActionResult<ApiResponse<PosCustomerLookupDto>>> GetByMemberCode(
+        [FromRoute] string code,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return NotFound(ApiResponse<PosCustomerLookupDto>.Fail("ERR_CUSTOMER_NOT_FOUND", "LOYALTY"));
+        }
+
+        var normCode = code.Trim().ToUpperInvariant();
+        var customer = await _context.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c =>
+                c.IsActive &&
+                !c.IsDefaultCashCustomer &&
+                c.LoyaltyMemberCode != null &&
+                c.LoyaltyMemberCode.ToUpper() == normCode, ct);
+
+        if (customer == null)
+        {
+            return NotFound(ApiResponse<PosCustomerLookupDto>.Fail("ERR_CUSTOMER_NOT_FOUND", "LOYALTY"));
+        }
+
+        return Ok(ApiResponse<PosCustomerLookupDto>.Ok(new PosCustomerLookupDto
+        {
+            Id = customer.Id,
+            Code = customer.Code,
+            Name = customer.Name,
+            Phone = customer.Phone,
+            LoyaltyMemberCode = customer.LoyaltyMemberCode,
+            LoyaltyCardToken = customer.LoyaltyCardToken,
+            LoyaltyPointsBalance = customer.LoyaltyPointsBalance,
+            CreditLimit = customer.CreditLimit,
+            CurrentBalance = customer.CurrentBalance,
+            IsDefaultCashCustomer = customer.IsDefaultCashCustomer
+        }));
     }
 
     [HttpGet("{customerId:guid}/loyalty")]
@@ -84,15 +126,19 @@ public class CustomersController : ControllerBase
         }
 
         var now = DateTime.UtcNow;
+        var trimmedPhone = dto.Phone?.Trim();
         var customer = new Customer
         {
             Id = Guid.NewGuid(),
             Code = $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}",
             Name = trimmedName,
-            Phone = dto.Phone?.Trim(),
+            Phone = trimmedPhone,
+            NormalizedPhone = LoyaltyTokenHelper.NormalizePhone(trimmedPhone),
             Email = dto.Email?.Trim(),
             CreditLimit = dto.CreditLimit ?? 0m,
             LoyaltyPointsBalance = 0.0000m,
+            LoyaltyMemberCode = LoyaltyTokenHelper.GenerateMemberCode(),
+            LoyaltyCardToken = LoyaltyTokenHelper.GenerateUrlSafeCardToken(),
             IsDefaultCashCustomer = false,
             IsActive = true,
             CreatedBy = User.Identity?.Name ?? "System",
@@ -112,6 +158,9 @@ public class CustomersController : ControllerBase
             customer.CreditLimit,
             customer.CurrentBalance,
             customer.LoyaltyPointsBalance,
+            customer.LoyaltyMemberCode,
+            customer.LoyaltyCardToken,
+            customer.NormalizedPhone,
             customer.IsDefaultCashCustomer,
             customer.CreatedAt
         });

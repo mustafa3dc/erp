@@ -10,6 +10,8 @@ import {
   LoyaltySettingsConfig
 } from '../../services/storageService';
 import NewCustomerModal from '../modals/NewCustomerModal';
+import DigitalLoyaltyCardModal, { DigitalLoyaltyCustomerInfo } from '../modals/DigitalLoyaltyCardModal';
+import RewardsStorePanel from './RewardsStorePanel';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
@@ -26,7 +28,9 @@ import {
   X,
   ArrowUpRight,
   ArrowDownRight,
-  RotateCcw
+  RotateCcw,
+  Gift,
+  QrCode
 } from 'lucide-react';
 
 interface CustomerRecord {
@@ -40,6 +44,9 @@ interface CustomerRecord {
   loyaltyTier: 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
   loyaltyPoints: number;
   loyaltyPointsBalance?: number;
+  loyaltyMemberCode?: string;
+  loyaltyCardToken?: string;
+  normalizedPhone?: string;
   isDefaultCashCustomer?: boolean;
 }
 
@@ -52,8 +59,9 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
   const { formatMoney, settings } = useSettings();
   const lTr = (key: string, fallback?: string) => getTranslation(lang, `ui.loyalty.${key}`, fallback);
 
-  const [activeTab, setActiveTab] = useState<'directory' | 'history'>('directory');
+  const [activeTab, setActiveTab] = useState<'directory' | 'history' | 'rewards'>('directory');
   const [customers, setCustomers] = useState<CustomerRecord[]>(() => getStoredCustomers());
+  const [digitalCardTarget, setDigitalCardTarget] = useState<DigitalLoyaltyCustomerInfo | null>(null);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransactionRecord[]>(() =>
     getStoredLoyaltyTransactions()
   );
@@ -104,6 +112,9 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
                 loyaltyTier: ex?.loyaltyTier || (pts >= 5000 ? 'PLATINUM' : pts >= 2000 ? 'GOLD' : pts >= 500 ? 'SILVER' : 'BRONZE'),
                 loyaltyPoints: pts,
                 loyaltyPointsBalance: pts,
+                loyaltyMemberCode: rc.loyaltyMemberCode || ex?.loyaltyMemberCode,
+                loyaltyCardToken: rc.loyaltyCardToken || ex?.loyaltyCardToken,
+                normalizedPhone: rc.normalizedPhone || ex?.normalizedPhone,
                 isDefaultCashCustomer: Boolean(rc.isDefaultCashCustomer)
               });
             }
@@ -361,9 +372,20 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('rewards')}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors cursor-pointer ${
+            activeTab === 'rewards' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Gift size={15} />
+          <span>{getTranslation(lang, 'ui.rewardsStore.tabTitle')}</span>
+        </button>
       </div>
 
       {/* Toolbar */}
+      {activeTab !== 'rewards' && (
       <div className="module-toolbar">
         <div className="module-search-box">
           <Search size={16} />
@@ -411,8 +433,11 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
           </div>
         )}
       </div>
+      )}
 
-      {activeTab === 'directory' ? (
+      {activeTab === 'rewards' ? (
+        <RewardsStorePanel lang={lang} onToast={showToast} />
+      ) : activeTab === 'directory' ? (
         <div className="transactions-table-card">
           <div className="table-responsive">
             <table className="custom-data-table">
@@ -442,7 +467,14 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
                     const eqVal = calculateLoyaltyCurrencyEquivalent(pts, loyaltySettings);
                     return (
                       <tr key={c.id}>
-                        <td className="font-mono font-bold text-primary" dir="ltr">{c.code}</td>
+                        <td className="font-mono font-bold text-primary" dir="ltr">
+                          <div>{c.code}</div>
+                          {!c.isDefaultCashCustomer && c.loyaltyMemberCode && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold">
+                              {c.loyaltyMemberCode}
+                            </span>
+                          )}
+                        </td>
                         <td className="font-bold text-foreground text-sm"><span dir="auto">{c.name}</span></td>
                         <td>
                           <span className="block text-xs text-foreground font-semibold font-mono tabular-nums" dir="ltr">{c.phone}</span>
@@ -483,6 +515,17 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
                               <History size={13} />
                               <span>{lTr('viewHistoryBtn')}</span>
                             </button>
+                            {!c.isDefaultCashCustomer && c.loyaltyCardToken && (
+                              <button
+                                type="button"
+                                className="btn-clean-secondary"
+                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                                title={getTranslation(lang, 'ui.digitalWallet.cardModalBtn')}
+                                onClick={() => setDigitalCardTarget(c)}
+                              >
+                                <QrCode size={13} />
+                              </button>
+                            )}
                             {!c.isDefaultCashCustomer && (
                               <button
                                 type="button"
@@ -659,6 +702,14 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
               : `Customer (${newCustomer.name}) registered successfully!`
           );
         }}
+      />
+
+      {/* Digital Loyalty Card Share Modal */}
+      <DigitalLoyaltyCardModal
+        isOpen={Boolean(digitalCardTarget)}
+        onClose={() => setDigitalCardTarget(null)}
+        customer={digitalCardTarget}
+        lang={lang}
       />
     </div>
   );

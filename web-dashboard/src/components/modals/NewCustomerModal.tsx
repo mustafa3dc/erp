@@ -19,6 +19,12 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { useSettings } from '../../context/settings-context';
+import {
+  generateLocalCardToken,
+  generateLocalMemberCode,
+  getStoredCustomers,
+  normalizeLoyaltyPhone
+} from '../../services/storageService';
 
 export interface CustomerData {
   id: string;
@@ -30,6 +36,9 @@ export interface CustomerData {
   currentBalance: number;
   loyaltyTier: 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
   loyaltyPoints: number;
+  loyaltyMemberCode?: string;
+  loyaltyCardToken?: string;
+  normalizedPhone?: string;
 }
 
 interface NewCustomerModalProps {
@@ -73,16 +82,25 @@ export default function NewCustomerModal({
       return;
     }
 
+    const existing = getStoredCustomers();
+    const usedCodes = new Set<string>(
+      existing.map(c => String(c?.loyaltyMemberCode || '').toUpperCase()).filter(Boolean)
+    );
+    const trimmedPhone = phone.trim();
+
     const newCustomer: CustomerData = {
       id: `CUST-${Date.now()}`,
       code: customerCode.trim() || `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
       name: name.trim(),
-      phone: phone.trim(),
+      phone: trimmedPhone,
+      normalizedPhone: normalizeLoyaltyPhone(trimmedPhone),
       city: city.trim(),
       creditLimit: Math.max(0, Number(creditLimit) || 0),
       currentBalance: Math.max(0, Number(currentBalance) || 0),
       loyaltyTier,
-      loyaltyPoints: 0
+      loyaltyPoints: 0,
+      loyaltyMemberCode: generateLocalMemberCode(usedCodes),
+      loyaltyCardToken: generateLocalCardToken()
     };
 
     onSubmit(newCustomer);

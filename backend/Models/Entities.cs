@@ -282,6 +282,10 @@ public class StockMovement : ITenantEntity
     [Column("reference_number")]
     public string? ReferenceNumber { get; set; }
 
+    [MaxLength(60)]
+    [Column("reference_type")]
+    public string? ReferenceType { get; set; }
+
     [Column("notes")]
     public string? Notes { get; set; }
 
@@ -955,6 +959,10 @@ public class Tenant
     [Column("contact_info")]
     public string? ContactInfo { get; set; }
 
+    [MaxLength(1000)]
+    [Column("logo_url")]
+    public string? LogoUrl { get; set; }
+
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
@@ -1368,6 +1376,18 @@ public class Customer : ITenantEntity
 
     [Column("loyalty_points_balance", TypeName = "numeric(18, 4)")]
     public decimal LoyaltyPointsBalance { get; set; } = 0.0000m;
+
+    [MaxLength(40)]
+    [Column("loyalty_member_code")]
+    public string? LoyaltyMemberCode { get; set; }
+
+    [MaxLength(128)]
+    [Column("loyalty_card_token")]
+    public string? LoyaltyCardToken { get; set; }
+
+    [MaxLength(40)]
+    [Column("normalized_phone")]
+    public string? NormalizedPhone { get; set; }
 
     [Column("price_list_id")]
     public Guid? PriceListId { get; set; }
@@ -2124,6 +2144,14 @@ public static class LoyaltyTransactionTypes
     public const string Redeemed = "Redeemed";
     public const string ReversedOnReturn = "ReversedOnReturn";
     public const string ManualAdjustment = "ManualAdjustment";
+    public const string Refunded = "Refunded";
+}
+
+public static class LoyaltyRedemptionStatuses
+{
+    public const string PendingPickup = "PendingPickup";
+    public const string Claimed = "Claimed";
+    public const string Cancelled = "Cancelled";
 }
 
 [Table("loyalty_settings")]
@@ -2215,3 +2243,89 @@ public class LoyaltyTransaction : ITenantEntity
 }
 
 
+
+[Table("loyalty_rewards")]
+public class LoyaltyReward : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    [Column("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
+    [Column("description")]
+    public string? Description { get; set; }
+
+    [Column("image_url")]
+    public string? ImageUrl { get; set; }
+
+    [Column("points_cost", TypeName = "numeric(18, 4)")]
+    public decimal PointsCost { get; set; }
+
+    [Column("product_id")]
+    public Guid? ProductId { get; set; }
+    public Product? Product { get; set; }
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("display_order")]
+    public int DisplayOrder { get; set; } = 0;
+
+    [Column("is_deleted")]
+    public bool IsDeleted { get; set; } = false;
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+[Table("loyalty_redemption_vouchers")]
+public class LoyaltyRedemptionVoucher : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("customer_id")]
+    public Guid CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+
+    [Column("reward_id")]
+    public Guid RewardId { get; set; }
+    public LoyaltyReward? Reward { get; set; }
+
+    [Required]
+    [MaxLength(40)]
+    [Column("voucher_code")]
+    public string VoucherCode { get; set; } = string.Empty;
+
+    [Column("points_spent", TypeName = "numeric(18, 4)")]
+    public decimal PointsSpent { get; set; }
+
+    [Required]
+    [MaxLength(30)]
+    [Column("status")]
+    public string Status { get; set; } = LoyaltyRedemptionStatuses.PendingPickup;
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("claimed_at")]
+    public DateTimeOffset? ClaimedAt { get; set; }
+
+    [Column("claimed_by_shift_id")]
+    public Guid? ClaimedByShiftId { get; set; }
+}

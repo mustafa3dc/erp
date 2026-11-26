@@ -23,6 +23,7 @@ export interface TransactionDetail {
   date?: string | Date;
   operator?: string;
   referenceNo?: string;
+  referenceType?: string;
   unitCost?: number;
 }
 

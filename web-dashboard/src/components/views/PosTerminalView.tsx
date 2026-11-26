@@ -34,13 +34,22 @@ import {
   Warehouse as WarehouseIcon,
   FileText,
   CalendarClock,
-  Scale
+  Scale,
+  QrCode
 } from 'lucide-react';
 import { useSettings, ScaleSettings } from '../../context/settings-context';
 import { Product, DiscountAuditLog, Warehouse, SalesInvoice } from '../../types/warehouse';
 import DiscountAuditTrailModal from '../modals/DiscountAuditTrailModal';
 import OpenShiftModal from '../modals/OpenShiftModal';
 import ElectronicScaleModal from '../modals/ElectronicScaleModal';
+import DigitalLoyaltyCardModal, { DigitalLoyaltyCustomerInfo } from '../modals/DigitalLoyaltyCardModal';
+import RewardHandoverModal from '../modals/RewardHandoverModal';
+import {
+  claimPosVoucher,
+  lookupCustomerByMemberCode,
+  lookupPosVoucher,
+  PosVoucherLookupResult
+} from '../../services/loyaltyRewardsService';
 import { 
   ActiveShift, 
   getStoredActiveShift, 
@@ -50,6 +59,7 @@ import {
   createInstallmentContract,
   getStoredWarehouses,
   getStoredProducts,
+  getStoredTransactions,
   getStoredSelectedWarehouseId,
   saveStoredSelectedWarehouseId,
   clearStoredSelectedWarehouseId,
@@ -370,6 +380,7 @@ export default function PosTerminalView({
     loyaltyPointsEarned?: number;
     loyaltyPointsRedeemed?: number;
     loyaltyDiscountAmount?: number;
+    customerInfo?: DigitalLoyaltyCustomerInfo | null;
     installmentDetails?: {
       downPayment: number;
       remainingAmount: number;
@@ -388,6 +399,10 @@ export default function PosTerminalView({
   }
 
   const [lastCompletedOrder, setLastCompletedOrder] = useState<CompletedOrderReceipt | null>(null);
+  const [digitalCardCustomer, setDigitalCardCustomer] = useState<DigitalLoyaltyCustomerInfo | null>(null);
+  const [handoverVoucher, setHandoverVoucher] = useState<PosVoucherLookupResult | null>(null);
+  const [isHandoverSubmitting, setIsHandoverSubmitting] = useState(false);
+  const [handoverError, setHandoverError] = useState<string | null>(null);
 
   // Installment POS Modal States
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
@@ -931,6 +946,14 @@ export default function PosTerminalView({
         };
       }
 
+      const latestCustomers = getStoredCustomers();
+      const matchedCustomer = latestCustomers.find(
+        c =>
+          c &&
+          !c.isDefaultCashCustomer &&
+          (c.id === result.invoice.customerId || c.id === selectedCustomerId)
+      );
+
       const orderData: CompletedOrderReceipt = {
         orderNumber: invoiceNumber,
         items: [...cart],
@@ -949,6 +972,16 @@ export default function PosTerminalView({
         loyaltyPointsEarned: result.loyaltyPointsEarned,
         loyaltyPointsRedeemed: result.loyaltyPointsRedeemed,
         loyaltyDiscountAmount: result.loyaltyDiscountAmount,
+        customerInfo: matchedCustomer && matchedCustomer.loyaltyCardToken
+          ? {
+              id: matchedCustomer.id,
+              name: matchedCustomer.name,
+              phone: matchedCustomer.phone,
+              loyaltyMemberCode: matchedCustomer.loyaltyMemberCode,
+              loyaltyCardToken: matchedCustomer.loyaltyCardToken,
+              loyaltyPointsBalance: matchedCustomer.loyaltyPointsBalance ?? matchedCustomer.loyaltyPoints ?? 0
+            }
+          : null,
         installmentDetails: createdInstallmentDetails,
         warehouse: {
           id: selectedWarehouse?.id,
@@ -962,7 +995,7 @@ export default function PosTerminalView({
       setShowReceiptModal(true);
       setCart([]);
       setStockError(null);
-      setCustomersList(getStoredCustomers());
+      setCustomersList(latestCustomers);
       const checkoutCustomerId = selectedCustomerId;
       const checkoutCustomerName = resolvedInputCustomerName;
       setSelectedCustomerId(undefined);
@@ -1330,10 +1363,69 @@ export default function PosTerminalView({
                 placeholder={isAr ? 'امسح الباركود بقارئ الليزر أو ابحث... [F1]' : 'Scan barcode or search... [F1]'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === 'Enter') {
                     const raw = searchQuery.trim();
                     if (!raw) return;
+
+                    // 0A. Auto-detect LOY- Loyalty Member Card Barcode
+                    if (/^LOY-/i.test(raw)) {
+                      setSearchQuery('');
+                      try {
+                        const found = await lookupCustomerByMemberCode(raw);
+                        setCustomersList(prev => {
+                          const exists = prev.some(c => c.id === found.id);
+                          return exists
+                            ? prev
+                            : [
+                                {
+                                  id: found.id,
+                                  code: found.code,
+                                  name: found.name,
+                                  phone: found.phone || '—',
+                                  loyaltyMemberCode: found.loyaltyMemberCode,
+                                  loyaltyCardToken: found.loyaltyCardToken,
+                                  loyaltyPoints: found.loyaltyPointsBalance,
+                                  loyaltyPointsBalance: found.loyaltyPointsBalance,
+                                  creditLimit: found.creditLimit,
+                                  currentBalance: found.currentBalance,
+                                  isDefaultCashCustomer: found.isDefaultCashCustomer
+                                },
+                                ...prev
+                              ];
+                        });
+                        setSelectedCustomerId(found.id);
+                        setPosCustomerName(found.name);
+                        setRedeemPoints(0);
+                        setCustomerErrorHighlight(false);
+                        showPaymentToast(
+                          getTranslation(lang, 'ui.posLoyaltyScan.memberAttachedToast')
+                            .replace('{name}', found.name)
+                            .replace('{points}', Number(found.loyaltyPointsBalance || 0).toLocaleString('en-US'))
+                        );
+                      } catch {
+                        showPaymentToast(
+                          getTranslation(lang, 'ui.posLoyaltyScan.memberNotFoundToast').replace('{code}', raw.toUpperCase())
+                        );
+                      }
+                      return;
+                    }
+
+                    // 0B. Auto-detect RDM- Loyalty Reward Redemption Voucher Barcode
+                    if (/^RDM-/i.test(raw)) {
+                      setSearchQuery('');
+                      try {
+                        const voucher = await lookupPosVoucher(raw);
+                        setHandoverError(null);
+                        setHandoverVoucher(voucher);
+                      } catch (err: any) {
+                        const code = err?.message || 'ERR_VOUCHER_NOT_FOUND';
+                        showPaymentToast(
+                          getTranslation(lang, `errors.ERR.LOYALTY.${code}`, raw.toUpperCase())
+                        );
+                      }
+                      return;
+                    }
 
                     // 1. Check if input matches an Electronic Scale Barcode (only if scale feature is active)
                     if (isScaleEnabled) {
@@ -1650,6 +1742,16 @@ export default function PosTerminalView({
               formatMoney={formatMoney}
               compact
             />
+            {!isWalkInCustomer && selectedCustomerObj?.loyaltyCardToken && (
+              <button
+                type="button"
+                onClick={() => setDigitalCardCustomer(selectedCustomerObj)}
+                className="mt-2 w-full px-2.5 py-1.5 rounded-lg border border-primary/25 bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <QrCode size={13} />
+                <span>{getTranslation(lang, 'ui.digitalWallet.cardModalBtn')}</span>
+              </button>
+            )}
           </div>
 
           {/* Cart Items List */}
@@ -2589,6 +2691,16 @@ export default function PosTerminalView({
                 {isAr ? 'إغلاق' : 'Close'}
               </button>
             </div>
+            {lastCompletedOrder.customerInfo?.loyaltyCardToken && (
+              <button
+                type="button"
+                onClick={() => setDigitalCardCustomer(lastCompletedOrder.customerInfo!)}
+                className="mt-2.5 w-full px-3.5 py-2 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <QrCode size={15} />
+                <span>{getTranslation(lang, 'ui.digitalWallet.cardModalBtn')}</span>
+              </button>
+            )}
           </div>
         </ModalBackdropPortal>
       )}
@@ -2846,6 +2958,59 @@ export default function PosTerminalView({
           setActiveShift(newShift);
           setPaymentToast(isAr ? 'تم فتح الوردية وتفعيل نقطة البيع بنجاح' : 'Shift opened successfully');
           setTimeout(() => setPaymentToast(''), 3500);
+        }}
+      />
+
+      {/* Digital Loyalty Card Modal (Cart / Post-Checkout Receipt Sharing) */}
+      <DigitalLoyaltyCardModal
+        isOpen={Boolean(digitalCardCustomer)}
+        onClose={() => setDigitalCardCustomer(null)}
+        customer={digitalCardCustomer}
+        lang={lang}
+      />
+
+      {/* Reward Voucher Handover Confirmation Modal (RDM- Scan) */}
+      <RewardHandoverModal
+        isOpen={Boolean(handoverVoucher)}
+        onClose={() => {
+          setHandoverVoucher(null);
+          setHandoverError(null);
+        }}
+        voucher={handoverVoucher}
+        hasActiveShift={Boolean(activeShift)}
+        isSubmitting={isHandoverSubmitting}
+        errorMessage={handoverError}
+        lang={lang}
+        onConfirmHandover={async () => {
+          if (!handoverVoucher || !activeShift) return;
+          setIsHandoverSubmitting(true);
+          setHandoverError(null);
+          try {
+            const claimed = await claimPosVoucher({
+              code: handoverVoucher.voucherCode,
+              shiftId: activeShift.id,
+              warehouseId: selectedWarehouse?.id,
+              actorName: effectiveCashierName
+            });
+            if (setProducts) {
+              setProducts(getStoredProducts());
+            }
+            if (setTransactions) {
+              setTransactions(getStoredTransactions());
+            }
+            setHandoverVoucher(null);
+            showPaymentToast(
+              getTranslation(lang, 'ui.posLoyaltyScan.handoverSuccessToast').replace(
+                '{code}',
+                claimed.voucherCode
+              )
+            );
+          } catch (err: any) {
+            const code = err?.message || 'ERR_VOUCHER_INVALID_OR_CLAIMED';
+            setHandoverError(getTranslation(lang, `errors.ERR.LOYALTY.${code}`, code));
+          } finally {
+            setIsHandoverSubmitting(false);
+          }
         }}
       />
 

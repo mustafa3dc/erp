@@ -66,6 +66,7 @@ builder.Services.AddScoped<IPurchaseReturnService, PurchaseReturnService>();
 builder.Services.AddScoped<ISerialTrackingService, SerialTrackingService>();
 builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
+builder.Services.AddScoped<ILoyaltyRewardsService, LoyaltyRewardsService>();
 builder.Services.AddScoped<IInvoiceOcrService, GeminiInvoiceOcrService>();
 
 // JWT Authentication Configuration
@@ -331,7 +332,25 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(loyaltySqlPath));
                 }
+
+                // Ensure incremental Loyalty Rewards Store & Digital Wallet schema upgrades are idempotently applied
+                string[] rewardsSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql")
+                };
+                var rewardsSqlPath = rewardsSqlPaths.FirstOrDefault(File.Exists);
+                if (rewardsSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(rewardsSqlPath));
+                }
             }
+
+            // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers
+            var loyaltyRewardsService = scope.ServiceProvider.GetRequiredService<ILoyaltyRewardsService>();
+            loyaltyRewardsService.BackfillCustomerLoyaltyIdentifiersAsync().GetAwaiter().GetResult();
         }
     }
     catch (Exception ex)

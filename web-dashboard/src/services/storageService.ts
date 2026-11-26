@@ -83,6 +83,8 @@ export const KEYS = {
   get PRODUCT_SERIALS() { return getScopedKey('product_serials'); },
   get LOYALTY_SETTINGS() { return getScopedKey('loyalty_settings'); },
   get LOYALTY_TRANSACTIONS() { return getScopedKey('loyalty_transactions'); },
+  get LOYALTY_REWARDS() { return getScopedKey('loyalty_rewards'); },
+  get LOYALTY_VOUCHERS() { return getScopedKey('loyalty_vouchers'); },
 };
 
 
@@ -2361,9 +2363,89 @@ export function saveStoredTreasuryVouchers(vouchers: any[]): void {
   safeSet(KEYS.TREASURY_VOUCHERS, vouchers);
 }
 
+export function normalizeLoyaltyPhone(phone?: string | null): string {
+  if (!phone) return '';
+  const converted = String(phone)
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/\D/g, '');
+  if (!converted) return '';
+  if (converted.startsWith('00964')) return converted.slice(5);
+  if (converted.startsWith('964') && converted.length > 9) return converted.slice(3);
+  if (converted.startsWith('0') && converted.length >= 10) return converted.slice(1);
+  return converted;
+}
+
+export function generateLocalCardToken(): string {
+  const bytes = new Uint8Array(18);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  let binary = '';
+  bytes.forEach(b => (binary += String.fromCharCode(b)));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function generateLocalMemberCode(existingCodes: Set<string>): string {
+  let candidate = '';
+  do {
+    candidate = `LOY-${Math.floor(10000 + Math.random() * 90000)}`;
+  } while (existingCodes.has(candidate.toUpperCase()));
+  existingCodes.add(candidate.toUpperCase());
+  return candidate;
+}
+
 export function getStoredCustomers(): any[] {
   const existing = safeGet<any[] | null>(KEYS.CUSTOMERS, null);
-  return existing || [];
+  if (!existing || !Array.isArray(existing)) return [];
+
+  let changed = false;
+  const usedCodes = new Set<string>();
+  existing.forEach(c => {
+    if (c?.loyaltyMemberCode) usedCodes.add(String(c.loyaltyMemberCode).toUpperCase());
+  });
+
+  const normalizedList = existing.map(c => {
+    if (!c) return c;
+    const isWalkIn = Boolean(
+      c.isDefaultCashCustomer ||
+      String(c.code || '').toUpperCase() === 'WALK-IN-CASH' ||
+      c.id === 'CUST-WALKIN' ||
+      c.id === 'WALK_IN'
+    );
+    if (isWalkIn) return c;
+
+    const normPhone = c.normalizedPhone || normalizeLoyaltyPhone(c.phone);
+    let memberCode = c.loyaltyMemberCode;
+    let cardToken = c.loyaltyCardToken;
+
+    if (!memberCode) {
+      memberCode = generateLocalMemberCode(usedCodes);
+      changed = true;
+    }
+    if (!cardToken) {
+      cardToken = generateLocalCardToken();
+      changed = true;
+    }
+    if (normPhone && c.normalizedPhone !== normPhone) {
+      changed = true;
+    }
+
+    return {
+      ...c,
+      loyaltyMemberCode: memberCode,
+      loyaltyCardToken: cardToken,
+      normalizedPhone: normPhone
+    };
+  });
+
+  if (changed) {
+    safeSet(KEYS.CUSTOMERS, normalizedList);
+  }
+
+  return normalizedList;
 }
 
 export function saveStoredCustomers(customers: any[]): void {
@@ -2467,16 +2549,24 @@ export function resolveOrCreateLocalCustomer(input: CustomerResolutionInput): Cu
       };
     }
 
+    const usedCodes = new Set<string>(
+      customers.map(c => String(c?.loyaltyMemberCode || '').toUpperCase()).filter(Boolean)
+    );
+    const phoneStr = (input.customerPhone || '').trim() || '—';
     const newCustomer = {
       id: `CUST-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       code: `C-${Date.now().toString().slice(-5)}`,
       name: rawName,
-      phone: (input.customerPhone || '').trim() || '—',
+      phone: phoneStr,
+      normalizedPhone: normalizeLoyaltyPhone(phoneStr),
       city: (input.customerAddress || '').trim() || 'بغداد',
       creditLimit: 0,
       currentBalance: isCredit ? saleAmt : 0,
       loyaltyTier: 'BRONZE' as const,
       loyaltyPoints: 0,
+      loyaltyPointsBalance: 0,
+      loyaltyMemberCode: generateLocalMemberCode(usedCodes),
+      loyaltyCardToken: generateLocalCardToken(),
       isDefaultCashCustomer: false,
       createdAt: new Date().toISOString()
     };

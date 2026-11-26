@@ -793,6 +793,7 @@ CREATE TABLE IF NOT EXISTS cash_boxes (
     name VARCHAR(150) NOT NULL,
     warehouse_id UUID REFERENCES warehouses(id) ON DELETE SET NULL,
     currency VARCHAR(10) NOT NULL DEFAULT 'IQD',
+    account_type VARCHAR(30) NOT NULL DEFAULT 'Cashbox',
     current_balance NUMERIC(18, 4) NOT NULL DEFAULT 0.0000 CHECK (current_balance >= 0.0000),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -2218,6 +2219,9 @@ CREATE TABLE IF NOT EXISTS treasury_transactions (
     amount NUMERIC(18, 4) NOT NULL CHECK (amount > 0),
     balance_after NUMERIC(18, 4) NOT NULL,
     reference_number VARCHAR(100) NULL,
+    party_name VARCHAR(200) NULL,
+    voucher_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    transfer_group_id UUID NULL,
     notes VARCHAR(500) NULL,
     created_by VARCHAR(150) NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -108,6 +108,20 @@
       "ERR_RECURRING_CONFIRM_FAILED": "Unable to confirm recurring expense payment and post voucher.",
       "ERR_INSUFFICIENT_TREASURY_BALANCE": "Selected treasury account has insufficient balance for this expense.",
       "ERR_EXPENSE_ACCOUNT_NOT_FOUND": "No active treasury cashbox account was found for deduction."
+    },
+    "TREASURY": {
+      "ERR_INVALID_AMOUNT": "Amount must be greater than zero.",
+      "ERR_TREASURY_ACCOUNT_REQUIRED": "Please select a target Treasury account.",
+      "ERR_TREASURY_ACCOUNT_NOT_FOUND": "Selected Treasury account was not found or is inactive.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "Insufficient balance in the selected account.",
+      "ERR_SAME_TREASURY_ACCOUNT": "Source and destination accounts must be different.",
+      "ERR_TREASURY_VOUCHER_FAILED": "Failed to post Treasury voucher.",
+      "ERR_TREASURY_TRANSFER_FAILED": "Failed to complete internal transfer.",
+      "ERR_TREASURY_ACCOUNT_NAME_REQUIRED": "Account or wallet name is required.",
+      "ERR_INVALID_ACCOUNT_TYPE": "Invalid Treasury account type.",
+      "ERR_TREASURY_ACCOUNT_CODE_EXISTS": "Treasury account code already exists.",
+      "ERR_LAST_ACTIVE_TREASURY_ACCOUNT": "Cannot hide the last remaining active Treasury account.",
+      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "Failed to save Treasury account."
     }
   }
 }

@@ -587,12 +587,19 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<CashBox>(entity =>
+        {
+            entity.HasIndex(cb => new { cb.TenantId, cb.IsActive, cb.Code });
+            entity.Property(cb => cb.CurrentBalance).HasColumnType("numeric(18, 4)");
+        });
+
         modelBuilder.Entity<TreasuryTransaction>(entity =>
         {
             entity.HasIndex(tt => new { tt.TenantId, tt.CashBoxId, tt.CreatedAt });
             entity.HasIndex(tt => tt.ExpenseVoucherId);
             entity.HasIndex(tt => tt.PurchaseBillId);
             entity.HasIndex(tt => tt.SupplierId);
+            entity.HasIndex(tt => tt.TransferGroupId);
             entity.Property(tt => tt.Amount).HasColumnType("numeric(18, 4)");
             entity.Property(tt => tt.BalanceAfter).HasColumnType("numeric(18, 4)");
 

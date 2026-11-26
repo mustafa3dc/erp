@@ -108,6 +108,20 @@
       "ERR_RECURRING_CONFIRM_FAILED": "تعذر تأكيد دفع المصروف الدوري وتسجيل السند.",
       "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الصندوق المحدد غير كافٍ لتغطية مبلغ هذا المصروف.",
       "ERR_EXPENSE_ACCOUNT_NOT_FOUND": "لم يتم العثور على حساب خزينة نشط للخصم."
+    },
+    "TREASURY": {
+      "ERR_INVALID_AMOUNT": "يجب أن يكون المبلغ أكبر من الصفر.",
+      "ERR_TREASURY_ACCOUNT_REQUIRED": "يرجى اختيار الحساب أو الصندوق المستهدف.",
+      "ERR_TREASURY_ACCOUNT_NOT_FOUND": "الحساب المالي المحدد غير موجود أو معطل.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الحساب المحدد غير كافٍ لتغطية هذا المبلغ.",
+      "ERR_SAME_TREASURY_ACCOUNT": "يجب اختيار حسابين مختلفين لإتمام التحويل الداخلي.",
+      "ERR_TREASURY_VOUCHER_FAILED": "تعذر حفظ واعتماد السند المالي.",
+      "ERR_TREASURY_TRANSFER_FAILED": "تعذر تنفيذ التحويل بين الحسابات.",
+      "ERR_TREASURY_ACCOUNT_NAME_REQUIRED": "اسم الحساب أو المحفظة مطلوب.",
+      "ERR_INVALID_ACCOUNT_TYPE": "نوع الحساب المالي غير صالح.",
+      "ERR_TREASURY_ACCOUNT_CODE_EXISTS": "رمز الحساب المالي مسجل مسبقاً.",
+      "ERR_LAST_ACTIVE_TREASURY_ACCOUNT": "لا يمكن إخفاء آخر حساب نشط؛ يجب إبقاء صندوق نشط واحد على الأقل.",
+      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "تعذر حفظ بيانات الحساب المالي."
     }
   }
 }

@@ -1061,6 +1061,11 @@ public class CashBox : ITenantEntity
     [Column("currency")]
     public string Currency { get; set; } = "IQD";
 
+    [Required]
+    [MaxLength(30)]
+    [Column("account_type")]
+    public string AccountType { get; set; } = "Cashbox"; // Cashbox, BankAccount, DigitalWallet
+
     [Column("current_balance")]
     public decimal CurrentBalance { get; set; } = 0.0000m;
 
@@ -1122,6 +1127,16 @@ public class TreasuryTransaction : ITenantEntity
     [Column("reference_number")]
     public string? ReferenceNumber { get; set; }
 
+    [MaxLength(200)]
+    [Column("party_name")]
+    public string? PartyName { get; set; }
+
+    [Column("voucher_date")]
+    public DateTimeOffset VoucherDate { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("transfer_group_id")]
+    public Guid? TransferGroupId { get; set; }
+
     [MaxLength(500)]
     [Column("notes")]
     public string? Notes { get; set; }
@@ -1133,6 +1148,39 @@ public class TreasuryTransaction : ITenantEntity
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
+
+public record TreasuryVoucherRequestDto(
+    Guid AccountId,
+    decimal Amount,
+    string? PartyName = null,
+    string? Reference = null,
+    string? Notes = null,
+    DateTimeOffset? VoucherDate = null
+);
+
+public record TreasuryTransferRequestDto(
+    Guid FromAccountId,
+    Guid ToAccountId,
+    decimal Amount,
+    string? Reference = null,
+    string? Notes = null,
+    DateTimeOffset? VoucherDate = null
+);
+
+public record CreateTreasuryAccountDto(
+    string Name,
+    string AccountType = "Cashbox",
+    string? Currency = "IQD",
+    decimal InitialBalance = 0m,
+    string? Code = null
+);
+
+public record UpdateTreasuryAccountDto(
+    string Name,
+    string AccountType = "Cashbox",
+    string? Currency = "IQD",
+    bool? IsActive = null
+);
 
 [Table("cash_expenses")]
 public class CashExpense : ITenantEntity

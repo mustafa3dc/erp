@@ -160,15 +160,15 @@ export function formatPurchaseErrorMessage(err: any, lang: string): string {
 }
 
 function mapLocalStoredAccounts(): TreasuryCashBoxOption[] {
-  const local = getStoredTreasuryAccounts();
+  const local = getStoredTreasuryAccounts().filter((acc: any) => acc && acc.isActive !== false);
   return local.map((acc: any, idx: number) => ({
     id: acc.id,
-    code: acc.id || `ACC-0${idx + 1}`,
+    code: acc.code || acc.id || `ACC-0${idx + 1}`,
     name: acc.nameAr || acc.name || 'صندوق الكاش الرئيسي',
     nameAr: acc.nameAr || acc.name,
     nameEn: acc.nameEn || acc.name,
     currency: acc.currency || 'IQD',
-    currentBalance: Number(acc.balanceIqd ?? acc.balanceUsd ?? 0),
+    currentBalance: Number(acc.balanceIqd ?? acc.currentBalance ?? acc.balanceUsd ?? 0),
     isPrimary: acc.id === 'ACC-01' || acc.code === 'CB-01' || acc.type === 'CASH' || idx === 0
   }));
 }

@@ -154,6 +154,7 @@ public class FinanceController : ControllerBase
                 cb.Id,
                 cb.Code,
                 cb.Name,
+                cb.AccountType,
                 cb.Currency,
                 cb.CurrentBalance
             })
@@ -183,15 +184,19 @@ public class FinanceController : ControllerBase
                 tt.CashBoxId,
                 CashBoxName = tt.CashBox != null ? tt.CashBox.Name : string.Empty,
                 CashBoxCode = tt.CashBox != null ? tt.CashBox.Code : string.Empty,
+                AccountType = tt.CashBox != null ? tt.CashBox.AccountType : "Cashbox",
                 Currency = tt.CashBox != null ? tt.CashBox.Currency : "IQD",
                 tt.ExpenseVoucherId,
                 tt.PurchaseBillId,
                 tt.SupplierId,
                 SupplierName = tt.Supplier != null ? tt.Supplier.CompanyName : null,
+                tt.PartyName,
                 tt.TransactionType,
                 tt.Amount,
                 tt.BalanceAfter,
                 tt.ReferenceNumber,
+                tt.TransferGroupId,
+                tt.VoucherDate,
                 tt.Notes,
                 tt.CreatedBy,
                 tt.CreatedAt

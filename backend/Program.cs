@@ -433,6 +433,20 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(purchaseTreasurySqlPath));
                 }
+
+                // Ensure Treasury Vouchers & Flexible CashBox AccountType schema upgrades are idempotently applied
+                string[] treasuryAccountsSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "21_treasury_vouchers_and_accounts.sql")
+                };
+                var treasuryAccountsSqlPath = treasuryAccountsSqlPaths.FirstOrDefault(File.Exists);
+                if (treasuryAccountsSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryAccountsSqlPath));
+                }
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

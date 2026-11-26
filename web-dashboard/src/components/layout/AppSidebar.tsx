@@ -9,7 +9,6 @@ import {
   Wallet,
   Settings,
   ChevronRight,
-  Globe,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -25,11 +24,9 @@ export interface AppSidebarProps {
   activeNav: string;
   setActiveNav: (nav: string) => void;
   currentUser: UserProfile;
-  isOnline: boolean;
   lang?: 'ar' | 'en';
   expandedGroups: Record<string, boolean>;
   onToggleGroup: (groupKey: string) => void;
-  onOpenSettings?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -60,11 +57,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   activeNav,
   setActiveNav,
   currentUser,
-  isOnline,
   lang = 'ar',
   expandedGroups,
   onToggleGroup,
-  onOpenSettings,
   isCollapsed = false,
   onToggleCollapse
 }) => {
@@ -268,53 +263,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           );
         })}
       </nav>
-
-      {/* Live Sync Status & Language Switcher */}
-      <div className="sidebar-footer">
-        <div
-          className="sidebar-sync-status"
-          title={
-            isOnline
-              ? `${getTranslation(lang, 'ui.sidebar.onlineSynced')} — ${getTranslation(lang, 'ui.sidebar.cloudSyncActive')}`
-              : `${getTranslation(lang, 'ui.sidebar.offlineMode')} — ${getTranslation(lang, 'ui.sidebar.localStorageActive')}`
-          }
-        >
-          <div className="sync-status-indicator">
-            <span className={`sync-dot ${isOnline ? 'online' : 'offline'}`} />
-            {!isCollapsed && (
-              <span className="sync-label">
-                {isOnline
-                  ? getTranslation(lang, 'ui.sidebar.onlineSynced')
-                  : getTranslation(lang, 'ui.sidebar.offlineMode')}
-              </span>
-            )}
-          </div>
-          {!isCollapsed && (
-            <span className="sync-subtext">
-              {isOnline
-                ? getTranslation(lang, 'ui.sidebar.cloudSyncActive')
-                : getTranslation(lang, 'ui.sidebar.localStorageActive')}
-            </span>
-          )}
-        </div>
-
-        <button
-          type="button"
-          id="sidebar-lang-toggle"
-          className="lang-pill-btn"
-          onClick={() => {
-            if (onOpenSettings) {
-              onOpenSettings();
-            } else {
-              setActiveNav('Settings');
-            }
-          }}
-          title={getTranslation(lang, 'ui.sidebar.openSettingsTooltip')}
-        >
-          <Globe size={14} />
-          {!isCollapsed && <span>{getTranslation(lang, 'ui.sidebar.appearanceLanguage')}</span>}
-        </button>
-      </div>
     </aside>
   );
 };

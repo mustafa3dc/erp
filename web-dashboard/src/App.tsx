@@ -495,7 +495,6 @@ function DashboardApp() {
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [showValuation, setShowValuation] = useState<boolean>(true);
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
   const [transferInitialProductId, setTransferInitialProductId] = useState<string | undefined>(undefined);
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState<boolean>(false);
@@ -689,11 +688,9 @@ function DashboardApp() {
   // Monitor live online/offline sync status
   useEffect(() => {
     const handleOnline = () => {
-      setIsOnline(true);
       showToast(isAr ? ' استعادة الاتصال بالإنترنت والمزامنة اللحظية' : ' Internet restored & synced');
     };
     const handleOffline = () => {
-      setIsOnline(false);
       showToast(isAr ? ' انقطع الاتصال - تم التحويل إلى وضع العمل دون اتصال' : ' Offline Mode active');
     };
     window.addEventListener('online', handleOnline);
@@ -1753,11 +1750,9 @@ function DashboardApp() {
             activeNav={activeNav}
             setActiveNav={setActiveNav}
             currentUser={currentUser}
-            isOnline={isOnline}
             lang={lang}
             expandedGroups={expandedGroups}
             onToggleGroup={toggleGroup}
-            onOpenSettings={() => setActiveNav('Settings')}
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={handleToggleSidebarCollapse}
           />

@@ -216,8 +216,52 @@ public class WarehouseStock : ITenantEntity
     [Column("shelf_location")]
     public string? ShelfLocation { get; set; }
 
+    [Column("shelf_id")]
+    public Guid? ShelfId { get; set; }
+    public WarehouseShelf? Shelf { get; set; }
+
     [Column("last_counted_at")]
     public DateTime LastCountedAt { get; set; } = DateTime.UtcNow;
+}
+
+[Table("warehouse_shelves")]
+public class WarehouseShelf : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("warehouse_id")]
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
+    [Required]
+    [MaxLength(150)]
+    [Column("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    [Column("code")]
+    public string? Code { get; set; }
+
+    [MaxLength(500)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("max_capacity")]
+    public int? MaxCapacity { get; set; }
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
 }
 
 [Table("inventory_transactions")]

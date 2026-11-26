@@ -133,7 +133,10 @@
       "ERR_INVALID_ACCOUNT_TYPE": "Invalid Treasury account type.",
       "ERR_TREASURY_ACCOUNT_CODE_EXISTS": "Treasury account code already exists.",
       "ERR_LAST_ACTIVE_TREASURY_ACCOUNT": "Cannot hide the last remaining active Treasury account.",
-      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "Failed to save Treasury account."
+      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "Failed to save Treasury account.",
+      "ERR_SHELF_NAME_REQUIRED": "Shelf name is required.",
+      "ERR_SHELF_NOT_FOUND": "Selected shelf was not found in this warehouse.",
+      "ERR_SHELF_ASSIGN_FAILED": "Failed to assign items to the selected shelf."
     }
   }
 }

@@ -8,9 +8,10 @@ import {
   Barcode,
   Printer,
   Plus,
-  Warehouse,
   RefreshCw,
-  AlertTriangle
+  Edit3,
+  ArrowRightLeft,
+  Check
 } from 'lucide-react';
 import { Product, Warehouse as WarehouseType } from '../../types/warehouse';
 import { getTenantAuthHeaders } from '../../lib/api-client';
@@ -22,6 +23,9 @@ export interface RackBayItem {
   bayCode: string;
   shelfCode: string;
   label: string;
+  name: string;
+  code?: string | null;
+  notes?: string | null;
   totalCapacity: number;
   usedCapacity: number;
   occupancy: number;
@@ -44,21 +48,32 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   warehouse,
   products = [],
   lang = 'ar',
-  onConfigureRacks,
-  onOpenRestock,
-  onNavigateToInventory,
   onRacksLoaded
 }) => {
   const isAr = lang === 'ar';
   const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
 
-  const [racks, setRacks] = useState<RackBayItem[]>([]);
+  const [shelves, setShelves] = useState<RackBayItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [racksViewMode, setRacksViewMode] = useState<'units' | 'pallets'>('units');
-  const [rackSearchTerm, setRackSearchTerm] = useState<string>('');
-  const [selectedRackDrawer, setSelectedRackDrawer] = useState<RackBayItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedShelf, setSelectedShelf] = useState<RackBayItem | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+
+  // Add / Edit Shelf Modal State
+  const [isShelfModalOpen, setIsShelfModalOpen] = useState<boolean>(false);
+  const [editingShelf, setEditingShelf] = useState<RackBayItem | null>(null);
+  const [shelfNameInput, setShelfNameInput] = useState<string>('');
+  const [shelfCodeInput, setShelfCodeInput] = useState<string>('');
+  const [shelfNotesInput, setShelfNotesInput] = useState<string>('');
+  const [shelfFormError, setShelfFormError] = useState<string>('');
+  const [isSavingShelf, setIsSavingShelf] = useState<boolean>(false);
+
+  // Assign items inside drawer
+  const [assignSearch, setAssignSearch] = useState<string>('');
+  const [selectedAssignIds, setSelectedAssignIds] = useState<string[]>([]);
+  const [isAssigning, setIsAssigning] = useState<boolean>(false);
+  const [drawerError, setDrawerError] = useState<string>('');
 
   const productsRef = useRef<Product[]>(products);
   productsRef.current = products;
@@ -74,9 +89,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     [products]
   );
 
-  const fetchRacks = useCallback(async (isManualRefresh = false) => {
+  const fetchShelves = useCallback(async (isManualRefresh = false) => {
     if (!warehouse?.id) {
-      setRacks([]);
+      setShelves([]);
       setIsLoading(false);
       setIsRefreshing(false);
       return;
@@ -89,792 +104,815 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     }
 
     try {
-      let loadedFromApi = false;
+      const headers = getTenantAuthHeaders();
+      const res = await fetch(`/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves`, {
+        method: 'GET',
+        headers
+      });
 
-      try {
-        const headers = getTenantAuthHeaders();
-        const res = await fetch(`/api/v1/wms/warehouses/${encodeURIComponent(warehouse.id)}/racks`, {
-          method: 'GET',
-          headers
-        });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const mapped: RackBayItem[] = data.map((s: any) => {
+            const itemsList: Product[] = Array.isArray(s.items)
+              ? s.items.map((it: any) => ({
+                  id: String(it.productId || it.id),
+                  sku: String(it.sku || ''),
+                  nameAr: String(it.name || ''),
+                  nameEn: String(it.name || ''),
+                  barcode: String(it.barcode || ''),
+                  currentStock: Number(it.quantity) || 0,
+                  sellingPrice: Number(it.sellingPrice) || 0,
+                  costPrice: 0,
+                  minStockAlert: 0,
+                  unit: tr('defaultUnit'),
+                  category: tr('defaultCategory'),
+                  warehouseId: warehouse.id,
+                  shelf: s.code || s.name
+                }))
+              : [];
 
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            const mappedRacks: RackBayItem[] = data.map((r: any) => {
-              const bayCode = String(r.bayCode || r.code || `BAY-${r.id}`);
-              const shelfCode = String(r.shelfCode || bayCode.replace(/^BAY-/i, ''));
-              const totalCap = Number(r.totalCapacity) || (racksViewMode === 'pallets' ? 32 : 100);
-              const itemsList: Product[] = Array.isArray(r.items) ? r.items : [];
-              const rawUsed = typeof r.usedCapacity === 'number'
-                ? Number(r.usedCapacity)
-                : itemsList.reduce((sum: number, it: any) => sum + (Number(it.currentStock) || 0), 0);
-              const usedCap = Math.max(0, rawUsed);
-              const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
-
-              return {
-                id: r.id || bayCode,
-                bayCode,
-                shelfCode,
-                label: tr('rackBayLabel').replace('{code}', shelfCode),
-                totalCapacity: totalCap,
-                usedCapacity: usedCap,
-                occupancy: clampedOccupancy,
-                isOverCapacity: usedCap > totalCap,
-                items: itemsList
-              };
-            });
-            setRacks(mappedRacks);
-            onRacksLoadedRef.current?.(warehouse.id, mappedRacks);
-            loadedFromApi = true;
-          }
-        }
-      } catch {
-        // Fallback to live shelf assignments inside this warehouse
-      }
-
-      if (!loadedFromApi) {
-        const currentProducts = productsRef.current || [];
-        const whProducts = currentProducts.filter(
-          p => !p.isBundle && (p.warehouseId === warehouse.id || p.warehouseId === warehouse.code)
-        );
-        const shelfGroups: Record<string, Product[]> = {};
-
-        whProducts.forEach(prod => {
-          if (prod.shelf && prod.shelf.trim().length > 0) {
-            const shelfKey = prod.shelf.trim().toUpperCase();
-            if (!shelfGroups[shelfKey]) {
-              shelfGroups[shelfKey] = [];
-            }
-            shelfGroups[shelfKey].push(prod);
-          }
-        });
-
-        const shelfKeys = Object.keys(shelfGroups);
-        if (shelfKeys.length === 0) {
-          setRacks([]);
-          onRacksLoadedRef.current?.(warehouse.id, []);
-        } else {
-          const derivedRacks: RackBayItem[] = shelfKeys.map(shelfKey => {
-            const bayCode = shelfKey.startsWith('BAY-') ? shelfKey : `BAY-${shelfKey}`;
-            const items = shelfGroups[shelfKey];
-            const usedCap = items.reduce((acc, it) => acc + Math.max(0, Number(it.currentStock) || 0), 0);
-            const totalCap = racksViewMode === 'pallets' ? 32 : 100;
-            const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
+            const totalQty =
+              typeof s.totalQuantity === 'number'
+                ? Number(s.totalQuantity)
+                : itemsList.reduce((sum, it) => sum + Math.max(0, Number(it.currentStock) || 0), 0);
 
             return {
-              id: `rack-${bayCode.toLowerCase()}`,
-              bayCode,
-              shelfCode: shelfKey,
-              label: tr('rackBayLabel').replace('{code}', shelfKey),
-              totalCapacity: totalCap,
-              usedCapacity: usedCap,
-              occupancy: clampedOccupancy,
-              isOverCapacity: usedCap > totalCap,
-              items
+              id: String(s.id),
+              bayCode: String(s.code || s.name || s.id),
+              shelfCode: String(s.code || ''),
+              label: String(s.name || ''),
+              name: String(s.name || ''),
+              code: s.code ?? null,
+              notes: s.notes ?? null,
+              totalCapacity: 0,
+              usedCapacity: Math.max(0, totalQty),
+              occupancy: 0,
+              isOverCapacity: false,
+              items: itemsList
             };
           });
-          setRacks(derivedRacks);
-          onRacksLoadedRef.current?.(warehouse.id, derivedRacks);
+
+          setShelves(mapped);
+          onRacksLoadedRef.current?.(warehouse.id, mapped);
+          setSelectedShelf(prev => (prev ? mapped.find(m => m.id === prev.id) || null : null));
+          return;
         }
       }
+    } catch {
+      // Fallback to local product shelf grouping if offline
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [warehouse?.id, warehouse?.code, productsSignature, racksViewMode, tr]);
+
+    const whProducts = (productsRef.current || []).filter(
+      p => !p.isBundle && (p.warehouseId === warehouse.id || p.warehouseId === warehouse.code)
+    );
+    const shelfGroups: Record<string, Product[]> = {};
+    whProducts.forEach(prod => {
+      if (prod.shelf && prod.shelf.trim().length > 0) {
+        const key = prod.shelf.trim();
+        if (!shelfGroups[key]) shelfGroups[key] = [];
+        shelfGroups[key].push(prod);
+      }
+    });
+
+    const derived: RackBayItem[] = Object.keys(shelfGroups)
+      .sort()
+      .map(key => {
+        const items = shelfGroups[key];
+        const totalQty = items.reduce((acc, it) => acc + Math.max(0, Number(it.currentStock) || 0), 0);
+        return {
+          id: `shelf-${key.toLowerCase()}`,
+          bayCode: key,
+          shelfCode: key,
+          label: key,
+          name: key,
+          code: key,
+          notes: null,
+          totalCapacity: 0,
+          usedCapacity: totalQty,
+          occupancy: 0,
+          isOverCapacity: false,
+          items
+        };
+      });
+    setShelves(derived);
+    onRacksLoadedRef.current?.(warehouse.id, derived);
+  }, [warehouse?.id, warehouse?.code, productsSignature, tr]);
 
   useEffect(() => {
-    void fetchRacks(false);
-  }, [fetchRacks]);
+    void fetchShelves(false);
+  }, [fetchShelves]);
 
-  const displayedRacks = useMemo(() => {
-    const term = rackSearchTerm.trim().toLowerCase();
-    if (!term) return racks;
+  const displayedShelves = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return shelves;
 
-    return racks.map(rack => {
+    return shelves.map(shelf => {
       const isMatch =
-        rack.bayCode.toLowerCase().includes(term) ||
-        rack.label.toLowerCase().includes(term) ||
-        rack.items.some(it =>
-          (it.nameAr && it.nameAr.toLowerCase().includes(term)) ||
-          (it.nameEn && it.nameEn.toLowerCase().includes(term)) ||
-          (it.sku && it.sku.toLowerCase().includes(term)) ||
-          (it.barcode && it.barcode.toLowerCase().includes(term))
+        shelf.name.toLowerCase().includes(term) ||
+        (shelf.code && shelf.code.toLowerCase().includes(term)) ||
+        shelf.items.some(
+          it =>
+            (it.nameAr && it.nameAr.toLowerCase().includes(term)) ||
+            (it.nameEn && it.nameEn.toLowerCase().includes(term)) ||
+            (it.sku && it.sku.toLowerCase().includes(term)) ||
+            (it.barcode && it.barcode.toLowerCase().includes(term))
         );
       return {
-        ...rack,
+        ...shelf,
         isHighlighted: isMatch
       };
     });
-  }, [racks, rackSearchTerm]);
+  }, [shelves, searchTerm]);
 
-  const unitLabel = racksViewMode === 'pallets' ? tr('palletsUnit') : tr('binsUnit');
+  const openAddShelfModal = () => {
+    setEditingShelf(null);
+    setShelfNameInput('');
+    setShelfCodeInput('');
+    setShelfNotesInput('');
+    setShelfFormError('');
+    setIsShelfModalOpen(true);
+  };
+
+  const openEditShelfModal = (shelf: RackBayItem) => {
+    setEditingShelf(shelf);
+    setShelfNameInput(shelf.name);
+    setShelfCodeInput(shelf.code || '');
+    setShelfNotesInput(shelf.notes || '');
+    setShelfFormError('');
+    setIsShelfModalOpen(true);
+  };
+
+  const handleSaveShelf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = shelfNameInput.trim();
+    if (!trimmedName) {
+      setShelfFormError(getTranslation(lang, 'errors.ERR_SHELF_NAME_REQUIRED'));
+      return;
+    }
+
+    setIsSavingShelf(true);
+    setShelfFormError('');
+    try {
+      const headers = {
+        ...getTenantAuthHeaders(),
+        'Content-Type': 'application/json'
+      };
+      const isEdit = Boolean(editingShelf && !editingShelf.id.startsWith('shelf-'));
+      const url = isEdit
+        ? `/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves/${encodeURIComponent(editingShelf!.id)}`
+        : `/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves`;
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify({
+          name: trimmedName,
+          code: shelfCodeInput.trim() || null,
+          notes: shelfNotesInput.trim() || null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        const code = err?.errorCode || 'ERR_SHELF_ASSIGN_FAILED';
+        setShelfFormError(getTranslation(lang, `errors.${code}`));
+        return;
+      }
+
+      setIsShelfModalOpen(false);
+      await fetchShelves(true);
+    } catch {
+      setShelfFormError(getTranslation(lang, 'errors.ERR_SHELF_ASSIGN_FAILED'));
+    } finally {
+      setIsSavingShelf(false);
+    }
+  };
+
+  const handleAssignItems = async (targetShelfId: string, productIds: string[]) => {
+    if (productIds.length === 0) return;
+    setIsAssigning(true);
+    setDrawerError('');
+    try {
+      const res = await fetch(
+        `/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves/${encodeURIComponent(targetShelfId)}/assign-items`,
+        {
+          method: 'POST',
+          headers: {
+            ...getTenantAuthHeaders(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ productIds })
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        const code = err?.errorCode || 'ERR_SHELF_ASSIGN_FAILED';
+        setDrawerError(getTranslation(lang, `errors.${code}`));
+        return;
+      }
+
+      setSelectedAssignIds([]);
+      await fetchShelves(true);
+    } catch {
+      setDrawerError(getTranslation(lang, 'errors.ERR_SHELF_ASSIGN_FAILED'));
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const availableWarehouseItems = useMemo(() => {
+    if (!selectedShelf) return [];
+    const onShelfIds = new Set(selectedShelf.items.map(it => it.id));
+    const q = assignSearch.trim().toLowerCase();
+    return products.filter(p => {
+      if (p.isBundle) return false;
+      if (p.warehouseId !== warehouse.id && p.warehouseId !== warehouse.code) return false;
+      if (onShelfIds.has(p.id)) return false;
+      if (!q) return true;
+      return (
+        (p.nameAr && p.nameAr.toLowerCase().includes(q)) ||
+        (p.nameEn && p.nameEn.toLowerCase().includes(q)) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q))
+      );
+    });
+  }, [selectedShelf, products, warehouse.id, warehouse.code, assignSearch]);
 
   return (
-    <div className="racks-visual-card" style={{ marginTop: '1.5rem', padding: '1.5rem', borderRadius: '12px', background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.05)' }}>
-      {/* Visualizer Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px', marginBottom: '1.25rem' }}>
+    <div className="bg-card border border-border rounded-xl p-6 mt-6 shadow-sm">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
-          <h4 className="chart-title" style={{ margin: 0, fontSize: '1.15rem', color: 'var(--foreground)', fontWeight: 800 }}>
+          <h4 className="text-lg font-extrabold text-foreground m-0">
             {tr('title')}{' '}
             <bdi dir="auto">{isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr)}</bdi>
           </h4>
-          <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
-            {tr('subtitle')}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1 m-0">{tr('subtitle')}</p>
         </div>
 
-        {/* Action Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <button
-            type="button"
-            onClick={() => { void fetchRacks(true); }}
-            disabled={isRefreshing}
-            className="btn-outline"
-            title={tr('refreshTitle')}
-            style={{ padding: '6px 10px', height: '34px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', opacity: isRefreshing ? 0.75 : 1 }}
-          >
-            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-            <span style={{ fontSize: '0.78rem' }}>{tr('refreshBtn')}</span>
-          </button>
-
-          <div style={{ position: 'relative', width: '220px' }}>
+        {/* Search + Refresh + Add Shelf */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative w-60">
             <Search
               size={14}
-              style={{
-                position: 'absolute',
-                right: isAr ? '10px' : undefined,
-                left: !isAr ? '10px' : undefined,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#94a3b8',
-                pointerEvents: 'none'
-              }}
+              className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none ${
+                isAr ? 'right-3' : 'left-3'
+              }`}
             />
             <input
               type="text"
-              value={rackSearchTerm}
-              onChange={(e) => setRackSearchTerm(e.target.value)}
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
               placeholder={tr('searchPlaceholder')}
-              style={{
-                width: '100%',
-                height: '34px',
-                paddingRight: isAr ? '32px' : '10px',
-                paddingLeft: !isAr ? '32px' : '10px',
-                fontSize: '0.78rem',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                background: 'var(--background)',
-                color: 'var(--foreground)',
-                outline: 'none'
-              }}
+              className={`w-full h-9 rounded-lg border border-border bg-muted text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 ${
+                isAr ? 'pr-8 pl-7' : 'pl-8 pr-7'
+              }`}
             />
-            {rackSearchTerm && (
+            {searchTerm && (
               <button
                 type="button"
-                onClick={() => setRackSearchTerm('')}
-                style={{
-                  position: 'absolute',
-                  left: isAr ? '8px' : undefined,
-                  right: !isAr ? '8px' : undefined,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--muted-foreground)',
-                  padding: 0
-                }}
+                onClick={() => setSearchTerm('')}
+                className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground ${
+                  isAr ? 'left-2' : 'right-2'
+                }`}
               >
                 <X size={13} />
               </button>
             )}
           </div>
 
-          <div style={{ display: 'inline-flex', background: 'var(--muted)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <button
-              type="button"
-              onClick={() => setRacksViewMode('units')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '5px 10px',
-                borderRadius: '6px',
-                border: 'none',
-                fontSize: '0.75rem',
-                fontWeight: racksViewMode === 'units' ? 700 : 500,
-                background: racksViewMode === 'units' ? 'var(--card)' : 'transparent',
-                color: racksViewMode === 'units' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                boxShadow: racksViewMode === 'units' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <Box size={13} />
-              <span>{tr('binsMode')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRacksViewMode('pallets')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '5px 10px',
-                borderRadius: '6px',
-                border: 'none',
-                fontSize: '0.75rem',
-                fontWeight: racksViewMode === 'pallets' ? 700 : 500,
-                background: racksViewMode === 'pallets' ? 'var(--card)' : 'transparent',
-                color: racksViewMode === 'pallets' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                boxShadow: racksViewMode === 'pallets' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <Layers size={13} />
-              <span>{tr('palletsMode')}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Color Legend Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: '16px', padding: '8px 12px', background: 'var(--surface-subtle, var(--muted))', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
-        <span style={{ fontWeight: 700, color: 'var(--foreground)' }}>
-          {tr('legendTitle')}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#3b82f6', display: 'inline-block' }}></span>
-          <span>{tr('legendStable')}</span>
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#f97316', display: 'inline-block' }}></span>
-          <span>{tr('legendCrowded')}</span>
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ef4444', display: 'inline-block' }}></span>
-          <span>{tr('legendFull')}</span>
-        </span>
-      </div>
-
-      {/* Empty State or Rack Grid */}
-      {racks.length === 0 && !isLoading ? (
-        <div
-          className="wms-empty-state"
-          id="wms-empty-state-view"
-          data-testid="wms-empty-state-view"
-          style={{
-            padding: '3.5rem 1.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            background: 'var(--surface-subtle, var(--muted))',
-            borderRadius: '12px',
-            border: '1.5px dashed var(--border)',
-            margin: '1rem 0'
-          }}
-        >
-          <div
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'var(--badge-blue-bg)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '1rem',
-              color: 'var(--badge-blue-fg)'
-            }}
+          <button
+            type="button"
+            onClick={() => void fetchShelves(true)}
+            disabled={isRefreshing}
+            title={tr('refreshTitle')}
+            className="h-9 px-3 rounded-lg border border-border bg-card text-foreground text-xs font-semibold flex items-center gap-1.5 hover:bg-muted transition-colors disabled:opacity-60"
           >
-            <Warehouse size={32} strokeWidth={1.75} />
-          </div>
-
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--foreground)', marginBottom: '0.5rem' }}>
-            {tr('emptyTitle')}
-          </h3>
-
-          <p style={{ fontSize: '0.84rem', color: 'var(--muted-foreground)', maxWidth: '440px', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-            {tr('emptySubtitle')}
-          </p>
+            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+            <span>{tr('refreshBtn')}</span>
+          </button>
 
           <button
             type="button"
-            id="configure-racks-btn"
-            className="btn-primary"
-            onClick={onConfigureRacks}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 22px',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              borderRadius: '8px',
-              backgroundColor: 'var(--primary)',
-              color: '#ffffff',
-              border: 'none',
-              cursor: 'pointer',
-              boxShadow: '0 2px 6px var(--primary-glow)'
-            }}
+            onClick={openAddShelfModal}
+            className="btn-add-primary h-9 px-3.5 text-xs font-bold flex items-center gap-1.5"
           >
-            <Plus size={16} />
-            <span>{tr('configureRacksBtn')}</span>
+            <Plus size={15} />
+            <span>{tr('addShelfBtn').replace(/^\+\s*/, '')}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Shelves Grid or Empty State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map(idx => (
+            <div key={idx} className="h-36 rounded-xl bg-muted border border-border animate-pulse" />
+          ))}
+        </div>
+      ) : displayedShelves.length === 0 ? (
+        <div className="text-center py-12 px-6 rounded-xl bg-muted border border-dashed border-border">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-card border border-border flex items-center justify-center text-primary">
+            <Layers size={26} />
+          </div>
+          <h5 className="text-sm font-extrabold text-foreground mb-1">{tr('emptyTitle')}</h5>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto mb-4">{tr('emptySubtitle')}</p>
+          <button
+            type="button"
+            onClick={openAddShelfModal}
+            className="btn-add-primary inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2"
+          >
+            <Plus size={15} />
+            <span>{tr('addShelfBtn').replace(/^\+\s*/, '')}</span>
           </button>
         </div>
       ) : (
-        <div className="racks-grid-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: '12px' }}>
-          {displayedRacks.map((bay) => {
-            const clampedPct = Math.min(100, Math.max(0, bay.occupancy));
-            const isFull = clampedPct >= 100;
-            const isCrowded = clampedPct >= 70 && !isFull;
-            const statusColor = isFull ? 'var(--badge-red-fg, #ef4444)' : isCrowded ? 'var(--badge-amber-fg, #f97316)' : 'var(--badge-blue-fg, #3b82f6)';
-            const statusBg = isFull ? 'var(--badge-red-bg)' : isCrowded ? 'var(--badge-amber-bg)' : 'var(--badge-blue-bg)';
-            const availableCount = Math.max(0, bay.totalCapacity - bay.usedCapacity);
-            const overExtra = Math.max(0, bay.usedCapacity - bay.totalCapacity);
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {displayedShelves.map(shelf => {
+            const isDimmed = Boolean(searchTerm.trim() && !shelf.isHighlighted);
+            const isMatched = Boolean(searchTerm.trim() && shelf.isHighlighted);
+            const previewItems = shelf.items.slice(0, 3);
+            const extraCount = Math.max(0, shelf.items.length - 3);
 
             return (
               <div
-                key={bay.id || bay.bayCode}
-                id={`rack-bay-${bay.bayCode.toLowerCase()}`}
-                data-testid={`rack-bay-${bay.bayCode.toLowerCase()}`}
-                className="rack-bay-box"
-                onClick={() => setSelectedRackDrawer(bay)}
-                style={{
-                  background: bay.isHighlighted ? 'var(--badge-blue-bg)' : 'var(--surface-subtle, var(--card))',
-                  border: bay.isHighlighted
-                    ? '2px solid var(--primary)'
-                    : isFull
-                    ? '1px solid var(--badge-red-border)'
-                    : isCrowded
-                    ? '1px solid var(--badge-amber-border)'
-                    : '1px solid var(--border)',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  boxShadow: bay.isHighlighted
-                    ? '0 0 0 3px var(--primary-glow)'
-                    : 'var(--shadow-xs)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  position: 'relative'
+                key={shelf.id}
+                onClick={() => {
+                  setDrawerError('');
+                  setSelectedAssignIds([]);
+                  setAssignSearch('');
+                  setSelectedShelf(shelf);
                 }}
-                title={tr('rackBayHint').replace('{label}', bay.label)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedShelf(shelf);
+                  }
+                }}
+                className={`rounded-xl border p-4 bg-card transition-all cursor-pointer hover:shadow-md ${
+                  isMatched
+                    ? 'border-primary ring-2 ring-primary/20'
+                    : 'border-border hover:border-primary/50'
+                } ${isDimmed ? 'opacity-40' : 'opacity-100'}`}
               >
-                {/* Header row */}
-                <div className="rack-bay-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
-                  <span className="rack-code" dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', color: 'var(--foreground)' }}>
-                    {bay.bayCode}
-                  </span>
-                  <span
-                    dir="ltr"
-                    style={{
-                      fontSize: '0.68rem',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontWeight: 800,
-                      fontVariantNumeric: 'tabular-nums',
-                      background: statusBg,
-                      color: statusColor
-                    }}
-                  >
-                    {clampedPct}%
-                  </span>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center text-primary shrink-0">
+                      <Layers size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="text-sm font-extrabold text-foreground truncate m-0">
+                        <bdi dir="auto">{shelf.name}</bdi>
+                      </h5>
+                    </div>
+                  </div>
+                  {shelf.code && (
+                    <span
+                      dir="ltr"
+                      className="px-2 py-0.5 rounded-md bg-muted border border-border text-xs font-mono font-bold text-foreground shrink-0"
+                    >
+                      {shelf.code}
+                    </span>
+                  )}
                 </div>
 
-                {/* Visual Shelf Representation */}
-                {racksViewMode === 'pallets' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', margin: '4px 0', padding: '4px', background: 'var(--muted)', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 70 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 90 ? statusColor : 'var(--border)' }}></span>
-                    </div>
-                    <div style={{ height: '2px', background: 'var(--border)' }}></div>
-                    <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 35 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 50 ? statusColor : 'var(--border)' }}></span>
-                    </div>
-                    <div style={{ height: '2px', background: 'var(--border)' }}></div>
-                    <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct > 0 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 20 ? statusColor : 'var(--border)' }}></span>
+                {/* Counts */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="rounded-lg bg-muted border border-border px-2.5 py-2">
+                    <div className="text-[11px] font-semibold text-muted-foreground">{tr('itemsCountLabel')}</div>
+                    <div className="text-sm font-extrabold text-foreground tabular-nums mt-0.5">
+                      <span dir="ltr">{shelf.items.length.toLocaleString()}</span>{' '}
+                      <span className="text-[11px] font-medium text-muted-foreground">{tr('itemsUnit')}</span>
                     </div>
                   </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px', margin: '4px 0', padding: '4px', background: 'var(--muted)', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                    {Array.from({ length: 8 }).map((_, slotIdx) => {
-                      const slotFilled = clampedPct >= ((slotIdx + 1) * 12.5);
-                      return (
-                        <div
-                          key={slotIdx}
-                          style={{
-                            height: '10px',
-                            borderRadius: '2px',
-                            background: slotFilled ? statusColor : 'var(--border)',
-                            border: '1px solid rgba(0,0,0,0.05)'
-                          }}
-                        />
-                      );
-                    })}
+                  <div className="rounded-lg bg-muted border border-border px-2.5 py-2">
+                    <div className="text-[11px] font-semibold text-muted-foreground">{tr('piecesCountLabel')}</div>
+                    <div className="text-sm font-extrabold text-primary tabular-nums mt-0.5">
+                      <span dir="ltr">{shelf.usedCapacity.toLocaleString()}</span>{' '}
+                      <span className="text-[11px] font-medium text-muted-foreground">{tr('piecesUnit')}</span>
+                    </div>
                   </div>
-                )}
-
-                {/* Unambiguous occupied vs. capacity breakdown */}
-                <div style={{ fontSize: '0.72rem', color: 'var(--foreground)', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                  <span>{tr('occupiedPrefix')}</span>
-                  <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
-                    {bay.usedCapacity}
-                  </span>
-                  <span style={{ color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('capacityOfSeparator')}</span>
-                  <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
-                    {bay.totalCapacity}
-                  </span>
-                  <span style={{ color: 'var(--muted-foreground)', fontWeight: 600 }}>{unitLabel}</span>
                 </div>
 
-                {overExtra > 0 ? (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      color: 'var(--badge-red-fg)',
-                      background: 'var(--badge-red-bg)',
-                      border: '1px solid var(--badge-red-border)',
-                      borderRadius: '4px',
-                      padding: '2px 6px',
-                      width: 'fit-content'
-                    }}
-                  >
-                    <AlertTriangle size={11} />
-                    <span>{tr('overCapacityBadge').replace('{extra}', String(overExtra))}</span>
+                {/* Compact preview of up to 3 items */}
+                {previewItems.length > 0 ? (
+                  <div className="space-y-1 border-t border-border pt-2.5">
+                    {previewItems.map(item => (
+                      <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-foreground truncate">
+                          <bdi dir="auto">{isAr ? item.nameAr : (item.nameEn || item.nameAr)}</bdi>
+                        </span>
+                        <span dir="ltr" className="text-muted-foreground font-mono tabular-nums shrink-0">
+                          ×{item.currentStock}
+                        </span>
+                      </div>
+                    ))}
+                    {extraCount > 0 && (
+                      <div className="text-[11px] font-semibold text-primary pt-0.5">
+                        {tr('previewMore').replace('{count}', String(extraCount))}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.68rem', color: isFull ? 'var(--badge-red-fg)' : 'var(--muted-foreground)', fontWeight: isFull ? 700 : 500 }}>
-                    {tr('availPrefix')} <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums' }}>{availableCount}</span> {unitLabel}
+                  <div className="text-xs text-muted-foreground border-t border-border pt-2.5">
+                    {tr('noItemsOnShelf')}
                   </div>
                 )}
-
-                <small className="rack-label" style={{ fontSize: '0.68rem', color: 'var(--muted-foreground)', borderTop: '1px dashed var(--border)', paddingTop: '4px', marginTop: '2px' }}>
-                  <bdi dir="auto">{bay.label}</bdi>
-                </small>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Side Drawer for Inspected Rack Bay */}
-      {selectedRackDrawer && typeof document !== 'undefined' && createPortal(
-        <div
-          id="rack-drawer-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 99999,
-            backgroundColor: 'rgba(15, 23, 42, 0.55)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            justifyContent: isAr ? 'flex-start' : 'flex-end',
-            overflow: 'hidden'
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setSelectedRackDrawer(null);
-            }
-          }}
-          dir={isAr ? 'rtl' : 'ltr'}
-        >
+      {/* Add / Edit Shelf Modal */}
+      {isShelfModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            id="rack-drawer-bay"
-            data-testid="rack-drawer-bay"
-            style={{
-              width: '100%',
-              maxWidth: '460px',
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: 'var(--card, #ffffff)',
-              color: 'var(--foreground, #0f172a)',
-              borderLeft: isAr ? '1px solid var(--border, #e2e8f0)' : 'none',
-              borderRight: isAr ? 'none' : '1px solid var(--border, #e2e8f0)',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-              position: 'relative',
-              zIndex: 100000,
-              overflow: 'hidden'
-            }}
+            className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            dir={isAr ? 'rtl' : 'ltr'}
+            onClick={() => setIsShelfModalOpen(false)}
           >
             <div
-              style={{
-                padding: '1.25rem',
-                borderBottom: '1px solid var(--border, #e2e8f0)',
-                backgroundColor: 'var(--card, #ffffff)',
-                position: 'sticky',
-                top: 0,
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
+              className="w-full max-w-md rounded-xl bg-card border border-border shadow-xl p-5"
+              onClick={e => e.stopPropagation()}
             >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--foreground)' }}>
-                    {tr('bayDetailsTitle').replace('{code}', selectedRackDrawer.bayCode)}
-                  </h3>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', background: 'var(--muted)', color: 'var(--foreground)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px' }}>
-                    <bdi dir="auto">{selectedRackDrawer.label}</bdi>
-                  </span>
-                </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
-                  {tr('warehousePrefix').replace('{name}', isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr))}
-                </p>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-extrabold text-foreground m-0">
+                  {editingShelf ? tr('shelfModalEditTitle') : tr('shelfModalAddTitle')}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsShelfModalOpen(false)}
+                  className="p-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
-                type="button"
-                id="close-rack-drawer-btn"
-                onClick={() => setSelectedRackDrawer(null)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  color: 'var(--muted-foreground)'
-                }}
-              >
-                <X size={20} />
-              </button>
-            </div>
 
-            <div
-              style={{
-                flex: 1,
-                overflowY: 'auto',
-                padding: '1.25rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem'
-              }}
-            >
-              {/* Capacity Progress Metric */}
-              <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--card)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--muted-foreground)' }}>
-                    {tr('capacityOccupancyLabel')}
-                  </span>
-                  <span
-                    dir="ltr"
-                    style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 800,
-                      fontVariantNumeric: 'tabular-nums',
-                      color: selectedRackDrawer.occupancy >= 100 ? 'var(--badge-red-fg)' : selectedRackDrawer.occupancy >= 70 ? 'var(--badge-amber-fg)' : 'var(--badge-blue-fg)'
-                    }}
-                  >
-                    {Math.min(100, selectedRackDrawer.occupancy)}%
-                  </span>
-                </div>
-                <div style={{ height: '8px', background: 'var(--muted)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${Math.min(100, selectedRackDrawer.occupancy)}%`,
-                      background: selectedRackDrawer.occupancy >= 100 ? '#ef4444' : selectedRackDrawer.occupancy >= 70 ? '#f97316' : '#3b82f6',
-                      borderRadius: '4px',
-                      transition: 'width 0.3s ease'
-                    }}
+              <form onSubmit={handleSaveShelf} className="space-y-3.5">
+                {shelfFormError && (
+                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-xs font-semibold text-red-600 dark:text-red-400">
+                    {shelfFormError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">{tr('shelfNameLabel')}</label>
+                  <input
+                    type="text"
+                    required
+                    value={shelfNameInput}
+                    onChange={e => setShelfNameInput(e.target.value)}
+                    placeholder={tr('shelfNamePlaceholder')}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-muted text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
-                  <span>{tr('usedLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{selectedRackDrawer.usedCapacity}</strong></span>
-                  <span>{tr('availableLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{Math.max(0, selectedRackDrawer.totalCapacity - selectedRackDrawer.usedCapacity)}</strong></span>
-                  <span>{tr('totalLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{selectedRackDrawer.totalCapacity}</strong></span>
+
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">{tr('shelfCodeLabel')}</label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={shelfCodeInput}
+                    onChange={e => setShelfCodeInput(e.target.value)}
+                    placeholder={tr('shelfCodePlaceholder')}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-muted text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">{tr('shelfNotesLabel')}</label>
+                  <textarea
+                    rows={2}
+                    value={shelfNotesInput}
+                    onChange={e => setShelfNotesInput(e.target.value)}
+                    placeholder={tr('shelfNotesPlaceholder')}
+                    className="w-full p-3 rounded-lg border border-border bg-muted text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsShelfModalOpen(false)}
+                    className="px-4 h-9 rounded-lg border border-border bg-muted text-foreground text-xs font-bold"
+                  >
+                    {getTranslation(lang, 'common.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingShelf}
+                    className="btn-add-primary px-4 h-9 text-xs font-bold disabled:opacity-60"
+                  >
+                    {isSavingShelf ? tr('savingBtn') : tr('saveShelfBtn')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Shelf Contents & Item Assignment Drawer/Modal */}
+      {selectedShelf &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            dir={isAr ? 'rtl' : 'ltr'}
+            onClick={() => setSelectedShelf(null)}
+          >
+            <div
+              className="w-full max-w-2xl max-h-[88vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-border bg-muted flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center text-primary shrink-0">
+                    <Layers size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-extrabold text-foreground m-0 truncate">
+                        {tr('shelfDrawerTitle')} <bdi dir="auto">{selectedShelf.name}</bdi>
+                      </h3>
+                      {selectedShelf.code && (
+                        <span
+                          dir="ltr"
+                          className="px-2 py-0.5 rounded bg-card border border-border text-xs font-mono font-bold text-foreground"
+                        >
+                          {selectedShelf.code}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground m-0 mt-0.5">
+                      {tr('warehousePrefix').replace(
+                        '{name}',
+                        isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr)
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {!selectedShelf.id.startsWith('shelf-') && (
+                    <button
+                      type="button"
+                      onClick={() => openEditShelfModal(selectedShelf)}
+                      className="h-8 px-2.5 rounded-lg bg-card border border-border text-xs font-bold text-foreground flex items-center gap-1 hover:bg-muted"
+                    >
+                      <Edit3 size={13} />
+                      <span>{tr('editShelfBtn')}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsPrintModalOpen(true)}
+                    className="h-8 px-2.5 rounded-lg bg-card border border-border text-xs font-bold text-foreground flex items-center gap-1 hover:bg-muted"
+                  >
+                    <Printer size={13} />
+                    <span>{tr('printLabelBtn')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedShelf(null)}
+                    className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               </div>
 
-              {/* Stored Items List */}
-              <div>
-                <h5 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: 'var(--foreground)' }}>
-                  {tr('storedItemsTitle')} (<span dir="ltr">{selectedRackDrawer.items.length}</span>)
-                </h5>
-
-                {selectedRackDrawer.items.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '2rem 1rem', background: 'var(--surface-subtle, var(--muted))', borderRadius: '10px', border: '1px dashed var(--border)' }}>
-                    <Box size={32} className="text-muted-foreground" style={{ margin: '0 auto 8px', display: 'block' }} />
-                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--foreground)' }}>
-                      {tr('emptyBayTitle')}
-                    </p>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
-                      {tr('emptyBaySubtitle')}
-                    </p>
+              {/* Drawer Body */}
+              <div className="p-4 overflow-y-auto space-y-5 flex-1">
+                {drawerError && (
+                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-xs font-semibold text-red-600 dark:text-red-400">
+                    {drawerError}
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {selectedRackDrawer.items.map((prod) => (
-                      <div
-                        key={prod.id}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border)',
-                          background: 'var(--card)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px'
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
+                )}
+
+                {/* Current Items on Shelf */}
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h4 className="text-sm font-extrabold text-foreground flex items-center gap-1.5 m-0">
+                      <Box size={15} className="text-primary" />
+                      <span>{tr('storedItemsTitle')}</span>
+                    </h4>
+                    <span className="text-xs font-bold text-muted-foreground tabular-nums">
+                      {selectedShelf.items.length} {tr('itemsUnit')} • {selectedShelf.usedCapacity} {tr('piecesUnit')}
+                    </span>
+                  </div>
+
+                  {selectedShelf.items.length === 0 ? (
+                    <div className="p-6 rounded-xl bg-muted border border-dashed border-border text-center text-xs text-muted-foreground">
+                      {tr('noItemsOnShelf')}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedShelf.items.map(item => {
+                        const otherShelves = shelves.filter(
+                          s => s.id !== selectedShelf.id && !s.id.startsWith('shelf-')
+                        );
+                        return (
+                          <div
+                            key={item.id}
+                            className="p-3 rounded-lg bg-muted border border-border flex flex-wrap items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-foreground truncate">
+                                <bdi dir="auto">{isAr ? item.nameAr : (item.nameEn || item.nameAr)}</bdi>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                {item.sku && <span dir="ltr" className="font-mono">{item.sku}</span>}
+                                {item.barcode && (
+                                  <span dir="ltr" className="inline-flex items-center gap-1 font-mono">
+                                    <Barcode size={11} />
+                                    {item.barcode}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <span
+                                dir="ltr"
+                                className="px-2.5 py-1 rounded-md bg-card border border-border text-xs font-extrabold text-primary tabular-nums"
+                              >
+                                {item.currentStock} {tr('piecesUnit')}
+                              </span>
+
+                              {otherShelves.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <ArrowRightLeft size={13} className="text-muted-foreground" />
+                                  <select
+                                    defaultValue=""
+                                    disabled={isAssigning}
+                                    onChange={e => {
+                                      const targetId = e.target.value;
+                                      if (targetId) {
+                                        void handleAssignItems(targetId, [item.id]);
+                                      }
+                                    }}
+                                    className="h-8 px-2 rounded-md border border-border bg-card text-foreground text-xs font-semibold"
+                                  >
+                                    <option value="">{tr('selectTargetShelf')}</option>
+                                    {otherShelves.map(os => (
+                                      <option key={os.id} value={os.id}>
+                                        {os.name}
+                                        {os.code ? ` (${os.code})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.72rem', color: 'var(--muted-foreground)' }}>
-                            <span dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{prod.sku}</span>
-                            <span>•</span>
-                            <span>{prod.category}</span>
-                            {prod.barcode && (
-                              <>
-                                <span>•</span>
-                                <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '3px', fontFamily: 'monospace' }}>
-                                  <Barcode size={12} />
-                                  {prod.barcode}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                          <div dir="ltr" style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--foreground)', fontVariantNumeric: 'tabular-nums' }}>
-                            {prod.currentStock || 0}
-                          </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>
-                            {prod.unit || tr('defaultUnit')}
-                          </div>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Assign Existing Warehouse Items to This Shelf */}
+                {!selectedShelf.id.startsWith('shelf-') && (
+                  <div className="border-t border-border pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                      <h4 className="text-sm font-extrabold text-foreground m-0">{tr('assignItemsTitle')}</h4>
+                      {selectedAssignIds.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={isAssigning}
+                          onClick={() => void handleAssignItems(selectedShelf.id, selectedAssignIds)}
+                          className="btn-add-primary h-8 px-3 text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <Check size={13} />
+                          <span>{tr('assignSelectedBtn').replace('{count}', String(selectedAssignIds.length))}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="relative mb-2.5">
+                      <Search
+                        size={13}
+                        className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none ${
+                          isAr ? 'right-3' : 'left-3'
+                        }`}
+                      />
+                      <input
+                        type="text"
+                        value={assignSearch}
+                        onChange={e => setAssignSearch(e.target.value)}
+                        placeholder={tr('assignItemsPlaceholder')}
+                        className={`w-full h-9 rounded-lg border border-border bg-muted text-foreground text-xs focus:outline-none ${
+                          isAr ? 'pr-8 pl-3' : 'pl-8 pr-3'
+                        }`}
+                      />
+                    </div>
+
+                    {availableWarehouseItems.length === 0 ? (
+                      <div className="p-4 rounded-lg bg-muted border border-border text-center text-xs text-muted-foreground">
+                        {tr('noUnassignedItems')}
                       </div>
-                    ))}
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5">
+                        {availableWarehouseItems.slice(0, 30).map(prod => {
+                          const checked = selectedAssignIds.includes(prod.id);
+                          return (
+                            <div
+                              key={prod.id}
+                              className="px-3 py-2 rounded-lg bg-muted border border-border flex items-center justify-between gap-2"
+                            >
+                              <label className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setSelectedAssignIds(prev =>
+                                      prev.includes(prod.id)
+                                        ? prev.filter(id => id !== prod.id)
+                                        : [...prev, prod.id]
+                                    )
+                                  }
+                                  className="rounded border-border"
+                                />
+                                <span className="text-xs font-bold text-foreground truncate">
+                                  <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
+                                </span>
+                                <span dir="ltr" className="text-[11px] font-mono text-muted-foreground shrink-0">
+                                  ({prod.currentStock})
+                                </span>
+                              </label>
+                              <button
+                                type="button"
+                                disabled={isAssigning}
+                                onClick={() => void handleAssignItems(selectedShelf.id, [prod.id])}
+                                className="h-7 px-2.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary hover:bg-primary/10 shrink-0"
+                              >
+                                {tr('assignOneBtn')}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
+          </div>,
+          document.body
+        )}
 
-            <div
-              style={{
-                padding: '1.25rem',
-                borderTop: '1px solid var(--border, #e2e8f0)',
-                backgroundColor: 'var(--card, #ffffff)',
-                position: 'sticky',
-                bottom: 0,
-                zIndex: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }}
-            >
-              <button
-                type="button"
-                id="drawer-print-rack-labels-btn"
-                onClick={() => setIsPrintModalOpen(true)}
-                className="btn-outline"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '9px 12px',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: '8px'
-                }}
-              >
-                <Printer size={15} />
-                <span>{tr('printLabelBtn')}</span>
-              </button>
-
-              <button
-                type="button"
-                id="drawer-deposit-btn"
-                onClick={() => {
-                  if (onNavigateToInventory) {
-                    onNavigateToInventory(warehouse.id);
-                  } else if (onOpenRestock) {
-                    onOpenRestock(selectedRackDrawer.bayCode);
-                  }
-                  setSelectedRackDrawer(null);
-                }}
-                className="btn-primary"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '9px 12px',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: '8px'
-                }}
-              >
-                <Plus size={15} />
-                <span>{tr('depositHereBtn')}</span>
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {selectedRackDrawer && isPrintModalOpen && (
+      {/* Print Label Modal */}
+      {isPrintModalOpen && selectedShelf && (
         <PrintBarcodeLabelsModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           lang={lang}
-          warehouseName={warehouse.nameAr || ''}
-          billNumber={selectedRackDrawer.bayCode}
+          billNumber={selectedShelf.code || selectedShelf.name}
+          warehouseName={isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr)}
           items={
-            selectedRackDrawer.items.length > 0
-              ? selectedRackDrawer.items.map(p => ({
-                  id: p.id,
-                  sku: p.sku,
-                  nameAr: p.nameAr,
-                  nameEn: p.nameEn || p.nameAr,
-                  quantity: p.currentStock || 1,
-                  barcode: p.barcode || p.sku,
-                  unitCost: p.costPrice || 0,
-                  currentSellingPrice: p.sellingPrice || 0,
-                  sellingPrice: p.sellingPrice || 0,
-                  lineTotal: (p.costPrice || 0) * (p.currentStock || 1),
-                  uom: p.unit || tr('defaultUnit'),
-                  category: p.category || tr('defaultCategory')
-                }))
-              : [{
-                  id: selectedRackDrawer.bayCode,
-                  sku: selectedRackDrawer.bayCode,
-                  nameAr: `${selectedRackDrawer.label} - ${warehouse?.nameAr || ''}`,
-                  nameEn: tr('shelfLocationLabel').replace('{code}', selectedRackDrawer.bayCode),
-                  quantity: 1,
-                  barcode: `${selectedRackDrawer.bayCode}`,
-                  unitCost: 0,
-                  currentSellingPrice: 0,
-                  sellingPrice: 0,
+            selectedShelf.items.length > 0
+              ? selectedShelf.items.map(it => ({
+                  id: it.id,
+                  sku: it.sku || it.id,
+                  nameAr: it.nameAr,
+                  nameEn: it.nameEn || it.nameAr,
+                  quantity: Math.max(1, it.currentStock || 1),
+                  barcode: it.barcode || it.sku || it.id,
+                  unitCost: it.costPrice || 0,
+                  currentSellingPrice: it.sellingPrice || 0,
+                  sellingPrice: it.sellingPrice || 0,
                   lineTotal: 0,
                   uom: tr('defaultUnit'),
-                  category: tr('racksCategory')
-                }]
+                  category: it.category || tr('defaultCategory')
+                }))
+              : [
+                  {
+                    id: selectedShelf.id,
+                    sku: selectedShelf.code || selectedShelf.name,
+                    nameAr: selectedShelf.name,
+                    nameEn: selectedShelf.name,
+                    quantity: 1,
+                    barcode: selectedShelf.code || selectedShelf.name,
+                    unitCost: 0,
+                    currentSellingPrice: 0,
+                    sellingPrice: 0,
+                    lineTotal: 0,
+                    uom: tr('defaultUnit'),
+                    category: tr('racksCategory')
+                  }
+                ]
           }
         />
       )}

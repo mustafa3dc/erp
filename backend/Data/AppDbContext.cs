@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<WarehouseStock> WarehouseStocks => Set<WarehouseStock>();
+    public DbSet<WarehouseShelf> WarehouseShelves => Set<WarehouseShelf>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<StockMovementItem> StockMovementItems => Set<StockMovementItem>();
@@ -117,6 +118,18 @@ public class AppDbContext : DbContext
             .HasOne(ws => ws.Product)
             .WithMany(p => p.WarehouseStocks)
             .HasForeignKey(ws => ws.ProductId);
+
+        modelBuilder.Entity<WarehouseStock>()
+            .HasOne(ws => ws.Shelf)
+            .WithMany()
+            .HasForeignKey(ws => ws.ShelfId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<WarehouseShelf>()
+            .HasOne(s => s.Warehouse)
+            .WithMany()
+            .HasForeignKey(s => s.WarehouseId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Movement items relation
         modelBuilder.Entity<StockMovementItem>()

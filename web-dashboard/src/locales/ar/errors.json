@@ -133,7 +133,10 @@
       "ERR_INVALID_ACCOUNT_TYPE": "نوع الحساب المالي غير صالح.",
       "ERR_TREASURY_ACCOUNT_CODE_EXISTS": "رمز الحساب المالي مسجل مسبقاً.",
       "ERR_LAST_ACTIVE_TREASURY_ACCOUNT": "لا يمكن إخفاء آخر حساب نشط؛ يجب إبقاء صندوق نشط واحد على الأقل.",
-      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "تعذر حفظ بيانات الحساب المالي."
+      "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "تعذر حفظ بيانات الحساب المالي.",
+      "ERR_SHELF_NAME_REQUIRED": "اسم الرف أو القاطع مطلوب.",
+      "ERR_SHELF_NOT_FOUND": "الرف المحدد غير موجود في هذا المستودع.",
+      "ERR_SHELF_ASSIGN_FAILED": "تعذر تسكين الأصناف في الرف المحدد."
     }
   }
 }

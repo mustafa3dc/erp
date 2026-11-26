@@ -320,6 +320,23 @@ using (var scope = app.Services.CreateScope())
                     ALTER TABLE IF EXISTS customers
                         ADD COLUMN IF NOT EXISTS tenant_id UUID,
                         ADD COLUMN IF NOT EXISTS price_list_id UUID;
+
+                    CREATE TABLE IF NOT EXISTS warehouse_shelves (
+                        id UUID PRIMARY KEY,
+                        tenant_id UUID NULL,
+                        warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+                        name VARCHAR(150) NOT NULL,
+                        code VARCHAR(50) NULL,
+                        notes VARCHAR(500) NULL,
+                        max_capacity INT NULL,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+
+                    ALTER TABLE IF EXISTS warehouse_stock
+                        ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;
                 ");
 
                 // Ensure incremental Profit-Based Customer Loyalty schema upgrades are idempotently applied

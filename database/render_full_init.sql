@@ -195,10 +195,25 @@ CREATE INDEX IF NOT EXISTS idx_purchase_orders_created_at ON purchase_orders (cr
 -- ============================================================================
 -- 12. Warehouse Stock Aggregate & Concurrency Token (EF Core Concurrency)
 -- ============================================================================
+CREATE TABLE IF NOT EXISTS warehouse_shelves (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NULL,
+    warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    name VARCHAR(150) NOT NULL,
+    code VARCHAR(50) NULL,
+    notes VARCHAR(500) NULL,
+    max_capacity INT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NULL
+);
+CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+
 CREATE TABLE IF NOT EXISTS warehouse_stock (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     warehouse_id UUID NOT NULL,
     item_id UUID NOT NULL,
+    shelf_id UUID NULL,
     quantity NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,
     reserved_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

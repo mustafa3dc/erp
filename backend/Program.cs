@@ -68,6 +68,8 @@ builder.Services.AddScoped<ISalesReturnService, SalesReturnService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<ILoyaltyRewardsService, LoyaltyRewardsService>();
 builder.Services.AddScoped<IPartnersService, PartnersService>();
+builder.Services.AddScoped<IRecurringExpenseService, RecurringExpenseService>();
+builder.Services.AddHostedService<RecurringExpenseBackgroundWorker>();
 builder.Services.AddScoped<IInvoiceOcrService, GeminiInvoiceOcrService>();
 
 // JWT Authentication Configuration
@@ -360,6 +362,20 @@ using (var scope = app.Services.CreateScope())
                 if (partnersSqlPath != null)
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(partnersSqlPath));
+                }
+
+                // Ensure incremental Recurring & Fixed Operating Expenses schema upgrades are idempotently applied
+                string[] recurringSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "16_recurring_operating_expenses.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "16_recurring_operating_expenses.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "16_recurring_operating_expenses.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "16_recurring_operating_expenses.sql")
+                };
+                var recurringSqlPath = recurringSqlPaths.FirstOrDefault(File.Exists);
+                if (recurringSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(recurringSqlPath));
                 }
             }
 

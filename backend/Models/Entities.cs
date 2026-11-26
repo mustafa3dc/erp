@@ -1507,6 +1507,10 @@ public class ExpenseVoucher : ITenantEntity
     [Column("approved_at")]
     public DateTime? ApprovedAt { get; set; }
 
+    [Column("recurring_expense_id")]
+    public Guid? RecurringExpenseId { get; set; }
+    public RecurringExpense? RecurringExpense { get; set; }
+
     [MaxLength(500)]
     [Column("notes")]
     public string? Notes { get; set; }
@@ -2414,4 +2418,83 @@ public class PartnerTransaction : ITenantEntity
 
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public static class RecurringExpenseFrequency
+{
+    public const string Monthly = "Monthly";
+    public const string Weekly = "Weekly";
+    public const string Yearly = "Yearly";
+    public const string CustomDays = "CustomDays";
+}
+
+public static class RecurringExpenseExecutionMode
+{
+    public const string AutoPost = "AutoPost";
+    public const string RemindAndConfirm = "RemindAndConfirm";
+}
+
+[Table("recurring_expenses")]
+public class RecurringExpense : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Required]
+    [MaxLength(200)]
+    [Column("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(150)]
+    [Column("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [Column("amount", TypeName = "numeric(18, 4)")]
+    public decimal Amount { get; set; }
+
+    [Required]
+    [MaxLength(30)]
+    [Column("frequency")]
+    public string Frequency { get; set; } = RecurringExpenseFrequency.Monthly;
+
+    [Column("day_of_month")]
+    public int? DayOfMonth { get; set; }
+
+    [Column("day_of_week")]
+    public int? DayOfWeek { get; set; }
+
+    [Column("interval_days")]
+    public int? IntervalDays { get; set; }
+
+    [Column("next_due_date")]
+    public DateTimeOffset NextDueDate { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("last_executed_date")]
+    public DateTimeOffset? LastExecutedDate { get; set; }
+
+    [Required]
+    [MaxLength(30)]
+    [Column("execution_mode")]
+    public string ExecutionMode { get; set; } = RecurringExpenseExecutionMode.RemindAndConfirm;
+
+    [Column("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [Column("is_deleted")]
+    public bool IsDeleted { get; set; } = false;
+
+    [MaxLength(1000)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [Column("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

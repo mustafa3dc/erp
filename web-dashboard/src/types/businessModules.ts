@@ -33,8 +33,51 @@ export interface ExpenseVoucher {
   status: ExpenseStatus;
   approvedBy?: string;
   approvedAt?: string;
+  recurringExpenseId?: string;
   createdAt: string;
   createdBy?: string;
+}
+
+export type RecurringFrequency = 'Monthly' | 'Weekly' | 'Yearly' | 'CustomDays';
+export type RecurringExecutionMode = 'AutoPost' | 'RemindAndConfirm';
+
+export interface RecurringExpenseRule {
+  id: string;
+  title: string;
+  category: string;
+  amount: number;
+  frequency: RecurringFrequency | string;
+  dayOfMonth?: number | null;
+  dayOfWeek?: number | null;
+  intervalDays?: number | null;
+  nextDueDate: string;
+  lastExecutedDate?: string | null;
+  executionMode: RecurringExecutionMode | string;
+  isActive: boolean;
+  isDue: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertRecurringExpensePayload {
+  title: string;
+  category: string;
+  amount: number;
+  frequency: RecurringFrequency;
+  dayOfMonth?: number | null;
+  dayOfWeek?: number | null;
+  intervalDays?: number | null;
+  nextDueDate?: string | null;
+  executionMode: RecurringExecutionMode;
+  isActive: boolean;
+  notes?: string | null;
+}
+
+export interface ConfirmRecurringExpensePayload {
+  actualAmount?: number;
+  cashBoxId?: string | null;
+  notes?: string | null;
 }
 
 export type QuotationStatus = 'Draft' | 'Sent' | 'Accepted' | 'Expired' | 'Converted';

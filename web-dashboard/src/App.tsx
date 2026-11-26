@@ -59,6 +59,9 @@ import WarehouseCapacityBars from './components/WarehouseCapacityBars';
 import WeeklyStockChart from './components/WeeklyStockChart';
 import { RecentTransactionsTable } from './components/RecentTransactionsTable';
 import DashboardPartnersWidget from './components/DashboardPartnersWidget';
+import DashboardSystemAlertsPanel from './components/DashboardSystemAlertsPanel';
+import { RecurringExpenseRule } from './types/businessModules';
+import { fetchDueRecurringExpenses } from './services/recurringExpensesService';
 import TransactionModal, { TransactionDetail } from './components/TransactionModal';
 import BarcodeScannerModal from './components/BarcodeScannerModal';
 import { UserNav } from './components/UserNav';
@@ -264,6 +267,8 @@ function DashboardApp() {
   });
   const [selectedDateRangeId, setSelectedDateRangeId] = useState<string>('today');
   const [searchTerm, setSearchTerm] = useState('');
+  const [expensesInitialTab, setExpensesInitialTab] = useState<'VOUCHERS' | 'RECURRING' | 'CATEGORIES'>('VOUCHERS');
+  const [dueRecurringExpenses, setDueRecurringExpenses] = useState<RecurringExpenseRule[]>([]);
 
   // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login, Digital Loyalty Wallet)
   const [publicCardToken, setPublicCardToken] = useState<string | null>(() => getPublicCardTokenFromUrl());
@@ -579,6 +584,9 @@ function DashboardApp() {
       setExpandedGroups(prev => ({ ...prev, finance: true }));
     } else if (['Reports', 'Users & Staff', 'Settings'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, system: true }));
+    }
+    if (activeNav !== 'Operational Expenses') {
+      setExpensesInitialTab('VOUCHERS');
     }
   }, [activeNav]);
 
@@ -1329,8 +1337,27 @@ function DashboardApp() {
   }, [transactions]);
 
   const totalNotifications = useMemo(() => {
-    return (lowStockCount > 0 ? 1 : 0) + (shipmentStats.outboundPicking > 0 ? 1 : 0);
-  }, [lowStockCount, shipmentStats.outboundPicking]);
+    return (lowStockCount > 0 ? 1 : 0) + (shipmentStats.outboundPicking > 0 ? 1 : 0) + (dueRecurringExpenses.length > 0 ? 1 : 0);
+  }, [lowStockCount, shipmentStats.outboundPicking, dueRecurringExpenses.length]);
+
+  const refreshDueRecurring = useMemo(() => () => {
+    fetchDueRecurringExpenses()
+      .then(items => setDueRecurringExpenses(items))
+      .catch(() => setDueRecurringExpenses([]));
+  }, []);
+
+  useEffect(() => {
+    refreshDueRecurring();
+    const onUpdated = () => refreshDueRecurring();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erp_recurring_expenses_updated', onUpdated);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('erp_recurring_expenses_updated', onUpdated);
+      }
+    };
+  }, [refreshDueRecurring, currentUser?.id]);
 
   const handleAdjustStock = (productId: string, delta: number) => {
     let matchedName = 'صنف مخزني';
@@ -1765,6 +1792,21 @@ function DashboardApp() {
                           </span>
                         </div>
                       )}
+                      {dueRecurringExpenses.length > 0 && (
+                        <div
+                          className="notif-line warning clickable"
+                          onClick={() => {
+                            setExpensesInitialTab('RECURRING');
+                            setActiveNav('Operational Expenses');
+                            closeMenu();
+                          }}
+                        >
+                          <Clock size={14} className="icon-orange shrink-0" />
+                          <span>
+                            {getTranslation(lang, 'ui.recurringExpenses.headerDueAlertLabel')} (<span className="tabular-nums">{dueRecurringExpenses.length}</span>)
+                          </span>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div className="py-3 px-4 text-center flex flex-col items-center gap-1.5">
@@ -1839,6 +1881,17 @@ function DashboardApp() {
               onTransfer={() => setIsTransferModalOpen(true)}
               isAr={isAr}
               lang={lang}
+            />
+
+            {/* Operational & System Alerts (Due Recurring Fixed Bills) */}
+            <DashboardSystemAlertsPanel
+              lang={lang}
+              dueRecurringExpenses={dueRecurringExpenses}
+              onRefreshDue={refreshDueRecurring}
+              onNavigateExpenses={() => {
+                setExpensesInitialTab('RECURRING');
+                setActiveNav('Operational Expenses');
+              }}
             />
 
             {/* Row 1: 4 Executive KPI Cards with Trend Pills & Sparklines */}
@@ -2242,7 +2295,7 @@ function DashboardApp() {
 
         {/* View: Operational Expenses */}
         {activeNav === 'Operational Expenses' && (
-          <ExpensesView lang={lang} />
+          <ExpensesView lang={lang} initialTab={expensesInitialTab} />
         )}
 
         {/* View: Partners & Profit Sharing */}

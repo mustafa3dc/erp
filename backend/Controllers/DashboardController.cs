@@ -17,15 +17,18 @@ public class DashboardController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IPartnersService _partnersService;
+    private readonly IRecurringExpenseService _recurringExpenseService;
     private readonly ILogger<DashboardController> _logger;
 
     public DashboardController(
         AppDbContext context,
         IPartnersService partnersService,
+        IRecurringExpenseService recurringExpenseService,
         ILogger<DashboardController> logger)
     {
         _context = context;
         _partnersService = partnersService;
+        _recurringExpenseService = recurringExpenseService;
         _logger = logger;
     }
 
@@ -77,6 +80,10 @@ public class DashboardController : ControllerBase
                 partnersSummary = null;
             }
 
+            var dueRecurringExpenses = canViewProfitsOrPartners
+                ? await _recurringExpenseService.GetDueForDashboardAsync(ct)
+                : new List<RecurringExpenseDto>();
+
             return Ok(ApiResponse<DashboardSummaryDto>.Ok(new DashboardSummaryDto
             {
                 Period = normPeriod,
@@ -84,7 +91,9 @@ public class DashboardController : ControllerBase
                 TotalExpenses = totalExpenses,
                 NetProfit = netProfit,
                 InvoicesCount = invoicesCount,
-                PartnersSummary = partnersSummary
+                PartnersSummary = partnersSummary,
+                DueRecurringExpensesCount = dueRecurringExpenses.Count,
+                DueRecurringExpenses = dueRecurringExpenses
             }));
         }
         catch (Exception ex)

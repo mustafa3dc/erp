@@ -13,7 +13,8 @@ import {
   FileText, 
   Filter, 
   AlertTriangle,
-  X
+  X,
+  CalendarClock
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -34,18 +35,38 @@ import {
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
 import { ModalBackdropPortal } from '../ui/dialog';
+import RecurringExpensesTab from '../RecurringExpensesTab';
 
 interface ExpensesViewProps {
   lang: 'en' | 'ar';
+  initialTab?: 'VOUCHERS' | 'RECURRING' | 'CATEGORIES';
 }
 
-export default function ExpensesView({ lang }: ExpensesViewProps) {
+export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: ExpensesViewProps) {
   const isAr = lang === 'ar';
   const { formatMoney } = useSettings();
 
-  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'CATEGORIES'>('VOUCHERS');
+  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'RECURRING' | 'CATEGORIES'>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [categories, setCategories] = useState<ExpenseCategory[]>(() => getStoredExpenseCategories());
   const [vouchers, setVouchers] = useState<ExpenseVoucher[]>(() => getStoredExpenseVouchers());
+
+  useEffect(() => {
+    const syncVouchers = () => {
+      setVouchers(getStoredExpenseVouchers());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erp_expenses_updated', syncVouchers);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('erp_expenses_updated', syncVouchers);
+      }
+    };
+  }, []);
   const [treasuryAccounts] = useState(() => getStoredTreasuryAccounts());
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -406,6 +427,14 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
         </button>
         <button 
           type="button"
+          className={`module-filter-pill ${activeTab === 'RECURRING' ? 'active' : ''}`}
+          onClick={() => setActiveTab('RECURRING')}
+        >
+          <CalendarClock size={14} />
+          <span>{getTranslation(lang, 'expenses.tabRecurring')}</span>
+        </button>
+        <button 
+          type="button"
           className={`module-filter-pill ${activeTab === 'CATEGORIES' ? 'active' : ''}`}
           onClick={() => setActiveTab('CATEGORIES')}
         >
@@ -567,7 +596,16 @@ export default function ExpensesView({ lang }: ExpensesViewProps) {
         </>
       )}
 
-      {/* Tab 2: CATEGORIES */}
+      {/* Tab 2: RECURRING */}
+      {activeTab === 'RECURRING' && (
+        <RecurringExpensesTab
+          lang={lang}
+          categories={categories}
+          onExpensesUpdated={() => setVouchers(getStoredExpenseVouchers())}
+        />
+      )}
+
+      {/* Tab 3: CATEGORIES */}
       {activeTab === 'CATEGORIES' && (
         <div className="panel-clean">
           <div className="table-responsive">

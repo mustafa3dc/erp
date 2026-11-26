@@ -64,6 +64,7 @@ public class AppDbContext : DbContext
     public DbSet<LoyaltyRedemptionVoucher> LoyaltyRedemptionVouchers => Set<LoyaltyRedemptionVoucher>();
     public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
+    public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -272,6 +273,12 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(ev => ev.CashBoxId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(ev => ev.RecurringExpenseId);
+            entity.HasOne(ev => ev.RecurringExpense)
+                .WithMany()
+                .HasForeignKey(ev => ev.RecurringExpenseId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // 2. Sales Quotations Configurations
@@ -553,6 +560,12 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(pt => pt.PartnerId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RecurringExpense>(entity =>
+        {
+            entity.HasIndex(re => new { re.TenantId, re.IsActive, re.IsDeleted, re.NextDueDate });
+            entity.Property(re => re.Amount).HasColumnType("numeric(18, 4)");
         });
     }
 }

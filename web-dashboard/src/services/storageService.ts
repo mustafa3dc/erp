@@ -87,6 +87,7 @@ export const KEYS = {
   get LOYALTY_VOUCHERS() { return getScopedKey('loyalty_vouchers'); },
   get PARTNERS() { return getScopedKey('partners'); },
   get PARTNER_TRANSACTIONS() { return getScopedKey('partner_transactions'); },
+  get RECURRING_EXPENSES() { return getScopedKey('recurring_expenses'); },
 };
 
 
@@ -3967,6 +3968,9 @@ export function getStoredExpenseVouchers(): ExpenseVoucher[] {
 
 export function saveStoredExpenseVouchers(vouchers: ExpenseVoucher[]): void {
   safeSet(KEYS.EXPENSE_VOUCHERS, vouchers);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('erp_expenses_updated', { detail: vouchers }));
+  }
 }
 
 // ----------------------------------------------------

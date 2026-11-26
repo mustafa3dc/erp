@@ -77,4 +77,6 @@ public class DashboardSummaryDto
     public decimal NetProfit { get; set; }
     public int InvoicesCount { get; set; }
     public PartnersSummaryResponseDto? PartnersSummary { get; set; }
+    public int DueRecurringExpensesCount { get; set; }
+    public List<RecurringExpenseDto> DueRecurringExpenses { get; set; } = new();
 }

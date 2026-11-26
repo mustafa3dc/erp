@@ -71,6 +71,16 @@
       "ERR_INVALID_TRANSACTION_AMOUNT": "مبلغ الحركة المالية يجب أن يكون أكبر من صفر.",
       "ERR_INVALID_PARTNER_TRANSACTION_TYPE": "نوع حركة الشريك غير صالح.",
       "ERR_INVALID_CAPITAL_AMOUNT": "مبلغ رأس المال لا يمكن أن يكون سالباً."
+    },
+    "RECURRING": {
+      "ERR_RECURRING_TITLE_REQUIRED": "عنوان المصروف الثابت مطلوب.",
+      "ERR_RECURRING_CATEGORY_REQUIRED": "تصنيف المصروف مطلوب.",
+      "ERR_INVALID_RECURRING_AMOUNT": "مبلغ المصروف الثابت يجب أن يكون أكبر من صفر.",
+      "ERR_INVALID_RECURRING_SCHEDULE": "إعدادات تكرار الموعد غير صالحة.",
+      "ERR_INVALID_EXECUTION_MODE": "وضع التنفيذ المحدد غير صالح.",
+      "ERR_RECURRING_NOT_FOUND": "لم يتم العثور على سجل المصروف الدوري المطلوب.",
+      "ERR_CONCURRENCY_LOCK_TIMEOUT": "هذا المصروف الدوري قيد المعالجة الآن، يرجى المحاولة بعد لحظات.",
+      "ERR_RECURRING_CONFIRM_FAILED": "تعذر تأكيد دفع المصروف الدوري وتسجيل السند."
     }
   }
 }

@@ -71,6 +71,16 @@
       "ERR_INVALID_TRANSACTION_AMOUNT": "Transaction amount must be greater than zero.",
       "ERR_INVALID_PARTNER_TRANSACTION_TYPE": "Invalid partner transaction type.",
       "ERR_INVALID_CAPITAL_AMOUNT": "Invested capital amount cannot be negative."
+    },
+    "RECURRING": {
+      "ERR_RECURRING_TITLE_REQUIRED": "Recurring expense title is required.",
+      "ERR_RECURRING_CATEGORY_REQUIRED": "Expense category is required.",
+      "ERR_INVALID_RECURRING_AMOUNT": "Recurring expense amount must be greater than zero.",
+      "ERR_INVALID_RECURRING_SCHEDULE": "Invalid recurring schedule settings.",
+      "ERR_INVALID_EXECUTION_MODE": "Invalid execution mode.",
+      "ERR_RECURRING_NOT_FOUND": "Requested recurring expense rule was not found.",
+      "ERR_CONCURRENCY_LOCK_TIMEOUT": "This recurring expense is already being processed; please retry.",
+      "ERR_RECURRING_CONFIRM_FAILED": "Unable to confirm recurring expense payment and post voucher."
     }
   }
 }

@@ -2334,6 +2334,7 @@ function DashboardApp() {
             lang={lang} 
             warehouses={warehouses}
             products={products}
+            canViewCostPrice={currentUser.canViewCostPrice}
             selectedWarehouseId={selectedWarehouseId}
             onSelectWarehouse={(whId) => setSelectedWarehouseId(whId)}
             onNavigateToInventory={(whId) => {

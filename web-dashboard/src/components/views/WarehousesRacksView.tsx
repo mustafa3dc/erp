@@ -12,8 +12,6 @@ import {
   AlertCircle,
   Building2,
   Boxes,
-  Clock,
-  DollarSign,
   Search,
   Filter,
   Package,
@@ -21,7 +19,6 @@ import {
   Trash2
 } from 'lucide-react';
 import { Warehouse, Product, normalizeWarehouseStorageType } from '../../types/warehouse';
-import RadialGauge from '../RadialGauge';
 import EditWarehouseModal from '../modals/EditWarehouseModal';
 import AddWarehouseModal from '../modals/AddWarehouseModal';
 import WarehouseLiveLayout, { RackBayItem } from './WarehouseLiveLayout';
@@ -36,6 +33,7 @@ export interface WarehousesRacksViewProps {
   lang: 'en' | 'ar';
   warehouses: Warehouse[];
   products?: Product[];
+  canViewCostPrice?: boolean;
   selectedWarehouseId?: string;
   onSelectWarehouse?: (id: string) => void;
   onNavigateToInventory?: (warehouseId: string) => void;
@@ -120,6 +118,7 @@ export default function WarehousesRacksView({
   lang,
   warehouses,
   products = [],
+  canViewCostPrice = false,
   selectedWarehouseId,
   onSelectWarehouse,
   onNavigateToInventory,
@@ -239,19 +238,21 @@ export default function WarehousesRacksView({
     return firstState ? (isAr ? firstState.nameAr : firstState.nameEn) : '';
   }, [activeWh, activeCountry, isAr]);
 
-  const resolvedTimezone = activeWh?.timezone && activeWh.timezone !== 'UTC'
-    ? activeWh.timezone
-    : (activeCountry.defaultTimezone || 'Asia/Baghdad (UTC+3)');
-
-  const resolvedCurrency = activeWh?.currency || settings.baseCurrency || activeCountry.currencySymbol || 'IQD';
-
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  const occupancyPct = activeMetrics.occupancyPct;
   const totalRacks = activeMetrics.totalRacks;
-  const occupiedCapacity = activeMetrics.occupiedCapacity;
-  const availableCapacity = activeMetrics.availableCapacity;
+  const stockValuation = useMemo(() => {
+    return activeWhProducts.reduce(
+      (sum, p) => sum + Math.max(0, Number(p.currentStock) || 0) * Math.max(0, Number(p.costPrice) || 0),
+      0
+    );
+  }, [activeWhProducts]);
+  const lowStockCount = useMemo(() => {
+    return activeWhProducts.filter(
+      p => (Number(p.currentStock) || 0) <= (Number(p.minStockAlert) || 0)
+    ).length;
+  }, [activeWhProducts]);
 
   return (
     <div className="view-content-wrapper fade-in" style={{ paddingBottom: '3rem' }} dir={isAr ? 'rtl' : 'ltr'}>
@@ -629,25 +630,14 @@ export default function WarehousesRacksView({
 
           {/* Selected Hub Details Summary Card (No duplicate edit button inside) */}
           <div
-            className="wh-selected-card"
+            className="wh-selected-card bg-card border border-border rounded-[14px] p-7"
             style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '14px',
-              padding: '1.75rem',
-              display: 'grid',
-              gridTemplateColumns: '1fr auto',
-              gap: '2rem',
-              alignItems: 'center',
               boxShadow: 'var(--shadow-card)'
             }}
           >
             <div className="wh-info-left">
-              {/* Warehouse Title, Country Code, Hub Code, Status, and Storage Type */}
+              {/* Warehouse Title, Hub Code, Status, and Storage Type */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px', background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>
-                  {activeCountry.code}
-                </span>
                 <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--foreground)' }}>
                   <bdi dir="auto">{isAr ? activeWh.nameAr : (activeWh.nameEn || activeWh.nameAr)}</bdi>
                 </h3>
@@ -697,18 +687,9 @@ export default function WarehousesRacksView({
               </div>
 
               {/* Geographic Location & Address Banner */}
-              <div style={{
-                background: 'var(--surface-subtle, var(--muted))',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '8px 14px',
-                margin: '8px 0 12px 0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}>
+              <div
+                className="bg-muted border border-border rounded-lg px-3.5 py-2 my-2.5 flex items-center justify-between flex-wrap gap-3"
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--foreground)', flexWrap: 'wrap' }}>
                   <MapPin size={16} color="var(--primary)" />
                   <strong>{tr('locationLabel')}</strong>
@@ -731,20 +712,9 @@ export default function WarehousesRacksView({
                     </span>
                   )}
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem' }}>
-                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted-foreground)' }}>
-                    <Clock size={13} color="var(--primary)" />
-                    {resolvedTimezone}
-                  </span>
-                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--badge-emerald-fg)', fontWeight: 700, background: 'var(--badge-emerald-bg)', border: '1px solid var(--badge-emerald-border)', padding: '2px 8px', borderRadius: '4px' }}>
-                    <DollarSign size={13} />
-                    {resolvedCurrency}
-                  </span>
-                </div>
               </div>
 
-              {/* Operational Storage Type & Real Rack Count */}
+              {/* Operational Metadata & Real Rack Count */}
               <div className="wh-specs-row" style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', color: 'var(--muted-foreground)', fontSize: '0.83rem', marginTop: '6px' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <User size={15} color="var(--primary)" />
@@ -753,13 +723,10 @@ export default function WarehousesRacksView({
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Phone size={15} color="var(--primary)" />
                   <strong style={{ color: 'var(--foreground)' }}>{tr('phoneLabel')}</strong>{' '}
-                  <span dir="ltr" style={{ display: 'inline-block' }}>{activeWh.phone || tr('notRecorded')}</span>
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isColdStorage ? <Snowflake size={15} color="var(--badge-blue-fg)" /> : <Package size={15} color="var(--primary)" />}
-                  <strong style={{ color: 'var(--foreground)' }}>{tr('storageTypeLabel')}</strong>{' '}
-                  <span style={{ color: isColdStorage ? 'var(--badge-blue-fg)' : 'var(--foreground)', fontWeight: isColdStorage ? 700 : 500 }}>
-                    {storageTypeText}
+                  <span dir="ltr" style={{ display: 'inline-block' }}>
+                    {activeWh.phone && activeWh.phone.trim() !== '' && activeWh.phone.trim() !== '0'
+                      ? activeWh.phone
+                      : '—'}
                   </span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -770,48 +737,43 @@ export default function WarehousesRacksView({
                 </span>
               </div>
 
-              {/* Dynamic Numerical Capacity Chips */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginTop: '1.25rem' }}>
-                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('totalCapacityLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--foreground)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{activeWh.capacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
+              {/* Practical Warehouse Inventory KPIs */}
+              <div className={canViewCostPrice ? 'grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5' : 'grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5'}>
+                <div className="bg-muted border border-border rounded-lg p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">{tr('totalStockUnitsLabel')}</div>
+                  <div className="text-lg font-extrabold text-foreground mt-1 tabular-nums">
+                    <span dir="ltr">{activeWhTotalStock.toLocaleString()}</span>{' '}
+                    <span className="text-xs font-semibold text-muted-foreground">{tr('capacityUnit')}</span>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('occupiedVolumeLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{occupiedCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
+                <div className="bg-muted border border-border rounded-lg p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">{tr('activeSkusLabel')}</div>
+                  <div className="text-lg font-extrabold text-primary mt-1 tabular-nums">
+                    <span dir="ltr">{activeWhProducts.length.toLocaleString()}</span>{' '}
+                    <span className="text-xs font-semibold text-muted-foreground">{tr('skuUnit')}</span>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('availableSpaceLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--badge-emerald-fg)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{availableCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
+                {canViewCostPrice && (
+                  <div className="bg-muted border border-border rounded-lg p-3">
+                    <div className="text-xs font-semibold text-muted-foreground">{tr('stockValuationLabel')}</div>
+                    <div className="text-lg font-extrabold mt-1 tabular-nums" style={{ color: 'var(--badge-emerald-fg)' }}>
+                      <span dir="ltr">{formatMoney(stockValuation)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-muted border border-border rounded-lg p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">{tr('lowStockAlertsLabel')}</div>
+                  <div
+                    className="text-lg font-extrabold mt-1 tabular-nums"
+                    style={{ color: lowStockCount > 0 ? 'var(--badge-amber-fg)' : 'var(--badge-emerald-fg)' }}
+                  >
+                    <span dir="ltr">{lowStockCount.toLocaleString()}</span>{' '}
+                    <span className="text-xs font-semibold text-muted-foreground">{tr('skuUnit')}</span>
                   </div>
                 </div>
-
-                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('storedSkusLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--badge-amber-fg)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{activeWhProducts.length}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('isolatedItemsUnit')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Radial Occupancy Gauge */}
-            <div className="wh-radial-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <RadialGauge
-                percentage={occupancyPct}
-                label={tr('occupancyLabel')}
-                color={occupancyPct > 80 ? '#ef4444' : occupancyPct > 60 ? '#f59e0b' : 'var(--primary)'}
-                size={110}
-              />
-              <div style={{ marginTop: '8px', fontSize: '0.78rem', color: occupancyPct > 80 ? 'var(--badge-red-fg)' : 'var(--muted-foreground)', fontWeight: 700 }}>
-                {occupancyPct > 80 ? tr('highLoadAlert') : tr('optimalCapacity')}
               </div>
             </div>
           </div>

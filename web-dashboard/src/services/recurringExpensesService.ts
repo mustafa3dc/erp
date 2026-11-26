@@ -665,14 +665,19 @@ export async function confirmRecurringExpense(
   return mapLocalDto(updated);
 }
 
-export async function voidExpenseVoucher(voucherId: string, reason?: string): Promise<void> {
+export async function voidExpenseVoucher(voucherId: string, reason: string): Promise<void> {
+  const trimmedReason = (reason ?? '').trim();
+  if (trimmedReason.length < 3) {
+    throw createApiError('ERR_REVERSAL_REASON_REQUIRED');
+  }
+
   const token = getAuthToken();
   if (token && isUuid(voucherId)) {
     try {
-      const qs = reason?.trim() ? `?reason=${encodeURIComponent(reason.trim())}` : '';
-      const res = await fetch(`/api/expenses/${encodeURIComponent(voucherId)}/void${qs}`, {
+      const res = await fetch(`/api/expenses/${encodeURIComponent(voucherId)}/void`, {
         method: 'POST',
-        headers: authHeaders()
+        headers: authHeaders(),
+        body: JSON.stringify({ reason: trimmedReason })
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success) {
@@ -682,6 +687,7 @@ export async function voidExpenseVoucher(voucherId: string, reason?: string): Pr
         }
         return;
       }
+      if (res.status === 403) throw createApiError(json?.errorCode || 'ERR_FORBIDDEN_ACTION');
       if (res.status >= 400 && res.status < 500 && json?.errorCode) throw createApiError(json.errorCode);
     } catch (err: any) {
       if (err?.message?.startsWith('ERR_')) throw err;
@@ -710,7 +716,7 @@ export async function voidExpenseVoucher(voucherId: string, reason?: string): Pr
         currency: 'IQD',
         accountName: target.treasuryAccountName || 'ACC-01',
         date: new Date().toLocaleString(),
-        notes: reason?.trim() || target.voucherNo
+        notes: trimmedReason
       },
       ...treasuryVouchers
     ]);
@@ -719,12 +725,15 @@ export async function voidExpenseVoucher(voucherId: string, reason?: string): Pr
     }
   }
 
+  const auth = getStoredAuthSession();
   const updated = vouchers.map(v =>
     v.id === voucherId
       ? {
           ...v,
           status: 'Voided' as const,
-          notes: reason?.trim() ? (v.notes ? `${v.notes} | ${reason.trim()}` : reason.trim()) : v.notes
+          voidedAt: new Date().toISOString(),
+          voidedByUserId: auth?.fullName || auth?.username || auth?.role || 'Admin',
+          voidReason: trimmedReason
         }
       : v
   );

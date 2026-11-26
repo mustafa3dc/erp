@@ -231,7 +231,10 @@ public class ExpenseService : IExpenseService
                 v.Notes,
                 v.ReceiptReference,
                 v.CreatedBy,
-                v.CreatedAt
+                v.CreatedAt,
+                v.VoidedAt,
+                v.VoidedByUserId,
+                v.VoidReason
             ))
             .ToListAsync();
     }
@@ -266,7 +269,10 @@ public class ExpenseService : IExpenseService
             v.Notes,
             v.ReceiptReference,
             v.CreatedBy,
-            v.CreatedAt
+            v.CreatedAt,
+            v.VoidedAt,
+            v.VoidedByUserId,
+            v.VoidReason
         );
     }
 
@@ -588,6 +594,12 @@ public class ExpenseService : IExpenseService
 
     public async Task<ApiResponse<ExpenseVoucherDto>> VoidVoucherAsync(Guid id, string? voidedBy, string? reason)
     {
+        var trimmedReason = (reason ?? string.Empty).Trim();
+        if (trimmedReason.Length < 3)
+        {
+            return ApiResponse<ExpenseVoucherDto>.Fail("ERR_REVERSAL_REASON_REQUIRED", "EXPENSES");
+        }
+
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -642,7 +654,7 @@ public class ExpenseService : IExpenseService
                             Amount = amountToRefund,
                             BalanceAfter = cashBox.CurrentBalance,
                             ReferenceNumber = voucher.VoucherNumber,
-                            Notes = string.IsNullOrWhiteSpace(reason) ? $"Void {voucher.VoucherNumber}" : reason.Trim(),
+                            Notes = trimmedReason,
                             CreatedBy = voidedBy ?? "Admin",
                             CreatedAt = DateTimeOffset.UtcNow
                         });
@@ -651,11 +663,10 @@ public class ExpenseService : IExpenseService
             }
 
             voucher.Status = "VOIDED";
+            voucher.VoidedAt = DateTime.UtcNow;
+            voucher.VoidedByUserId = voidedBy ?? "Admin";
+            voucher.VoidReason = trimmedReason.Length > 500 ? trimmedReason[..500] : trimmedReason;
             voucher.UpdatedAt = DateTime.UtcNow;
-            if (!string.IsNullOrWhiteSpace(reason))
-            {
-                voucher.Notes = string.IsNullOrWhiteSpace(voucher.Notes) ? reason.Trim() : $"{voucher.Notes} | {reason.Trim()}";
-            }
 
             _context.AuditLogs.Add(new AuditLog
             {
@@ -666,7 +677,7 @@ public class ExpenseService : IExpenseService
                 EntityName = "expense_vouchers",
                 EntityId = voucher.Id.ToString(),
                 OldValues = System.Text.Json.JsonSerializer.Serialize(new { Status = previousStatus, Amount = voucher.Amount }),
-                NewValues = System.Text.Json.JsonSerializer.Serialize(new { Status = "VOIDED", RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance }),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { Status = "VOIDED", VoidReason = voucher.VoidReason, RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance }),
                 Timestamp = DateTimeOffset.UtcNow
             });
 
@@ -693,7 +704,10 @@ public class ExpenseService : IExpenseService
                 voucher.Notes,
                 voucher.ReceiptReference,
                 voucher.CreatedBy,
-                voucher.CreatedAt
+                voucher.CreatedAt,
+                voucher.VoidedAt,
+                voucher.VoidedByUserId,
+                voucher.VoidReason
             );
 
             return ApiResponse<ExpenseVoucherDto>.Ok(dto);

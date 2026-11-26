@@ -93,7 +93,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   const [treasuryAccounts] = useState(() => getStoredTreasuryAccounts());
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Draft' | 'Approved' | 'Rejected'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Draft' | 'Approved' | 'Rejected' | 'Voided'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
 
   const [toastMsg, setToastMsg] = useState('');
@@ -107,14 +107,14 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   const [voucherToApprove, setVoucherToApprove] = useState<ExpenseVoucher | null>(null);
   const [voucherToVoid, setVoucherToVoid] = useState<ExpenseVoucher | null>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [voidError, setVoidError] = useState('');
   const [isVoiding, setIsVoiding] = useState(false);
 
   const currentUser = getStoredAuthSession();
   const canVoidVoucher = Boolean(
     currentUser && (
-      ['SuperAdmin', 'BranchManager', 'PlatformSuperAdmin', 'Accountant'].includes(currentUser.role) ||
-      checkUserHasPermission(currentUser.permissions ?? [], 'expenses.manage') ||
-      checkUserHasPermission(currentUser.permissions ?? [], 'finance.ledger')
+      ['SuperAdmin', 'BranchManager', 'PlatformSuperAdmin', 'Admin', 'Owner'].includes(currentUser.role) ||
+      checkUserHasPermission(currentUser.permissions ?? [], 'system.users.manage')
     )
   );
 
@@ -305,18 +305,26 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
     showToast(getTranslation(lang, 'expenses.rejectSuccess'));
   };
 
-  // Handle Void Voucher (Admin/Owner-only: marks Voided, excludes from Totals, refunds CashBox if deducted)
+  // Handle Reversal / Void Voucher (Admin/Owner-only: mandatory reason, marks Voided, excludes from Totals, refunds CashBox if deducted)
   const handleConfirmVoid = async () => {
     if (!voucherToVoid) return;
+    setVoidError('');
+    const trimmed = voidReason.trim();
+    if (trimmed.length < 3) {
+      setVoidError(getTranslation(lang, 'errors.EXPENSES.ERR_REVERSAL_REASON_REQUIRED'));
+      return;
+    }
+
     setIsVoiding(true);
     try {
-      await voidExpenseVoucher(voucherToVoid.id, voidReason.trim() || undefined);
+      await voidExpenseVoucher(voucherToVoid.id, trimmed);
       setVouchers(getStoredExpenseVouchers());
       setVoucherToVoid(null);
       setVoidReason('');
+      setVoidError('');
       showToast(getTranslation(lang, 'expenses.voidSuccess'));
     } catch (err: any) {
-      showToast(formatRecurringErrorMessage(err, lang));
+      setVoidError(formatRecurringErrorMessage(err, lang));
     } finally {
       setIsVoiding(false);
     }
@@ -497,6 +505,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                 { id: 'ALL', label: getTranslation(lang, 'expenses.filterAll') },
                 { id: 'Draft', label: getTranslation(lang, 'expenses.filterPending') },
                 { id: 'Approved', label: getTranslation(lang, 'expenses.filterApproved') },
+                { id: 'Voided', label: getTranslation(lang, 'expenses.filterVoided') },
                 { id: 'Rejected', label: getTranslation(lang, 'expenses.filterRejected') }
               ].map(pill => (
                 <button
@@ -555,8 +564,10 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                       </td>
                     </tr>
                   ) : (
-                    filteredVouchers.map(v => (
-                      <tr key={v.id}>
+                    filteredVouchers.map(v => {
+                      const isReversed = v.status === 'Voided';
+                      return (
+                      <tr key={v.id} className={isReversed ? 'opacity-65 bg-muted/20' : ''}>
                         <td className="font-mono font-bold text-primary" dir="ltr">
                           {v.voucherNo}
                         </td>
@@ -572,12 +583,19 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                           </span>
                         </td>
                         <td>
-                          <span className="font-semibold text-foreground" dir="auto">{v.recipient}</span>
+                          <span className={`font-semibold ${isReversed ? 'line-through text-muted-foreground' : 'text-foreground'}`} dir="auto">
+                            {v.recipient}
+                          </span>
                           {v.notes && (
                             <span className="block text-[11px] text-muted-foreground" dir="auto">{v.notes}</span>
                           )}
+                          {isReversed && v.voidReason && (
+                            <span className="block text-[11px] text-amber-700 dark:text-amber-400 mt-0.5" dir="auto">
+                              {getTranslation(lang, 'expenses.reversalReasonLabel')}: {v.voidReason}
+                            </span>
+                          )}
                         </td>
-                        <td className="font-bold text-destructive font-mono tabular-nums" dir="ltr">
+                        <td className={`font-bold font-mono tabular-nums ${isReversed ? 'line-through text-muted-foreground' : 'text-destructive'}`} dir="ltr">
                           {formatMoney(v.amount)}
                         </td>
                         <td className="text-xs text-muted-foreground tabular-nums" dir="ltr">
@@ -588,9 +606,11 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                             tone={
                               v.status === 'Approved'
                                 ? 'emerald'
-                                : v.status === 'Rejected' || v.status === 'Voided'
+                                : v.status === 'Rejected'
                                   ? 'rose'
-                                  : 'amber'
+                                  : v.status === 'Voided'
+                                    ? 'slate'
+                                    : 'amber'
                             }
                             dot
                             label={
@@ -630,18 +650,21 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                               onClick={() => {
                                 setVoucherToVoid(v);
                                 setVoidReason('');
+                                setVoidError('');
                               }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors"
+                              title={getTranslation(lang, 'expenses.reverseEntryTooltip')}
+                              aria-label={getTranslation(lang, 'expenses.reverseEntryTooltip')}
+                              className="inline-flex items-center justify-center p-1.5 rounded-lg text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 hover:bg-muted transition-colors"
                             >
-                              <RotateCcw size={12} />
-                              <span>{getTranslation(lang, 'expenses.voidVoucher')}</span>
+                              <RotateCcw size={15} />
                             </button>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -888,7 +911,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
         </ModalBackdropPortal>
       )}
 
-      {/* Confirmation Dialog: Admin Void Voucher */}
+      {/* Confirmation Dialog: Admin Reversal Entry (عكس قيد خاطئ) */}
       {voucherToVoid && (
         <ModalBackdropPortal onClose={() => setVoucherToVoid(null)} dir={isAr ? 'rtl' : 'ltr'}>
           <div
@@ -898,7 +921,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/40">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
                   <RotateCcw size={18} />
                 </div>
                 <div>
@@ -920,24 +943,41 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
             </div>
 
             <div className="p-5 space-y-4">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {getTranslation(lang, 'expenses.voidConfirmMsg')}
-              </p>
-
-              <div className="p-3 rounded-xl bg-muted/50 border border-border flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{getTranslation(lang, 'expenses.amount')}:</span>
-                <span className="text-sm font-bold text-rose-600 dark:text-rose-400 font-mono tabular-nums" dir="ltr">
-                  {formatMoney(voucherToVoid.amount)}
-                </span>
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs leading-relaxed">
+                {getTranslation(lang, 'expenses.voidConfirmMsg')
+                  .replace('{amount}', formatMoney(voucherToVoid.amount))
+                  .replace(
+                    '{account}',
+                    voucherToVoid.treasuryAccountName ||
+                      treasuryAccounts.find(a => a.id === voucherToVoid.treasuryAccountId)?.name ||
+                      voucherToVoid.treasuryAccountId ||
+                      'ACC-01'
+                  )}
               </div>
 
-              <textarea
-                rows={2}
-                value={voidReason}
-                onChange={e => setVoidReason(e.target.value)}
-                placeholder={getTranslation(lang, 'expenses.voidReasonPlaceholder')}
-                className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-              />
+              {voidError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{voidError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  {getTranslation(lang, 'expenses.reversalReasonLabel')} *
+                </label>
+                <textarea
+                  rows={2}
+                  autoFocus
+                  value={voidReason}
+                  onChange={e => {
+                    setVoidReason(e.target.value);
+                    if (voidError) setVoidError('');
+                  }}
+                  placeholder={getTranslation(lang, 'expenses.voidReasonPlaceholder')}
+                  className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                />
+              </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
                 <button
@@ -949,9 +989,9 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                 </button>
                 <button
                   type="button"
-                  disabled={isVoiding}
+                  disabled={isVoiding || voidReason.trim().length < 3}
                   onClick={handleConfirmVoid}
-                  className="px-5 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+                  className="px-5 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-700 text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
                 >
                   {getTranslation(lang, 'expenses.voidBtn')}
                 </button>

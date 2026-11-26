@@ -154,10 +154,22 @@ public class ExpensesController : ControllerBase
 
     [HttpPost("/api/expenses/{id:guid}/void")]
     [HttpPost("vouchers/{id:guid}/void")]
-    [HasPermission(Permissions.Treasury.ExpensesApprove)]
-    public async Task<ActionResult<ApiResponse<ExpenseVoucherDto>>> VoidVoucher(Guid id, [FromQuery] string? reason)
+    public async Task<ActionResult<ApiResponse<ExpenseVoucherDto>>> VoidVoucher(
+        Guid id,
+        [FromBody] VoidExpenseVoucherRequest? request,
+        [FromQuery] string? reason)
     {
-        var result = await _expenseService.VoidVoucherAsync(id, CurrentUserName, reason);
+        if (!IsOwnerOrAdmin())
+        {
+            return StatusCode(403, ApiResponse<ExpenseVoucherDto>.Fail("ERR_FORBIDDEN_ACTION", "EXPENSES"));
+        }
+
+        var actorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value
+            ?? CurrentUserName;
+        var resolvedReason = !string.IsNullOrWhiteSpace(request?.Reason) ? request.Reason : reason;
+
+        var result = await _expenseService.VoidVoucherAsync(id, actorId, resolvedReason);
         if (!result.Success && result.ErrorCode == "ERR_VOUCHER_NOT_FOUND")
         {
             return NotFound(result);
@@ -167,6 +179,26 @@ public class ExpensesController : ControllerBase
             return BadRequest(result);
         }
         return Ok(result);
+    }
+
+    private bool IsOwnerOrAdmin()
+    {
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? User.FindFirst("role")?.Value;
+        if (string.Equals(role, "SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "PlatformSuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "BranchManager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var perms = User.FindAll("Permission").Select(c => c.Value)
+            .Concat(User.FindAll("permissions").Select(c => c.Value));
+
+        return perms.Any(p =>
+            string.Equals(p, Permissions.SystemUsersManage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p, "*", StringComparison.OrdinalIgnoreCase));
     }
 
     [HttpGet("summary")]

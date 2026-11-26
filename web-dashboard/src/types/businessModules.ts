@@ -34,6 +34,9 @@ export interface ExpenseVoucher {
   status: ExpenseStatus;
   approvedBy?: string;
   approvedAt?: string;
+  voidedAt?: string;
+  voidedByUserId?: string;
+  voidReason?: string;
   recurringExpenseId?: string;
   createdAt: string;
   createdBy?: string;

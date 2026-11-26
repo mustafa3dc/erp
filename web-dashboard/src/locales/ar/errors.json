@@ -46,8 +46,10 @@
       "ERR_CATEGORY_NAME_REQUIRED": "يرجى إدخال اسم التصنيف.",
       "ERR_INVALID_CATEGORY_BUDGET": "سقف الميزانية الشهرية لا يمكن أن يكون سالباً.",
       "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الصندوق الرئيسي لا يكفي لتغطية هذا المصروف.",
-      "ERR_VOUCHER_ALREADY_VOIDED": "تم إلغاء هذا السند مسبقاً.",
-      "ERR_VOUCHER_VOID_FAILED": "تعذر إلغاء سند المصروف."
+      "ERR_VOUCHER_ALREADY_VOIDED": "تم عكس وإبطال هذا السند مسبقاً.",
+      "ERR_VOUCHER_VOID_FAILED": "تعذر تنفيذ القيد العكسي للسند.",
+      "ERR_REVERSAL_REASON_REQUIRED": "يجب كتابة سبب واضح للقيد العكسي (3 أحرف على الأقل).",
+      "ERR_FORBIDDEN_ACTION": "عذراً، هذا الإجراء مقتصر على مالك المتجر أو المدير العام فقط."
     },
     "LEDGER": {
       "IMMUTABLE": "سجل القيود غير قابل للتعديل أو الحذف إطلاقاً",

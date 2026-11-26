@@ -22,6 +22,11 @@ CREATE INDEX IF NOT EXISTS ix_treasury_transactions_tenant_box
 CREATE INDEX IF NOT EXISTS ix_treasury_transactions_expense_voucher
     ON treasury_transactions (expense_voucher_id);
 
+ALTER TABLE IF EXISTS expense_vouchers
+    ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS voided_by_user_id VARCHAR(150) NULL,
+    ADD COLUMN IF NOT EXISTS void_reason VARCHAR(500) NULL;
+
 -- Safely remove un-deducted test voucher RECV-20261126-1110 WITHOUT modifying cashbox balance (710,000 IQD preserved)
 DELETE FROM expense_vouchers
 WHERE voucher_number = 'RECV-20261126-1110'

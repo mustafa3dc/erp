@@ -1468,6 +1468,9 @@ CREATE TABLE IF NOT EXISTS expense_vouchers (
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT', -- 'DRAFT', 'APPROVED', 'REJECTED', 'CANCELLED'
     approved_by VARCHAR(150),
     approved_at TIMESTAMPTZ,
+    voided_at TIMESTAMPTZ,
+    voided_by_user_id VARCHAR(150),
+    void_reason VARCHAR(500),
     notes TEXT,
     receipt_reference VARCHAR(100),
     created_by VARCHAR(100),

@@ -1555,6 +1555,17 @@ public class ExpenseVoucher : ITenantEntity
     [Column("approved_at")]
     public DateTime? ApprovedAt { get; set; }
 
+    [Column("voided_at")]
+    public DateTime? VoidedAt { get; set; }
+
+    [MaxLength(150)]
+    [Column("voided_by_user_id")]
+    public string? VoidedByUserId { get; set; }
+
+    [MaxLength(500)]
+    [Column("void_reason")]
+    public string? VoidReason { get; set; }
+
     [Column("recurring_expense_id")]
     public Guid? RecurringExpenseId { get; set; }
     public RecurringExpense? RecurringExpense { get; set; }

@@ -46,8 +46,10 @@
       "ERR_CATEGORY_NAME_REQUIRED": "Please enter the category name.",
       "ERR_INVALID_CATEGORY_BUDGET": "Monthly budget cap cannot be negative.",
       "ERR_INSUFFICIENT_TREASURY_BALANCE": "Treasury cashbox balance is insufficient for this expense.",
-      "ERR_VOUCHER_ALREADY_VOIDED": "This expense voucher has already been voided.",
-      "ERR_VOUCHER_VOID_FAILED": "Failed to void expense voucher."
+      "ERR_VOUCHER_ALREADY_VOIDED": "This expense voucher has already been reversed.",
+      "ERR_VOUCHER_VOID_FAILED": "Failed to record reversal entry for this voucher.",
+      "ERR_REVERSAL_REASON_REQUIRED": "A clear reversal reason is required (minimum 3 characters).",
+      "ERR_FORBIDDEN_ACTION": "Access denied: this action is restricted to Store Owner or Admin."
     },
     "LEDGER": {
       "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",

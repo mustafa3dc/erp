@@ -46,7 +46,10 @@ public record ExpenseVoucherDto(
     string? Notes,
     string? ReceiptReference,
     string? CreatedBy,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    DateTime? VoidedAt = null,
+    string? VoidedByUserId = null,
+    string? VoidReason = null
 );
 
 public record CreateExpenseVoucherRequest(
@@ -77,6 +80,10 @@ public record UpdateExpenseVoucherRequest(
 public record ApproveExpenseVoucherRequest(
     Guid? CashBoxId,
     string? Notes
+);
+
+public record VoidExpenseVoucherRequest(
+    string? Reason
 );
 
 public record ExpensesSummaryDto(

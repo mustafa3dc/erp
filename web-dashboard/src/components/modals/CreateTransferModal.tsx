@@ -24,6 +24,7 @@ import { Input } from '../ui/input';
 import { Product, Warehouse } from '../../types/warehouse';
 import { TransferItem, TransferRecord } from '../views/TransfersView';
 import { localizeWarehouse } from '../../lib/localeHelpers';
+import { getTranslation } from '../../lib/i18n';
 
 interface CreateTransferModalProps {
   isOpen: boolean;
@@ -354,7 +355,7 @@ export default function CreateTransferModal({
                     <Input 
                       type="text" 
                       required
-                      placeholder={isAr ? 'مثال: حيدر جاسم الكعبي' : 'e.g. Haider Jassim'}
+                      placeholder={getTranslation(lang, 'inventory.transfer.driverPlaceholder')}
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
                       className="h-9 bg-background border-border/80 px-2.5 text-xs font-medium"

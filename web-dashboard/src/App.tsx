@@ -1170,6 +1170,8 @@ function DashboardApp() {
     productId: string;
     fromWarehouse: string;
     toWarehouse: string;
+    fromWarehouseId?: string;
+    toWarehouseId?: string;
     quantity: number;
     carrier: string;
     reference: string;
@@ -2507,6 +2509,7 @@ function DashboardApp() {
           setTransferInitialProductId(undefined);
         }}
         products={products}
+        warehouses={warehouses}
         lang={lang}
         initialProductId={transferInitialProductId}
         onTransfer={handleTransferStock}

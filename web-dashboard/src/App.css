@@ -389,22 +389,7 @@ input[type="number"] {
   border-radius: 9999px;
 }
 
-/* Rail Flyout Submenu when Collapsed */
-.sidebar-rail-flyout {
-  position: absolute;
-  top: 0;
-  inset-inline-start: calc(100% + 10px);
-  min-width: 215px;
-  background: var(--popover);
-  color: var(--popover-foreground);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: var(--shadow-elevated);
-  z-index: 120;
-  animation: fadeIn 0.14s ease;
-}
-
+/* Rail Flyout Submenu Title when Collapsed */
 .sidebar-rail-flyout-title {
   font-size: 0.72rem;
   font-weight: 700;

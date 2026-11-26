@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   LayoutGrid,
   Zap,
@@ -75,6 +75,83 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions(currentUser);
   const [hoveredGroupKey, setHoveredGroupKey] = useState<string | null>(null);
+  const [pinnedGroupKey, setPinnedGroupKey] = useState<string | null>(null);
+  const pinnedGroupKeyRef = useRef<string | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelFlyoutClose = () => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const closeAllFlyouts = () => {
+    cancelFlyoutClose();
+    pinnedGroupKeyRef.current = null;
+    setPinnedGroupKey(null);
+    setHoveredGroupKey(null);
+  };
+
+  const openFlyout = (groupKey: string) => {
+    cancelFlyoutClose();
+    if (pinnedGroupKeyRef.current && pinnedGroupKeyRef.current !== groupKey) {
+      pinnedGroupKeyRef.current = null;
+      setPinnedGroupKey(null);
+    }
+    setHoveredGroupKey(groupKey);
+  };
+
+  const scheduleFlyoutClose = (groupKey: string) => {
+    cancelFlyoutClose();
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      if (pinnedGroupKeyRef.current !== groupKey) {
+        setHoveredGroupKey(prev => (prev === groupKey ? null : prev));
+      }
+    }, 150);
+  };
+
+  const togglePinFlyout = (groupKey: string) => {
+    cancelFlyoutClose();
+    if (pinnedGroupKeyRef.current === groupKey) {
+      pinnedGroupKeyRef.current = null;
+      setPinnedGroupKey(null);
+      setHoveredGroupKey(null);
+    } else {
+      pinnedGroupKeyRef.current = groupKey;
+      setPinnedGroupKey(groupKey);
+      setHoveredGroupKey(groupKey);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCollapsed) {
+      closeAllFlyouts();
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest('#app-sidebar')) {
+        closeAllFlyouts();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeAllFlyouts();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      cancelFlyoutClose();
+    };
+  }, [isCollapsed]);
 
   const permittedNav = useMemo(() => {
     const isDashboardAllowed =
@@ -177,16 +254,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           const groupTitle = isAr ? group.titleAr : group.titleEn;
           const isOpenGroup = !isCollapsed && isExpanded;
 
+          const isFlyoutOpen = isCollapsed && (hoveredGroupKey === group.key || pinnedGroupKey === group.key);
+
           return (
             <div
               key={group.key}
-              className={`nav-group-container transition-all ${
+              className={`nav-group-container relative transition-all ${
                 isOpenGroup
                   ? 'bg-muted/40 dark:bg-muted/20 border border-border/60 rounded-xl p-1.5 my-1'
                   : 'my-0.5'
               }`}
-              onMouseEnter={() => isCollapsed && setHoveredGroupKey(group.key)}
-              onMouseLeave={() => isCollapsed && setHoveredGroupKey(prev => (prev === group.key ? null : prev))}
             >
               <button
                 type="button"
@@ -201,15 +278,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                       ? 'text-foreground hover:bg-muted/50'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                 }`}
+                onMouseEnter={() => isCollapsed && openFlyout(group.key)}
+                onMouseLeave={() => isCollapsed && scheduleFlyoutClose(group.key)}
                 onClick={() => {
                   if (isCollapsed) {
-                    setHoveredGroupKey(prev => (prev === group.key ? null : group.key));
+                    togglePinFlyout(group.key);
                   } else {
                     onToggleGroup(group.key);
                   }
                 }}
-                aria-expanded={isCollapsed ? hoveredGroupKey === group.key : isExpanded}
-                title={isCollapsed ? groupTitle : undefined}
+                aria-expanded={isCollapsed ? isFlyoutOpen : isExpanded}
+                aria-label={isCollapsed ? groupTitle : undefined}
               >
                 <div className="nav-group-left">
                   {renderGroupIcon(
@@ -290,52 +369,58 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 </div>
               )}
 
-              {/* Collapsed Icon-Only Rail Flyout Popover */}
-              {isCollapsed && hoveredGroupKey === group.key && (
-                <div className="sidebar-rail-flyout">
-                  <div className="sidebar-rail-flyout-title">{groupTitle}</div>
-                  <div className="flex flex-col gap-0.5">
-                    {group.items.map(item => {
-                      const isItemActive = activeNav === item.id || activeNav === item.path;
-                      const badgeContent =
-                        item.id === 'Transfers & In-Transit'
-                          ? inTransitTransfersCount > 0
-                            ? String(inTransitTransfersCount)
-                            : null
-                          : isAr
-                            ? item.badge
-                            : item.badgeEn || item.badge;
+              {/* Collapsed Icon-Only Rail Flyout Popover (flush wrapper + ps-2.5 hover bridge) */}
+              {isFlyoutOpen && (
+                <div
+                  className="absolute top-0 start-full ps-2.5 z-[120]"
+                  onMouseEnter={() => openFlyout(group.key)}
+                  onMouseLeave={() => scheduleFlyoutClose(group.key)}
+                >
+                  <div className="min-w-[215px] bg-popover text-popover-foreground border border-border rounded-xl p-1.5 shadow-lg animate-in fade-in-0 duration-150">
+                    <div className="sidebar-rail-flyout-title">{groupTitle}</div>
+                    <div className="flex flex-col gap-0.5">
+                      {group.items.map(item => {
+                        const isItemActive = activeNav === item.id || activeNav === item.path;
+                        const badgeContent =
+                          item.id === 'Transfers & In-Transit'
+                            ? inTransitTransfersCount > 0
+                              ? String(inTransitTransfersCount)
+                              : null
+                            : isAr
+                              ? item.badge
+                              : item.badgeEn || item.badge;
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className={`group w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
-                            isItemActive
-                              ? 'bg-primary/10 text-primary font-semibold'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
-                          }`}
-                          onClick={() => {
-                            setActiveNav(item.id);
-                            setHoveredGroupKey(null);
-                          }}
-                        >
-                          <span className="flex items-center gap-2 min-w-0">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                isItemActive ? 'bg-primary' : 'bg-muted-foreground/45'
-                              }`}
-                            />
-                            <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
-                          </span>
-                          {badgeContent && (
-                            <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
-                              {badgeContent}
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`group w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
+                              isItemActive
+                                ? 'bg-primary/10 text-primary font-semibold'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
+                            }`}
+                            onClick={() => {
+                              setActiveNav(item.id);
+                              closeAllFlyouts();
+                            }}
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  isItemActive ? 'bg-primary' : 'bg-muted-foreground/45'
+                                }`}
+                              />
+                              <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            {badgeContent && (
+                              <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
+                                {badgeContent}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

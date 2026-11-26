@@ -630,7 +630,7 @@ public class InventoryController : ControllerBase
                 if (tenantId.HasValue && tenantId.Value != Guid.Empty)
                 {
                     var features = await _tenantFeatureService.GetTenantFeaturesAsync(tenantId.Value);
-                    serialTrackingEnabled = features?.EnableSerialNumbers ?? false;
+                    serialTrackingEnabled = features?.Features?.EnableSerialNumbers ?? false;
                 }
 
                 if (product.RequiresSerialNumber && serialTrackingEnabled)

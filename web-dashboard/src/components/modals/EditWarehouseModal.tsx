@@ -20,6 +20,7 @@ import {
   getStatesForCountry, 
   getStorageTypeById 
 } from '../../data/globalLocations';
+import { useSettings } from '../../context/settings-context';
 
 export interface EditWarehouseModalProps {
   lang: 'en' | 'ar';
@@ -38,8 +39,11 @@ export default function EditWarehouseModal({
 }: EditWarehouseModalProps) {
   if (!isOpen || !warehouse) return null;
   const isAr = lang === 'ar';
+  const { settings } = useSettings();
+  const defaultCountryCode = settings.tenantCountryCode || 'IQ';
+  const defaultCountryObj = getCountryByCode(defaultCountryCode);
 
-  const [countryCode, setCountryCode] = useState<string>(warehouse.countryCode || 'US');
+  const [countryCode, setCountryCode] = useState<string>(warehouse.countryCode || defaultCountryCode);
   const [state, setState] = useState<string>(warehouse.state || warehouse.city || '');
   const [form, setForm] = useState({
     code: warehouse.code,
@@ -48,8 +52,8 @@ export default function EditWarehouseModal({
     city: warehouse.city || '',
     address: warehouse.address || '',
     postalCode: warehouse.postalCode || '',
-    currency: warehouse.currency || 'USD',
-    timezone: warehouse.timezone || 'UTC',
+    currency: warehouse.currency || settings.baseCurrency || defaultCountryObj.currencySymbol || 'IQD',
+    timezone: warehouse.timezone || defaultCountryObj.defaultTimezone || 'Asia/Baghdad (UTC+3)',
     storageType: warehouse.storageType || 'rdc_general',
     manager: warehouse.manager || '',
     phone: warehouse.phone || '',
@@ -59,7 +63,7 @@ export default function EditWarehouseModal({
 
   useEffect(() => {
     if (warehouse) {
-      const cCode = warehouse.countryCode || 'US';
+      const cCode = warehouse.countryCode || defaultCountryCode;
       const country = getCountryByCode(cCode);
       setCountryCode(cCode);
       setState(warehouse.state || warehouse.city || '');
@@ -70,8 +74,8 @@ export default function EditWarehouseModal({
         city: warehouse.city || '',
         address: warehouse.address || '',
         postalCode: warehouse.postalCode || '',
-        currency: warehouse.currency || country.currency,
-        timezone: warehouse.timezone || country.defaultTimezone,
+        currency: warehouse.currency || settings.baseCurrency || country.currencySymbol || 'IQD',
+        timezone: warehouse.timezone || country.defaultTimezone || 'Asia/Baghdad (UTC+3)',
         storageType: warehouse.storageType || 'rdc_general',
         manager: warehouse.manager || '',
         phone: warehouse.phone || '',

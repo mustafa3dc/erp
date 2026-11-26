@@ -19,6 +19,7 @@ import {
   getStatesForCountry, 
   getStorageTypeById 
 } from '../../data/globalLocations';
+import { useSettings } from '../../context/settings-context';
 
 export interface AddWarehouseModalProps {
   lang: 'en' | 'ar';
@@ -34,14 +35,16 @@ export default function AddWarehouseModal({
   isOpen,
   onClose,
   onAddWarehouse,
-  initialCountryCode = 'IQ',
+  initialCountryCode,
   totalWarehousesCount = 1
 }: AddWarehouseModalProps) {
   if (!isOpen) return null;
   const isAr = lang === 'ar';
+  const { settings } = useSettings();
 
-  const initialCountry = getCountryByCode(initialCountryCode) || GLOBAL_COUNTRIES[0];
-  const [countryCode, setCountryCode] = useState<string>(initialCountryCode || initialCountry?.code || 'US');
+  const resolvedCountryCode = initialCountryCode || settings.tenantCountryCode || 'IQ';
+  const initialCountry = getCountryByCode(resolvedCountryCode) || GLOBAL_COUNTRIES[0];
+  const [countryCode, setCountryCode] = useState<string>(initialCountry.code || 'IQ');
   const defaultStates = getStatesForCountry(countryCode);
   const [state, setState] = useState<string>(defaultStates[0] ? (isAr ? defaultStates[0].nameAr : defaultStates[0].nameEn) : '');
   
@@ -51,9 +54,9 @@ export default function AddWarehouseModal({
     nameEn: '',
     city: defaultStates[0] ? (isAr ? defaultStates[0].nameAr : defaultStates[0].nameEn) : '',
     address: '',
-    postalCode: '10001',
-    currency: initialCountry?.currencySymbol || '$',
-    timezone: initialCountry?.defaultTimezone || 'UTC',
+    postalCode: '',
+    currency: settings.baseCurrency || initialCountry.currencySymbol || 'IQD',
+    timezone: initialCountry.defaultTimezone || 'Asia/Baghdad (UTC+3)',
     storageType: 'rdc_general',
     manager: '',
     phone: '',

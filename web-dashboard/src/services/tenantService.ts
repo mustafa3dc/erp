@@ -293,12 +293,18 @@ export function createNewTenant(input: CreateTenantInput): { success: boolean; t
 
   const expiresAt = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString();
 
+  const countryCode = (input.countryCode || 'IQ').toUpperCase();
+  const currency = input.currency || (countryCode === 'IQ' ? 'IQD' : 'USD');
+  const timezone = countryCode === 'IQ' ? 'Asia/Baghdad (UTC+3)' : 'Asia/Baghdad (UTC+3)';
+  const countryName = countryCode === 'IQ' ? 'العراق' : countryCode;
+  const cityName = countryCode === 'IQ' ? 'بغداد' : '';
+
   const newTenant: Tenant = {
     id: newTenantId,
     name: input.name.trim(),
     slug: cleanSlug,
-    countryCode: input.countryCode || 'US',
-    currency: input.currency || 'USD',
+    countryCode,
+    currency,
     plan: input.plan || 'Pro',
     subscriptionTerm: input.subscriptionTerm || 'annual_12',
     contactInfo: input.contactInfo?.trim() || '',
@@ -330,16 +336,16 @@ export function createNewTenant(input: CreateTenantInput): { success: boolean; t
         code: 'WH-01',
         nameAr: 'المستودع الرئيسي',
         nameEn: 'Main Warehouse',
-        country: input.countryCode || 'Global',
-        countryCode: input.countryCode || 'US',
-        state: 'المركز',
-        city: 'المقر الرئيسي',
-        cityAr: 'المقر الرئيسي',
-        cityEn: 'Headquarters',
-        address: 'المقر الإداري والمخازن المركزية',
-        postalCode: '10001',
-        timezone: input.countryCode === 'IQ' ? 'Asia/Baghdad (UTC+3)' : 'UTC',
-        currency: `${input.currency || 'USD'}`,
+        country: countryName,
+        countryCode,
+        state: cityName,
+        city: cityName,
+        cityAr: cityName,
+        cityEn: cityName,
+        address: '',
+        postalCode: '',
+        timezone,
+        currency,
         storageType: 'rdc_general',
         manager: input.adminFullName.trim(),
         managerEn: input.adminFullName.trim(),
@@ -359,7 +365,7 @@ export function createNewTenant(input: CreateTenantInput): { success: boolean; t
         type: 'CASH', 
         balanceUsd: 0, 
         balanceIqd: 0, 
-        currency: `${input.currency || 'USD'}` 
+        currency 
       }
     ]));
   }
@@ -512,12 +518,18 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
   }
 
   // Persist locally for instant seamless authentication in the client SPA
+  const selfCountryCode = (input.countryCode || 'IQ').toUpperCase();
+  const selfCurrency = input.currency || (selfCountryCode === 'IQ' ? 'IQD' : 'USD');
+  const selfTimezone = selfCountryCode === 'IQ' ? 'Asia/Baghdad (UTC+3)' : 'Asia/Baghdad (UTC+3)';
+  const selfCountryName = selfCountryCode === 'IQ' ? 'العراق' : selfCountryCode;
+  const selfCityName = selfCountryCode === 'IQ' ? 'بغداد' : '';
+
   const newTenant: Tenant = {
     id: `tenant-${Date.now().toString(36)}`,
     name: input.companyName.trim(),
     slug: cleanSlug,
-    countryCode: input.countryCode || 'US',
-    currency: input.currency || 'USD',
+    countryCode: selfCountryCode,
+    currency: selfCurrency,
     plan: planTier,
     subscriptionTerm: 'trial_14',
     contactInfo: input.contactInfo?.trim() || '',
@@ -549,16 +561,16 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
         code: 'WH-01',
         nameAr: 'المستودع الرئيسي',
         nameEn: 'Main Warehouse',
-        country: input.countryCode || 'Global',
-        countryCode: input.countryCode || 'US',
-        state: 'المركز',
-        city: 'المقر الرئيسي',
-        cityAr: 'المقر الرئيسي',
-        cityEn: 'Headquarters',
-        address: 'المقر الإداري والمخازن المركزية',
-        postalCode: '10001',
-        timezone: input.countryCode === 'IQ' ? 'Asia/Baghdad (UTC+3)' : 'UTC',
-        currency: `${input.currency || 'USD'}`,
+        country: selfCountryName,
+        countryCode: selfCountryCode,
+        state: selfCityName,
+        city: selfCityName,
+        cityAr: selfCityName,
+        cityEn: selfCityName,
+        address: '',
+        postalCode: '',
+        timezone: selfTimezone,
+        currency: selfCurrency,
         storageType: 'rdc_general',
         manager: input.adminFullName.trim(),
         managerEn: input.adminFullName.trim(),
@@ -578,7 +590,7 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
         type: 'CASH', 
         balanceUsd: 0, 
         balanceIqd: 0, 
-        currency: `${input.currency || 'USD'}` 
+        currency: selfCurrency 
       }
     ]));
   }

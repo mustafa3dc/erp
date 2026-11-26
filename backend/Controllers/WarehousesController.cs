@@ -58,10 +58,37 @@ public class WarehousesController : ControllerBase
             }
         }
 
-        var warehouses = await query
+        var warehouseEntities = await query
             .Where(w => w.IsActive)
             .OrderBy(w => w.Code)
-            .Select(w => new
+            .ToListAsync();
+
+        var warehouseIds = warehouseEntities.Select(w => w.Id).ToList();
+        var stockRows = await _context.WarehouseStocks
+            .AsNoTracking()
+            .Where(ws => warehouseIds.Contains(ws.WarehouseId))
+            .Select(ws => new { ws.WarehouseId, ws.Quantity, ws.ShelfLocation })
+            .ToListAsync();
+
+        var stockStats = stockRows
+            .GroupBy(ws => ws.WarehouseId)
+            .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Occupied = g.Sum(ws => ws.Quantity),
+                    ItemsCount = g.Count(ws => ws.Quantity > 0),
+                    RacksCount = g
+                        .Where(ws => !string.IsNullOrWhiteSpace(ws.ShelfLocation))
+                        .Select(ws => ws.ShelfLocation!.Trim().ToUpperInvariant())
+                        .Distinct()
+                        .Count()
+                });
+
+        var warehouses = warehouseEntities.Select(w =>
+        {
+            stockStats.TryGetValue(w.Id, out var stats);
+            return new
             {
                 id = w.Id.ToString(),
                 code = w.Code,
@@ -72,11 +99,14 @@ public class WarehousesController : ControllerBase
                 manager = w.ManagerName,
                 phone = w.ContactPhone,
                 totalCapacity = w.TotalCapacity,
+                occupied = stats?.Occupied ?? 0,
+                itemsCount = stats?.ItemsCount ?? 0,
+                racksCount = stats?.RacksCount ?? 0,
                 isActive = w.IsActive
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
-        // If newly created tenant doesn't have an explicit DB warehouse row yet, seed or return default main warehouse
+        // If newly created tenant doesn't have an explicit DB warehouse row yet, return clean default main warehouse
         if (warehouses.Count == 0 && (tenantGuid.HasValue || !string.IsNullOrEmpty(tenantIdClaim)))
         {
             var defaultWh = new
@@ -86,10 +116,16 @@ public class WarehousesController : ControllerBase
                 name = "المستودع الرئيسي",
                 nameAr = "المستودع الرئيسي",
                 nameEn = "Main Warehouse",
-                location = "المقر الرئيسي - الإدارة المركزية",
-                manager = "مدير المستودع",
-                phone = "+964 770 000 0000",
+                countryCode = "IQ",
+                currency = "IQD",
+                timezone = "Asia/Baghdad (UTC+3)",
+                location = "بغداد",
+                manager = string.Empty,
+                phone = string.Empty,
                 totalCapacity = 10000m,
+                occupied = 0,
+                itemsCount = 0,
+                racksCount = 0,
                 isActive = true
             };
             return Ok(new[] { defaultWh });

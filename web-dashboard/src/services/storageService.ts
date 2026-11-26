@@ -530,7 +530,45 @@ export function saveStoredStockCounts(items: typeof initialStockCountItems): voi
 }
 
 // --- WAREHOUSES ---
+const DEFAULT_COUNTRY_META: Record<string, { nameAr: string; stateAr: string; currency: string; timezone: string }> = {
+  IQ: { nameAr: 'العراق', stateAr: 'بغداد', currency: 'IQD', timezone: 'Asia/Baghdad (UTC+3)' },
+  AE: { nameAr: 'الإمارات العربية المتحدة', stateAr: 'دبي', currency: 'AED', timezone: 'Asia/Dubai (UTC+4)' },
+  SA: { nameAr: 'المملكة العربية السعودية', stateAr: 'الرياض', currency: 'SAR', timezone: 'Asia/Riyadh (UTC+3)' },
+  JO: { nameAr: 'الأردن', stateAr: 'عمان', currency: 'JOD', timezone: 'Asia/Amman (UTC+3)' },
+  EG: { nameAr: 'مصر', stateAr: 'القاهرة', currency: 'EGP', timezone: 'Africa/Cairo (UTC+2)' },
+  TR: { nameAr: 'تركيا', stateAr: 'إسطنبول', currency: 'TRY', timezone: 'Europe/Istanbul (UTC+3)' },
+  DE: { nameAr: 'ألمانيا', stateAr: 'هامبورغ', currency: 'EUR', timezone: 'Europe/Berlin (UTC+1)' },
+  GB: { nameAr: 'المملكة المتحدة', stateAr: 'لندن', currency: 'GBP', timezone: 'Europe/London (UTC+0)' },
+  US: { nameAr: 'الولايات المتحدة الأمريكية', stateAr: 'كاليفورنيا', currency: 'USD', timezone: 'America/New_York (UTC-5)' }
+};
+
+function resolveTenantWarehouseDefaults() {
+  let countryCode = 'IQ';
+  let currency = 'IQD';
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('zilox_user_preferences');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.tenantCountryCode) countryCode = String(parsed.tenantCountryCode).toUpperCase();
+        if (parsed?.baseCurrency) currency = String(parsed.baseCurrency).toUpperCase();
+      }
+    } catch {
+      // keep Iraq / IQD defaults
+    }
+  }
+  const meta = DEFAULT_COUNTRY_META[countryCode] || DEFAULT_COUNTRY_META.IQ;
+  return {
+    countryCode,
+    countryName: meta.nameAr,
+    stateName: meta.stateAr,
+    currency: currency || meta.currency,
+    timezone: meta.timezone
+  };
+}
+
 export function getStoredWarehouses(): Warehouse[] {
+  const tenantDefaults = resolveTenantWarehouseDefaults();
   const existing = safeGet<Warehouse[] | null>(KEYS.WAREHOUSES, null);
   if (existing && Array.isArray(existing) && existing.length > 0) {
     let modified = false;
@@ -557,6 +595,25 @@ export function getStoredWarehouses(): Warehouse[] {
         }
         modified = true;
       }
+      // Heal legacy hardcoded Global/US/Central/UTC/USD defaults on primary warehouse
+      if (w.country === 'Global' || w.state === 'Central' || (w.countryCode === 'US' && tenantDefaults.countryCode !== 'US' && w.city === 'Headquarters')) {
+        w.country = tenantDefaults.countryName;
+        w.countryCode = tenantDefaults.countryCode;
+        w.state = tenantDefaults.stateName;
+        w.city = tenantDefaults.stateName;
+        w.cityAr = tenantDefaults.stateName;
+        w.timezone = tenantDefaults.timezone;
+        w.currency = tenantDefaults.currency;
+        modified = true;
+      }
+      if (!w.timezone || w.timezone === 'UTC') {
+        w.timezone = (DEFAULT_COUNTRY_META[w.countryCode || tenantDefaults.countryCode] || tenantDefaults).timezone;
+        modified = true;
+      }
+      if (!w.currency || (w.currency === 'USD' && w.countryCode === 'IQ' && tenantDefaults.currency === 'IQD')) {
+        w.currency = tenantDefaults.currency;
+        modified = true;
+      }
       return w;
     });
     if (modified) {
@@ -570,16 +627,16 @@ export function getStoredWarehouses(): Warehouse[] {
       code: 'WH-01',
       nameAr: 'المستودع الرئيسي',
       nameEn: 'Main Warehouse',
-      country: 'Global',
-      countryCode: 'US',
-      state: 'Central',
-      city: 'Headquarters',
-      cityAr: 'المقر الرئيسي',
-      cityEn: 'Headquarters',
+      country: tenantDefaults.countryName,
+      countryCode: tenantDefaults.countryCode,
+      state: tenantDefaults.stateName,
+      city: tenantDefaults.stateName,
+      cityAr: tenantDefaults.stateName,
+      cityEn: tenantDefaults.stateName,
       address: '',
       postalCode: '',
-      timezone: 'UTC',
-      currency: 'USD',
+      timezone: tenantDefaults.timezone,
+      currency: tenantDefaults.currency,
       storageType: 'rdc_general',
       manager: '',
       managerEn: '',
@@ -629,21 +686,22 @@ export function createWarehouse(data: {
   const nextNum = warehouses.length + 1;
   const newId = `WH-${String(nextNum).padStart(2, '0')}`;
   
+  const tenantDefaults = resolveTenantWarehouseDefaults();
   const newWarehouse: Warehouse = {
     id: newId,
     code: data.code.trim().toUpperCase() || `WH-LOC-${nextNum}`,
     nameAr: data.nameAr.trim(),
     nameEn: data.nameEn?.trim() || data.nameAr.trim(),
-    country: data.country?.trim() || '',
-    countryCode: data.countryCode?.trim() || 'US',
-    state: data.state?.trim() || '',
-    city: data.city?.trim() || '',
-    cityAr: data.cityAr || data.city || '',
-    cityEn: data.cityEn || data.city || '',
+    country: data.country?.trim() || tenantDefaults.countryName,
+    countryCode: data.countryCode?.trim() || tenantDefaults.countryCode,
+    state: data.state?.trim() || tenantDefaults.stateName,
+    city: data.city?.trim() || tenantDefaults.stateName,
+    cityAr: data.cityAr || data.city || tenantDefaults.stateName,
+    cityEn: data.cityEn || data.city || tenantDefaults.stateName,
     address: data.address?.trim() || '',
     postalCode: data.postalCode?.trim() || '',
-    timezone: data.timezone?.trim() || 'UTC',
-    currency: data.currency?.trim() || '$',
+    timezone: data.timezone?.trim() || tenantDefaults.timezone,
+    currency: data.currency?.trim() || tenantDefaults.currency,
     storageType: data.storageType || 'rdc_general',
     storageTypeLabelAr: data.storageTypeLabelAr,
     storageTypeLabelEn: data.storageTypeLabelEn,

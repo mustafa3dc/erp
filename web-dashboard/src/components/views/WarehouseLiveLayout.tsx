@@ -1,28 +1,31 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Search, 
-  X, 
-  Layers, 
-  Box, 
-  Barcode, 
-  Printer, 
-  Plus, 
-  Warehouse, 
-  RefreshCw 
+import {
+  Search,
+  X,
+  Layers,
+  Box,
+  Barcode,
+  Printer,
+  Plus,
+  Warehouse,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { Product, Warehouse as WarehouseType } from '../../types/warehouse';
 import { getTenantAuthHeaders } from '../../lib/api-client';
+import { getTranslation } from '../../lib/i18n';
 import PrintBarcodeLabelsModal from '../modals/PrintBarcodeLabelsModal';
 
 export interface RackBayItem {
   id: string;
   bayCode: string;
+  shelfCode: string;
   label: string;
-  labelEn?: string;
   totalCapacity: number;
   usedCapacity: number;
   occupancy: number;
+  isOverCapacity: boolean;
   items: Product[];
   isHighlighted?: boolean;
 }
@@ -34,6 +37,7 @@ export interface WarehouseLiveLayoutProps {
   onConfigureRacks?: () => void;
   onOpenRestock?: (bayCode?: string) => void;
   onNavigateToInventory?: (warehouseId: string) => void;
+  onRacksLoaded?: (warehouseId: string, racks: RackBayItem[]) => void;
 }
 
 export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
@@ -42,9 +46,12 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   lang = 'ar',
   onConfigureRacks,
   onOpenRestock,
-  onNavigateToInventory
+  onNavigateToInventory,
+  onRacksLoaded
 }) => {
   const isAr = lang === 'ar';
+  const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
+
   const [racks, setRacks] = useState<RackBayItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [racksViewMode, setRacksViewMode] = useState<'pallets' | 'bins'>('pallets');
@@ -52,7 +59,6 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   const [selectedRackDrawer, setSelectedRackDrawer] = useState<RackBayItem | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
 
-  // 1. Fetch live racks exclusively from backend API: GET /api/v1/wms/warehouses/{warehouseId}/racks
   const fetchRacks = useCallback(async () => {
     if (!warehouse?.id) return;
     setIsLoading(true);
@@ -67,35 +73,42 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          // Normalize server rack models
           const mappedRacks: RackBayItem[] = data.map((r: any) => {
-            const bayCode = r.bayCode || r.code || `BAY-${r.id}`;
+            const bayCode = String(r.bayCode || r.code || `BAY-${r.id}`);
+            const shelfCode = String(r.shelfCode || bayCode.replace(/^BAY-/i, ''));
             const totalCap = Number(r.totalCapacity) || (racksViewMode === 'pallets' ? 32 : 100);
-            const usedCap = Number(r.usedCapacity) || (r.items ? r.items.reduce((sum: number, it: any) => sum + (it.currentStock || 1), 0) : 0);
-            const calculatedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
+            const itemsList: Product[] = Array.isArray(r.items) ? r.items : [];
+            const rawUsed = typeof r.usedCapacity === 'number'
+              ? Number(r.usedCapacity)
+              : itemsList.reduce((sum: number, it: any) => sum + (Number(it.currentStock) || 0), 0);
+            const usedCap = Math.max(0, rawUsed);
+            const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
 
             return {
               id: r.id || bayCode,
-              bayCode: bayCode,
-              label: r.label || (isAr ? `الرف قاطع ${bayCode}` : `Rack Bay ${bayCode}`),
-              labelEn: r.labelEn || `Rack Bay ${bayCode}`,
+              bayCode,
+              shelfCode,
+              label: tr('rackBayLabel').replace('{code}', shelfCode),
               totalCapacity: totalCap,
               usedCapacity: usedCap,
-              occupancy: calculatedOccupancy,
-              items: Array.isArray(r.items) ? r.items : []
+              occupancy: clampedOccupancy,
+              isOverCapacity: usedCap > totalCap,
+              items: itemsList
             };
           });
           setRacks(mappedRacks);
+          onRacksLoaded?.(warehouse.id, mappedRacks);
           setIsLoading(false);
           return;
         }
       }
     } catch {
-      // Fallback: If network / dev server is disconnected, check if products have real shelf locations
+      // Fallback to live shelf assignments inside this warehouse
     }
 
-    // Local fallback purely derived from products actually assigned to shelf locations for this warehouse
-    const whProducts = products.filter(p => p.warehouseId === warehouse.id || p.warehouseName === warehouse.nameAr);
+    const whProducts = products.filter(
+      p => !p.isBundle && (p.warehouseId === warehouse.id || p.warehouseId === warehouse.code)
+    );
     const shelfGroups: Record<string, Product[]> = {};
 
     whProducts.forEach(prod => {
@@ -110,49 +123,51 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
 
     const shelfKeys = Object.keys(shelfGroups);
     if (shelfKeys.length === 0) {
-      // Zero mock data: If no shelves are actually defined, racks strictly remains empty []
       setRacks([]);
+      onRacksLoaded?.(warehouse.id, []);
     } else {
       const derivedRacks: RackBayItem[] = shelfKeys.map(shelfKey => {
         const bayCode = shelfKey.startsWith('BAY-') ? shelfKey : `BAY-${shelfKey}`;
         const items = shelfGroups[shelfKey];
-        const usedCap = items.reduce((acc, it) => acc + (it.currentStock || 1), 0);
+        const usedCap = items.reduce((acc, it) => acc + Math.max(0, Number(it.currentStock) || 0), 0);
         const totalCap = racksViewMode === 'pallets' ? 32 : 100;
-        const occ = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
+        const clampedOccupancy = totalCap > 0 ? Math.min(100, Math.round((usedCap / totalCap) * 100)) : 0;
 
         return {
           id: `rack-${bayCode.toLowerCase()}`,
-          bayCode: bayCode,
-          label: isAr ? `الرف قاطع ${shelfKey}` : `Rack Bay ${shelfKey}`,
+          bayCode,
+          shelfCode: shelfKey,
+          label: tr('rackBayLabel').replace('{code}', shelfKey),
           totalCapacity: totalCap,
           usedCapacity: usedCap,
-          occupancy: occ,
-          items: items
+          occupancy: clampedOccupancy,
+          isOverCapacity: usedCap > totalCap,
+          items
         };
       });
       setRacks(derivedRacks);
+      onRacksLoaded?.(warehouse.id, derivedRacks);
     }
 
     setIsLoading(false);
-  }, [warehouse, products, racksViewMode, isAr]);
+  }, [warehouse?.id, warehouse?.code, products, racksViewMode, tr, onRacksLoaded]);
 
   useEffect(() => {
     fetchRacks();
   }, [fetchRacks]);
 
-  // Filtered racks based on search term
   const displayedRacks = useMemo(() => {
     const term = rackSearchTerm.trim().toLowerCase();
     if (!term) return racks;
 
     return racks.map(rack => {
-      const isMatch = 
+      const isMatch =
         rack.bayCode.toLowerCase().includes(term) ||
         rack.label.toLowerCase().includes(term) ||
-        rack.items.some(it => 
-          it.nameAr.toLowerCase().includes(term) ||
+        rack.items.some(it =>
+          (it.nameAr && it.nameAr.toLowerCase().includes(term)) ||
           (it.nameEn && it.nameEn.toLowerCase().includes(term)) ||
-          it.sku.toLowerCase().includes(term) ||
+          (it.sku && it.sku.toLowerCase().includes(term)) ||
           (it.barcode && it.barcode.toLowerCase().includes(term))
         );
       return {
@@ -162,53 +177,53 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     });
   }, [racks, rackSearchTerm]);
 
+  const unitLabel = racksViewMode === 'pallets' ? tr('palletsUnit') : tr('binsUnit');
+
   return (
     <div className="racks-visual-card" style={{ marginTop: '1.5rem', padding: '1.5rem', borderRadius: '12px', background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.05)' }}>
-      {/* Visualizer Header: Title, Controls & Search */}
+      {/* Visualizer Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px', marginBottom: '1.25rem' }}>
         <div>
           <h4 className="chart-title" style={{ margin: 0, fontSize: '1.15rem', color: 'var(--foreground)', fontWeight: 800 }}>
-            {isAr ? 'توزيع الرفوف الحية والقواطع - ' : 'Live Rack Bays Layout - '}
-            <span dir="auto">{warehouse.nameAr}</span>
+            {tr('title')}{' '}
+            <bdi dir="auto">{isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr)}</bdi>
           </h4>
           <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
-            {isAr ? 'خريطة تفاعلية لمواقع التخزين، سعة الرفوف الرأسية، ومستوى الامتلاء اللوجستي الفعلي' : 'Interactive live warehouse bays layout with actual stored item occupancy'}
+            {tr('subtitle')}
           </p>
         </div>
 
         {/* Action Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          {/* Refresh button */}
           <button
             type="button"
             onClick={fetchRacks}
             className="btn-outline"
-            title={isAr ? 'تحديث خريطة الرفوف' : 'Refresh Racks Layout'}
+            title={tr('refreshTitle')}
             style={{ padding: '6px 10px', height: '34px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
-            <span style={{ fontSize: '0.78rem' }}>{isAr ? 'تحديث' : 'Refresh'}</span>
+            <span style={{ fontSize: '0.78rem' }}>{tr('refreshBtn')}</span>
           </button>
 
-          {/* Rack Search Input */}
           <div style={{ position: 'relative', width: '220px' }}>
-            <Search 
-              size={14} 
-              style={{ 
-                position: 'absolute', 
-                right: isAr ? '10px' : undefined, 
-                left: !isAr ? '10px' : undefined, 
-                top: '50%', 
-                transform: 'translateY(-50%)', 
+            <Search
+              size={14}
+              style={{
+                position: 'absolute',
+                right: isAr ? '10px' : undefined,
+                left: !isAr ? '10px' : undefined,
+                top: '50%',
+                transform: 'translateY(-50%)',
                 color: '#94a3b8',
                 pointerEvents: 'none'
-              }} 
+              }}
             />
             <input
               type="text"
               value={rackSearchTerm}
               onChange={(e) => setRackSearchTerm(e.target.value)}
-              placeholder={isAr ? "بحث عن رف أو صنف أو باركود..." : "Search bay, SKU, barcode..."}
+              placeholder={tr('searchPlaceholder')}
               style={{
                 width: '100%',
                 height: '34px',
@@ -243,7 +258,6 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             )}
           </div>
 
-          {/* View Mode Switcher: Pallets vs Small Bins */}
           <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <button
               type="button"
@@ -265,7 +279,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               }}
             >
               <Layers size={13} />
-              <span>{isAr ? 'طبليات كبيرة' : 'Pallets'}</span>
+              <span>{tr('palletsMode')}</span>
             </button>
             <button
               type="button"
@@ -287,38 +301,34 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               }}
             >
               <Box size={13} />
-              <span>{isAr ? 'خانات وأدراج صغيرة' : 'Small Bins'}</span>
+              <span>{tr('binsMode')}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Corrected Color Legend Bar strictly following Directive:
-          - Stable Capacity: < 70% (#2563eb)
-          - Crowded / High Load: 70% to 99% (#ea580c)
-          - Full: 100% (#991b1b)
-      */}
+      {/* Color Legend Bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: '16px', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '1rem', fontSize: '0.75rem', color: '#475569' }}>
         <span style={{ fontWeight: 700, color: '#334155' }}>
-          {isAr ? 'دليل إشغال الرفوف:' : 'Rack Occupancy Key:'}
+          {tr('legendTitle')}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#2563eb', display: 'inline-block' }}></span>
-          <span>{isAr ? 'سعة منخفضة / مستقرة (< 70%)' : 'Stable Capacity (< 70%)'}</span>
+          <span>{tr('legendStable')}</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ea580c', display: 'inline-block' }}></span>
-          <span>{isAr ? 'سعة مرتفعة / مكتظة (70% - 99%)' : 'Crowded (70% - 99%)'}</span>
+          <span>{tr('legendCrowded')}</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#991b1b', display: 'inline-block' }}></span>
-          <span>{isAr ? 'ممتلئ كلياً (100%)' : 'Full (100%)'}</span>
+          <span>{tr('legendFull')}</span>
         </span>
       </div>
 
-      {/* 2. True Empty State when racks.length === 0 */}
+      {/* Empty State or Rack Grid */}
       {racks.length === 0 && !isLoading ? (
-        <div 
+        <div
           className="wms-empty-state"
           id="wms-empty-state-view"
           data-testid="wms-empty-state-view"
@@ -335,8 +345,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             margin: '1rem 0'
           }}
         >
-          {/* Calm warehouse icon */}
-          <div 
+          <div
             style={{
               width: '64px',
               height: '64px',
@@ -353,13 +362,11 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           </div>
 
           <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
-            {isAr ? 'لم يتم تخطيط قواطع ورفوف لهذا المستودع بعد' : 'No racks or bays have been planned for this warehouse yet'}
+            {tr('emptyTitle')}
           </h3>
 
           <p style={{ fontSize: '0.84rem', color: '#64748b', maxWidth: '440px', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-            {isAr 
-              ? 'لم يتم تهيئة هيكل الرفوف أو تسكين أي بضائع في قواطع تخزين لهذا المستودع حتى الآن. يمكنك البدء بتخطيط وتوزيع الرفوف وتسكين البضائع فوراً.'
-              : 'No rack layout has been defined or inventory slotted in storage bays for this warehouse yet. You can start planning the layout and allocating racks now.'}
+            {tr('emptySubtitle')}
           </p>
 
           <button
@@ -383,94 +390,95 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             }}
           >
             <Plus size={16} />
-            <span>{isAr ? 'تخطيط وتسكين الرفوف' : 'Configure & Plan Racks'}</span>
+            <span>{tr('configureRacksBtn')}</span>
           </button>
         </div>
       ) : (
-        /* Dynamic Interactive Rack Grid */
-        <div className="racks-grid-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: '12px' }}>
+        <div className="racks-grid-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: '12px' }}>
           {displayedRacks.map((bay) => {
-            const isFull = bay.occupancy >= 100;
-            const isCrowded = bay.occupancy >= 70 && !isFull;
+            const clampedPct = Math.min(100, Math.max(0, bay.occupancy));
+            const isFull = clampedPct >= 100;
+            const isCrowded = clampedPct >= 70 && !isFull;
             const statusColor = isFull ? '#991b1b' : isCrowded ? '#ea580c' : '#2563eb';
             const statusBg = isFull ? 'rgba(153, 27, 27, 0.12)' : isCrowded ? 'rgba(234, 88, 12, 0.12)' : 'rgba(37, 99, 235, 0.12)';
             const availableCount = Math.max(0, bay.totalCapacity - bay.usedCapacity);
+            const overExtra = Math.max(0, bay.usedCapacity - bay.totalCapacity);
 
             return (
-              <div 
-                key={bay.id || bay.bayCode} 
+              <div
+                key={bay.id || bay.bayCode}
                 id={`rack-bay-${bay.bayCode.toLowerCase()}`}
                 data-testid={`rack-bay-${bay.bayCode.toLowerCase()}`}
                 className="rack-bay-box"
                 onClick={() => setSelectedRackDrawer(bay)}
                 style={{
                   background: bay.isHighlighted ? '#eff6ff' : '#f8fafc',
-                  border: bay.isHighlighted 
-                    ? '2px solid #2563eb' 
-                    : isFull 
-                    ? '1px solid rgba(153, 27, 27, 0.4)' 
-                    : isCrowded 
-                    ? '1px solid rgba(234, 88, 12, 0.4)' 
+                  border: bay.isHighlighted
+                    ? '2px solid #2563eb'
+                    : isFull
+                    ? '1px solid rgba(153, 27, 27, 0.4)'
+                    : isCrowded
+                    ? '1px solid rgba(234, 88, 12, 0.4)'
                     : '1px solid var(--border)',
                   borderRadius: '10px',
                   padding: '10px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '6px',
-                  boxShadow: bay.isHighlighted 
-                    ? '0 0 0 3px rgba(37, 99, 235, 0.3), 0 4px 10px rgba(37, 99, 235, 0.2)' 
+                  boxShadow: bay.isHighlighted
+                    ? '0 0 0 3px rgba(37, 99, 235, 0.3), 0 4px 10px rgba(37, 99, 235, 0.2)'
                     : '0 1px 2px rgba(0,0,0,0.02)',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                   position: 'relative'
                 }}
-                title={isAr ? `انقر لعرض أصناف ومحتويات ${bay.label}` : `Click to inspect ${bay.label} contents`}
+                title={tr('rackBayHint').replace('{label}', bay.label)}
               >
                 {/* Header row */}
-                <div className="rack-bay-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="rack-code" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', color: '#0f172a' }}>
+                <div className="rack-bay-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
+                  <span className="rack-code" dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', color: '#0f172a' }}>
                     {bay.bayCode}
                   </span>
-                  <span 
+                  <span
+                    dir="ltr"
                     style={{
                       fontSize: '0.68rem',
                       padding: '2px 6px',
                       borderRadius: '4px',
                       fontWeight: 800,
+                      fontVariantNumeric: 'tabular-nums',
                       background: statusBg,
                       color: statusColor
                     }}
                   >
-                    {bay.occupancy}%
+                    {clampedPct}%
                   </span>
                 </div>
 
-                {/* Visual Shelf Representation based on racksViewMode */}
+                {/* Visual Shelf Representation */}
                 {racksViewMode === 'pallets' ? (
-                  /* Pallets: 3 vertical tiers with crossbeams */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', margin: '4px 0', padding: '4px', background: 'var(--muted)', borderRadius: '4px', border: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy >= 70 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy >= 90 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 70 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 90 ? statusColor : 'var(--border)' }}></span>
                     </div>
                     <div style={{ height: '2px', background: 'var(--border)' }}></div>
                     <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy >= 35 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy >= 50 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 35 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 50 ? statusColor : 'var(--border)' }}></span>
                     </div>
                     <div style={{ height: '2px', background: 'var(--border)' }}></div>
                     <div style={{ display: 'flex', gap: '2px', height: '8px' }}>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy > 0 ? statusColor : 'var(--border)' }}></span>
-                      <span style={{ flex: 1, borderRadius: '2px', background: bay.occupancy >= 20 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct > 0 ? statusColor : 'var(--border)' }}></span>
+                      <span style={{ flex: 1, borderRadius: '2px', background: clampedPct >= 20 ? statusColor : 'var(--border)' }}></span>
                     </div>
                   </div>
                 ) : (
-                  /* Bins / Slots: Grid of small drawers */
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px', margin: '4px 0', padding: '4px', background: 'var(--muted)', borderRadius: '4px', border: '1px solid var(--border)' }}>
                     {Array.from({ length: 8 }).map((_, slotIdx) => {
-                      const slotFilled = bay.occupancy >= ((slotIdx + 1) * 12.5);
+                      const slotFilled = clampedPct >= ((slotIdx + 1) * 12.5);
                       return (
-                        <div 
+                        <div
                           key={slotIdx}
                           style={{
                             height: '10px',
@@ -484,16 +492,41 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   </div>
                 )}
 
-                {/* Capacity breakdown under bay */}
-                <div style={{ fontSize: '0.72rem', color: '#1e293b', fontWeight: 700, marginTop: '2px' }}>
-                  {bay.usedCapacity} / {bay.totalCapacity} {racksViewMode === 'pallets' ? (isAr ? 'طبلية' : 'Pallets') : (isAr ? 'علبة' : 'Bins')}
-                </div>
-                <div style={{ fontSize: '0.68rem', color: isFull ? '#b91c1c' : '#64748b', fontWeight: isFull ? 700 : 500 }}>
-                  {isAr ? 'متاح: ' : 'Avail: '} {availableCount} {racksViewMode === 'pallets' ? (isAr ? 'طبلية' : 'Pallets') : (isAr ? 'علبة' : 'Bins')}
+                {/* Capacity breakdown with strict LTR fraction & tabular-nums */}
+                <div style={{ fontSize: '0.72rem', color: '#1e293b', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
+                    {bay.usedCapacity} / {bay.totalCapacity}
+                  </span>
+                  <span>{unitLabel}</span>
                 </div>
 
-                <small className="rack-label" style={{ fontSize: '0.68rem', color: '#94a3b8', borderTop: '1px dashed #e2e8f0', paddingTop: '4px', marginTop: '2px' }}>
-                  {bay.label}
+                {overExtra > 0 ? (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      color: '#b91c1c',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      width: 'fit-content'
+                    }}
+                  >
+                    <AlertTriangle size={11} />
+                    <span>{tr('overCapacityBadge').replace('{extra}', String(overExtra))}</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.68rem', color: isFull ? '#b91c1c' : '#64748b', fontWeight: isFull ? 700 : 500 }}>
+                    {tr('availPrefix')} <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums' }}>{availableCount}</span> {unitLabel}
+                  </div>
+                )}
+
+                <small className="rack-label" style={{ fontSize: '0.68rem', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '4px', marginTop: '2px' }}>
+                  <bdi dir="auto">{bay.label}</bdi>
                 </small>
               </div>
             );
@@ -501,9 +534,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
         </div>
       )}
 
-      {/* Side Drawer for Inspected Rack Bay rendered via Portal */}
+      {/* Side Drawer for Inspected Rack Bay */}
       {selectedRackDrawer && typeof document !== 'undefined' && createPortal(
-        <div 
+        <div
           id="rack-drawer-overlay"
           style={{
             position: 'fixed',
@@ -525,7 +558,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           }}
           dir={isAr ? 'rtl' : 'ltr'}
         >
-          <div 
+          <div
             id="rack-drawer-bay"
             data-testid="rack-drawer-bay"
             style={{
@@ -544,8 +577,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               overflow: 'hidden'
             }}
           >
-            {/* 1. ترويسة ثابتة بأعلى الشاشة دائماً */}
-            <div 
+            <div
               style={{
                 padding: '1.25rem',
                 borderBottom: '1px solid var(--border, #e2e8f0)',
@@ -559,20 +591,20 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               }}
             >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--foreground, #0f172a)' }}>
-                    {isAr ? `تفاصيل القاطع: ${selectedRackDrawer.bayCode}` : `Bay Details: ${selectedRackDrawer.bayCode}`}
+                    {tr('bayDetailsTitle').replace('{code}', selectedRackDrawer.bayCode)}
                   </h3>
                   <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', background: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '4px' }}>
-                    {selectedRackDrawer.label}
+                    <bdi dir="auto">{selectedRackDrawer.label}</bdi>
                   </span>
                 </div>
                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                  {isAr ? `المستودع: ${warehouse.nameAr}` : `Warehouse: ${warehouse.nameEn || warehouse.nameAr}`}
+                  {tr('warehousePrefix').replace('{name}', isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr))}
                 </p>
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 id="close-rack-drawer-btn"
                 onClick={() => setSelectedRackDrawer(null)}
                 style={{
@@ -588,8 +620,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               </button>
             </div>
 
-            {/* 2. محتوى الرف القابل للتمرير */}
-            <div 
+            <div
               style={{
                 flex: 1,
                 overflowY: 'auto',
@@ -603,17 +634,25 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border, #e2e8f0)', background: 'var(--card, #ffffff)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
-                    {isAr ? 'مستوى الاستيعاب والإشغال الفعلي:' : 'Capacity Occupancy:'}
+                    {tr('capacityOccupancyLabel')}
                   </span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: selectedRackDrawer.occupancy >= 100 ? '#991b1b' : selectedRackDrawer.occupancy >= 70 ? '#ea580c' : '#2563eb' }}>
-                    {selectedRackDrawer.occupancy}%
+                  <span
+                    dir="ltr"
+                    style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      fontVariantNumeric: 'tabular-nums',
+                      color: selectedRackDrawer.occupancy >= 100 ? '#991b1b' : selectedRackDrawer.occupancy >= 70 ? '#ea580c' : '#2563eb'
+                    }}
+                  >
+                    {Math.min(100, selectedRackDrawer.occupancy)}%
                   </span>
                 </div>
                 <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div 
+                  <div
                     style={{
                       height: '100%',
-                      width: `${selectedRackDrawer.occupancy}%`,
+                      width: `${Math.min(100, selectedRackDrawer.occupancy)}%`,
                       background: selectedRackDrawer.occupancy >= 100 ? '#991b1b' : selectedRackDrawer.occupancy >= 70 ? '#ea580c' : '#2563eb',
                       borderRadius: '4px',
                       transition: 'width 0.3s ease'
@@ -621,32 +660,32 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
-                  <span>{isAr ? 'المشغول فعلياً:' : 'Used:'} <strong>{selectedRackDrawer.usedCapacity}</strong></span>
-                  <span>{isAr ? 'المتاح:' : 'Available:'} <strong>{Math.max(0, selectedRackDrawer.totalCapacity - selectedRackDrawer.usedCapacity)}</strong></span>
-                  <span>{isAr ? 'الكل:' : 'Total:'} <strong>{selectedRackDrawer.totalCapacity}</strong></span>
+                  <span>{tr('usedLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{selectedRackDrawer.usedCapacity}</strong></span>
+                  <span>{tr('availableLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.max(0, selectedRackDrawer.totalCapacity - selectedRackDrawer.usedCapacity)}</strong></span>
+                  <span>{tr('totalLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{selectedRackDrawer.totalCapacity}</strong></span>
                 </div>
               </div>
 
               {/* Stored Items List */}
               <div>
                 <h5 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: 'var(--foreground, #0f172a)' }}>
-                  {isAr ? 'الأصناف المسكنة بالقاطع' : 'Items Stored in this Bay'} ({selectedRackDrawer.items.length})
+                  {tr('storedItemsTitle')} (<span dir="ltr">{selectedRackDrawer.items.length}</span>)
                 </h5>
 
                 {selectedRackDrawer.items.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem 1rem', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
                     <Box size={32} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block' }} />
                     <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
-                      {isAr ? 'الرف فارغ حالياً وجاهز للتسكين' : 'Bay is empty and ready for allocation'}
+                      {tr('emptyBayTitle')}
                     </p>
                     <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
-                      {isAr ? 'يمكنك تسكين بضائع جديدة في هذا الرف مباشرة' : 'You can allocate items to this rack'}
+                      {tr('emptyBaySubtitle')}
                     </p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {selectedRackDrawer.items.map((prod) => (
-                      <div 
+                      <div
                         key={prod.id}
                         style={{
                           padding: '10px 12px',
@@ -661,16 +700,16 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground, #0f172a)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {prod.nameAr}
+                            <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.72rem', color: '#64748b' }}>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{prod.sku}</span>
+                            <span dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{prod.sku}</span>
                             <span>•</span>
                             <span>{prod.category}</span>
                             {prod.barcode && (
                               <>
                                 <span>•</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '3px', fontFamily: 'monospace' }}>
                                   <Barcode size={12} />
                                   {prod.barcode}
                                 </span>
@@ -679,11 +718,11 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                           </div>
                         </div>
                         <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--foreground, #0f172a)' }}>
+                          <div dir="ltr" style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--foreground, #0f172a)', fontVariantNumeric: 'tabular-nums' }}>
                             {prod.currentStock || 0}
                           </div>
                           <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                            {prod.unit || (isAr ? 'قطعة' : 'Unit')}
+                            {prod.unit || tr('defaultUnit')}
                           </div>
                         </div>
                       </div>
@@ -693,8 +732,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               </div>
             </div>
 
-            {/* 3. Action footer in drawer */}
-            <div 
+            <div
               style={{
                 padding: '1.25rem',
                 borderTop: '1px solid var(--border, #e2e8f0)',
@@ -707,8 +745,8 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 gap: '8px'
               }}
             >
-              <button 
-                type="button" 
+              <button
+                type="button"
                 id="drawer-print-rack-labels-btn"
                 onClick={() => setIsPrintModalOpen(true)}
                 className="btn-outline"
@@ -725,11 +763,11 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 }}
               >
                 <Printer size={15} />
-                <span>{isAr ? 'طباعة ملصق الباركود للقاطع (ZPL / A4)' : 'Print Bay Barcode Label'}</span>
+                <span>{tr('printLabelBtn')}</span>
               </button>
 
-              <button 
-                type="button" 
+              <button
+                type="button"
                 id="drawer-deposit-btn"
                 onClick={() => {
                   if (onNavigateToInventory) {
@@ -753,7 +791,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 }}
               >
                 <Plus size={15} />
-                <span>{isAr ? 'إيداع وتسكين بضاعة هنا' : 'Deposit & Allocate Stock Here'}</span>
+                <span>{tr('depositHereBtn')}</span>
               </button>
             </div>
           </div>
@@ -761,7 +799,6 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
         document.body
       )}
 
-      {/* Barcode Print Modal for Selected Rack */}
       {selectedRackDrawer && isPrintModalOpen && (
         <PrintBarcodeLabelsModal
           isOpen={isPrintModalOpen}
@@ -782,22 +819,22 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   currentSellingPrice: p.sellingPrice || 0,
                   sellingPrice: p.sellingPrice || 0,
                   lineTotal: (p.costPrice || 0) * (p.currentStock || 1),
-                  uom: p.unit || (isAr ? 'قطعة' : 'Unit'),
-                  category: p.category || (isAr ? 'عام' : 'General')
+                  uom: p.unit || tr('defaultUnit'),
+                  category: p.category || tr('defaultCategory')
                 }))
               : [{
                   id: selectedRackDrawer.bayCode,
                   sku: selectedRackDrawer.bayCode,
                   nameAr: `${selectedRackDrawer.label} - ${warehouse?.nameAr || ''}`,
-                  nameEn: `${selectedRackDrawer.bayCode} - Shelf Location`,
+                  nameEn: tr('shelfLocationLabel').replace('{code}', selectedRackDrawer.bayCode),
                   quantity: 1,
                   barcode: `${selectedRackDrawer.bayCode}`,
                   unitCost: 0,
                   currentSellingPrice: 0,
                   sellingPrice: 0,
                   lineTotal: 0,
-                  uom: isAr ? 'موقع' : 'Location',
-                  category: isAr ? 'رفوف' : 'Racks'
+                  uom: tr('defaultUnit'),
+                  category: tr('racksCategory')
                 }]
           }
         />

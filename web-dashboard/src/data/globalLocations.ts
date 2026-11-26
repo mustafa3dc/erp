@@ -241,7 +241,7 @@ export const GLOBAL_COUNTRIES: CountryDef[] = [
 export const STORAGE_CLASSIFICATIONS: StorageClassificationDef[] = [
   {
     id: 'rdc_general',
-    nameAr: 'مستودع توزيع إقليمي وبضائع عامة (Regional Distribution Center - RDC)',
+    nameAr: 'مستودع توزيع إقليمي وبضائع عامة',
     nameEn: 'Regional Distribution Center (General Retail & Dry Goods)',
     iconName: 'Package',
     tempRangeAr: '20°C إلى 24°C (جو معتدل جاف)',

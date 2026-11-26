@@ -79,20 +79,23 @@ public class WmsController : ControllerBase
                 : $"BAY-{shelfCode}";
 
             var totalItems = g.Sum(s => s.Quantity);
-            // Dynamic capacity: default rack capacity is 32 pallets
+            // Dynamic bay capacity: default rack capacity is 32 pallets
             var totalCapacity = 32;
-            var usedCapacity = Math.Min(totalCapacity, totalItems);
-            var occupancy = totalCapacity > 0 ? Math.Round(((decimal)usedCapacity / totalCapacity) * 100, 1) : 0m;
+            var usedCapacity = Math.Max(0, totalItems);
+            var occupancy = totalCapacity > 0
+                ? Math.Min(100m, Math.Round(((decimal)usedCapacity / totalCapacity) * 100m, 1))
+                : 0m;
+            var isOverCapacity = usedCapacity > totalCapacity;
 
             return new
             {
                 id = $"rack-{bayCode.ToLower()}",
                 bayCode = bayCode,
-                label = $"الرف قاطع {shelfCode}",
-                labelEn = $"Rack Bay {shelfCode}",
+                shelfCode = shelfCode,
                 totalCapacity = totalCapacity,
                 usedCapacity = usedCapacity,
                 occupancy = occupancy,
+                isOverCapacity = isOverCapacity,
                 items = g.Select(s => new
                 {
                     id = s.Product?.Id.ToString() ?? s.ProductId.ToString(),

@@ -534,11 +534,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [settings.baseCurrency, isAr, currentCurrencyMeta]);
 
   const isMethodAllowed = useCallback((method: string) => {
-    return isPaymentMethodAllowedForCountry(method, settings.tenantCountryCode || 'US');
+    return isPaymentMethodAllowedForCountry(method, settings.tenantCountryCode || 'IQ');
   }, [settings.tenantCountryCode]);
 
   const allowedPaymentMethods = useMemo(() => {
-    return getAllowedPaymentMethodsForCountry(settings.tenantCountryCode || 'US');
+    return getAllowedPaymentMethodsForCountry(settings.tenantCountryCode || 'IQ');
   }, [settings.tenantCountryCode]);
 
   const setLocale = useCallback(async (newLocale: string) => {
@@ -570,7 +570,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateSettings,
     isSaving,
     lastSyncedAt,
-    tenantCountryCode: settings.tenantCountryCode || 'US',
+    tenantCountryCode: settings.tenantCountryCode || 'IQ',
     isMethodAllowed,
     allowedPaymentMethods,
     t,
@@ -633,7 +633,7 @@ const fallbackContextValue: SettingsContextType = {
   updateSettings: async () => {},
   isSaving: false,
   lastSyncedAt: null,
-  tenantCountryCode: DEFAULT_SETTINGS.tenantCountryCode || 'US',
+  tenantCountryCode: DEFAULT_SETTINGS.tenantCountryCode || 'IQ',
   isMethodAllowed: () => true,
   allowedPaymentMethods: [],
   t: (key: string, fallback?: string) => fallback || key,

@@ -22,6 +22,32 @@ public class PublicLoyaltyCardController : ControllerBase
         _logger = logger;
     }
 
+    [AllowAnonymous]
+    [HttpGet("/api/public/loyalty-lookup")]
+    [HttpGet("/api/v1/public/loyalty-lookup")]
+    public async Task<ActionResult<ApiResponse<PublicLoyaltyCardDto>>> LookupCard(
+        [FromQuery] string? token,
+        [FromQuery] string? code,
+        [FromQuery] string? phone,
+        CancellationToken ct)
+    {
+        try
+        {
+            var card = await _rewardsService.LookupPublicCardAsync(token, code, phone, ct);
+            return Ok(ApiResponse<PublicLoyaltyCardDto>.Ok(card));
+        }
+        catch (LoyaltyDomainException ex)
+        {
+            return StatusCode(ex.StatusCode, ApiResponse<PublicLoyaltyCardDto>.Fail(ex.ErrorCode, "LOYALTY", ex.Metadata));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving public loyalty lookup");
+            return StatusCode(500, ApiResponse<PublicLoyaltyCardDto>.Fail("ERR_PUBLIC_CARD_LOAD_FAILED", "LOYALTY"));
+        }
+    }
+
+    [AllowAnonymous]
     [HttpGet("{token}")]
     public async Task<ActionResult<ApiResponse<PublicLoyaltyCardDto>>> GetCard(
         [FromRoute] string token,

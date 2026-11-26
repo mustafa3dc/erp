@@ -40,8 +40,15 @@ export function evaluateRouteAccess(
 ): RouteGuardResult {
   const cleanPath = pathname.toLowerCase();
 
-  // Public / Auth routes
-  if (cleanPath === '/login' || cleanPath.startsWith('/auth')) {
+  // Public / Auth / Loyalty Wallet routes
+  if (
+    cleanPath === '/login' ||
+    cleanPath.startsWith('/auth') ||
+    cleanPath === '/card' ||
+    cleanPath.startsWith('/card/') ||
+    cleanPath === '/loyalty' ||
+    cleanPath.startsWith('/loyalty/')
+  ) {
     return { allowed: true };
   }
 

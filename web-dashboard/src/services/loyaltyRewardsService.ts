@@ -430,10 +430,17 @@ function findLocalCustomerByTokenAcrossTenants(token: string): {
     matchesBySlug.push({ slug, storeName, storeLogo, customers: list, customersKey: key });
   }
 
+  const trimmedLookup = decodeURIComponent(token || '').trim();
+  const lookupUpper = trimmedLookup.toUpperCase();
+
   let matchedTenant: LocalTenantMatch | null = null;
   for (const entry of matchesBySlug) {
     const found = entry.customers.find(
-      c => c && !c.isDefaultCashCustomer && c.loyaltyCardToken === token
+      c =>
+        c &&
+        !c.isDefaultCashCustomer &&
+        (c.loyaltyCardToken === trimmedLookup ||
+          (c.loyaltyMemberCode && String(c.loyaltyMemberCode).toUpperCase() === lookupUpper))
     );
     if (found) {
       matchedTenant = {
@@ -484,22 +491,41 @@ function findLocalCustomerByTokenAcrossTenants(token: string): {
 }
 
 export async function fetchPublicLoyaltyCard(token: string): Promise<PublicLoyaltyCardData> {
+  const cleanToken = decodeURIComponent(token || '').trim();
+  if (!cleanToken) {
+    throw new Error('ERR_LOYALTY_CARD_NOT_FOUND');
+  }
+
   try {
-    const res = await fetch(`/api/public/loyalty-card/${encodeURIComponent(token)}`);
+    // Public endpoints: strictly zero Auth/Tenant headers so unauthenticated mobile sessions succeed cleanly
+    const res = await fetch(`/api/public/loyalty-card/${encodeURIComponent(cleanToken)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    });
     const json = await res.json().catch(() => null);
     if (res.ok && json?.success && json.data) {
       return json.data;
     }
+
+    // Fallback to public lookup endpoint (?token=... / LOY- code)
+    const lookupRes = await fetch(
+      `/api/public/loyalty-lookup?token=${encodeURIComponent(cleanToken)}`,
+      { method: 'GET', headers: { Accept: 'application/json' } }
+    );
+    const lookupJson = await lookupRes.json().catch(() => null);
+    if (lookupRes.ok && lookupJson?.success && lookupJson.data) {
+      return lookupJson.data;
+    }
+
     if (res.status === 404 && json?.errorCode === 'ERR_LOYALTY_CARD_NOT_FOUND') {
-      // Check local tenant fallback before throwing not found (for browser offline demo mode)
-      const localCheck = findLocalCustomerByTokenAcrossTenants(token);
+      const localCheck = findLocalCustomerByTokenAcrossTenants(cleanToken);
       if (!localCheck.match) throw new Error('ERR_LOYALTY_CARD_NOT_FOUND');
     }
   } catch (err: any) {
     if (err?.message === 'ERR_LOYALTY_CARD_NOT_FOUND') throw err;
   }
 
-  const { match, storeCards } = findLocalCustomerByTokenAcrossTenants(token);
+  const { match, storeCards } = findLocalCustomerByTokenAcrossTenants(cleanToken);
   if (!match) {
     throw new Error('ERR_LOYALTY_CARD_NOT_FOUND');
   }
@@ -1015,4 +1041,78 @@ export async function claimPosVoucher(params: {
   safeSet(KEYS.LOYALTY_VOUCHERS, vouchers);
 
   return lookupPosVoucher(normCode);
+}
+
+/**
+ * Ensures locally registered customers (and their LoyaltyCardToken / LoyaltyMemberCode)
+ * are persisted in PostgreSQL so QR scans from external mobile phones resolve immediately.
+ */
+export async function syncCustomersToBackend(customersSubset?: any[]): Promise<void> {
+  const token = getAuthToken();
+  if (!token) return;
+
+  const list = (customersSubset && customersSubset.length > 0 ? customersSubset : getStoredCustomers())
+    .filter(c => c && !c.isDefaultCashCustomer && c.name && String(c.code || '').toUpperCase() !== 'WALK-IN-CASH');
+
+  if (list.length === 0) return;
+
+  try {
+    const payload = list.map(c => ({
+      id: isUuid(c.id) ? c.id : null,
+      code: c.code || null,
+      name: c.name,
+      phone: c.phone && c.phone !== '—' ? c.phone : null,
+      creditLimit: Number(c.creditLimit) || 0,
+      loyaltyPointsBalance: Number(c.loyaltyPointsBalance ?? c.loyaltyPoints ?? 0) || 0,
+      loyaltyMemberCode: c.loyaltyMemberCode || null,
+      loyaltyCardToken: c.loyaltyCardToken || null
+    }));
+
+    const res = await fetch('/api/customers/sync-loyalty-cards', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !Array.isArray(json.data)) return;
+
+    const currentLocal = getStoredCustomers();
+    const syncedByToken = new Map<string, any>();
+    const syncedByCode = new Map<string, any>();
+    for (const item of json.data) {
+      if (item.loyaltyCardToken) syncedByToken.set(item.loyaltyCardToken, item);
+      if (item.loyaltyMemberCode) syncedByCode.set(String(item.loyaltyMemberCode).toUpperCase(), item);
+    }
+
+    let changed = false;
+    const merged = currentLocal.map(loc => {
+      if (!loc || loc.isDefaultCashCustomer) return loc;
+      const remote =
+        (loc.loyaltyCardToken && syncedByToken.get(loc.loyaltyCardToken)) ||
+        (loc.loyaltyMemberCode && syncedByCode.get(String(loc.loyaltyMemberCode).toUpperCase()));
+      if (!remote) return loc;
+
+      if (
+        loc.id !== remote.id ||
+        loc.loyaltyCardToken !== remote.loyaltyCardToken ||
+        loc.loyaltyMemberCode !== remote.loyaltyMemberCode
+      ) {
+        changed = true;
+        return {
+          ...loc,
+          id: remote.id,
+          loyaltyMemberCode: remote.loyaltyMemberCode || loc.loyaltyMemberCode,
+          loyaltyCardToken: remote.loyaltyCardToken || loc.loyaltyCardToken
+        };
+      }
+      return loc;
+    });
+
+    if (changed) {
+      saveStoredCustomers(merged);
+    }
+  } catch {
+    // Non-blocking sync when offline
+  }
 }

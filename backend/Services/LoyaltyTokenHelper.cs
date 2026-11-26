@@ -35,13 +35,38 @@ public static class LoyaltyTokenHelper
         return string.IsNullOrWhiteSpace(digits) ? null : digits;
     }
 
+    private const string AlphanumericChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
     public static string GenerateUrlSafeCardToken()
     {
-        var bytes = RandomNumberGenerator.GetBytes(24);
-        return Convert.ToBase64String(bytes)
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .TrimEnd('=');
+        Span<char> chars = stackalloc char[32];
+        for (int i = 0; i < chars.Length; i++)
+        {
+            chars[i] = AlphanumericChars[RandomNumberGenerator.GetInt32(AlphanumericChars.Length)];
+        }
+        return new string(chars);
+    }
+
+    public static string ExtractLookupToken(string? rawInput)
+    {
+        if (string.IsNullOrWhiteSpace(rawInput)) return string.Empty;
+        string decoded;
+        try
+        {
+            decoded = Uri.UnescapeDataString(rawInput.Trim());
+        }
+        catch
+        {
+            decoded = rawInput.Trim();
+        }
+
+        decoded = decoded.Trim().Trim('/');
+        if (decoded.Contains("/card/", StringComparison.OrdinalIgnoreCase))
+        {
+            var idx = decoded.LastIndexOf("/card/", StringComparison.OrdinalIgnoreCase);
+            decoded = decoded[(idx + 6)..].Split('?', '#')[0].Trim().Trim('/');
+        }
+        return decoded;
     }
 
     public static string GenerateMemberCode()

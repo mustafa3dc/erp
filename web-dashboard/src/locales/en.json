@@ -1168,7 +1168,9 @@
       "cardNotFoundDesc": "Please verify the card link or ask the store to resend your digital wallet link.",
       "poweredBy": "Powered by Fatora System",
       "closeBtn": "Close",
-      "switchLanguageBtn": "العربية"
+      "switchLanguageBtn": "العربية",
+      "receiptFooterQrTitle": "Scan to check your points & redeem rewards",
+      "receiptFooterQrSubtitle": "Digital Loyalty Card"
     },
     "posLoyaltyScan": {
       "memberAttachedToast": "Loyalty member attached: {name} ({points} pts)",

@@ -12,6 +12,7 @@ import {
 import NewCustomerModal from '../modals/NewCustomerModal';
 import DigitalLoyaltyCardModal, { DigitalLoyaltyCustomerInfo } from '../modals/DigitalLoyaltyCardModal';
 import RewardsStorePanel from './RewardsStorePanel';
+import { syncCustomersToBackend } from '../../services/loyaltyRewardsService';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
@@ -91,6 +92,8 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
       : null;
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
+
+    syncCustomersToBackend().catch(() => {});
 
     fetch('/api/customers', { headers })
       .then(res => (res.ok ? res.json() : null))
@@ -695,6 +698,9 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
           const next = [newCustomer, ...customers];
           setCustomers(next);
           saveStoredCustomers(next);
+          syncCustomersToBackend([newCustomer]).then(() => {
+            setCustomers(getStoredCustomers());
+          }).catch(() => {});
           setIsNewCustomerModalOpen(false);
           showToast(
             isAr

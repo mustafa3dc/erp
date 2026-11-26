@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Award, Check, Copy, ExternalLink, MessageCircle, QrCode, X } from 'lucide-react';
 import { ModalBackdropPortal } from '../ui/dialog';
 import QrCodeSvg from '../QrCodeSvg';
@@ -6,6 +6,7 @@ import BarcodeSvg from '../BarcodeSvg';
 import { getTranslation } from '../../lib/i18n';
 import { useSettings } from '../../context/settings-context';
 import { normalizeLoyaltyPhone } from '../../services/storageService';
+import { syncCustomersToBackend } from '../../services/loyaltyRewardsService';
 
 export interface DigitalLoyaltyCustomerInfo {
   id: string;
@@ -33,6 +34,12 @@ export default function DigitalLoyaltyCardModal({
   const isAr = lang === 'ar';
   const { settings } = useSettings();
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && customer?.loyaltyCardToken) {
+      syncCustomersToBackend([customer]).catch(() => {});
+    }
+  }, [isOpen, customer?.id, customer?.loyaltyCardToken]);
 
   if (!isOpen || !customer || !customer.loyaltyCardToken) return null;
 

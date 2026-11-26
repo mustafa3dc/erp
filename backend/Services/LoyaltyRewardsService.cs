@@ -34,6 +34,7 @@ public interface ILoyaltyRewardsService
     Task DeleteRewardAsync(Guid id, CancellationToken ct = default);
 
     Task<PublicLoyaltyCardDto> GetPublicCardAsync(string token, CancellationToken ct = default);
+    Task<PublicLoyaltyCardDto> LookupPublicCardAsync(string? token, string? code, string? phone, CancellationToken ct = default);
     Task<PublicLoyaltyVoucherDto> RedeemPublicRewardAsync(string token, Guid rewardId, CancellationToken ct = default);
     Task<PublicLoyaltyCardDto> CancelPublicVoucherAsync(string token, Guid voucherId, CancellationToken ct = default);
 
@@ -245,31 +246,83 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task<PublicLoyaltyCardDto> GetPublicCardAsync(string token, CancellationToken ct = default)
+    private async Task<Customer?> ResolvePublicCustomerEntityAsync(string rawTokenOrCode, bool asNoTracking, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        var lookup = LoyaltyTokenHelper.ExtractLookupToken(rawTokenOrCode);
+        if (string.IsNullOrWhiteSpace(lookup)) return null;
+
+        var lookupUpper = lookup.ToUpperInvariant();
+        IQueryable<Customer> query = _context.Customers.IgnoreQueryFilters();
+        if (asNoTracking) query = query.AsNoTracking();
+
+        return await query.FirstOrDefaultAsync(c =>
+            c.IsActive &&
+            !c.IsDefaultCashCustomer &&
+            c.Code != "WALK-IN-CASH" &&
+            (c.LoyaltyCardToken == lookup ||
+             (c.LoyaltyMemberCode != null && c.LoyaltyMemberCode.ToUpper() == lookupUpper)), ct);
+    }
+
+    public async Task<PublicLoyaltyCardDto> LookupPublicCardAsync(string? token, string? code, string? phone, CancellationToken ct = default)
+    {
+        var candidate = !string.IsNullOrWhiteSpace(token) ? token : code;
+        if (!string.IsNullOrWhiteSpace(candidate))
         {
-            throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
+            return await GetPublicCardAsync(candidate, ct);
         }
 
-        var trimmedToken = token.Trim();
-        var customer = await _context.Customers
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c =>
-                c.LoyaltyCardToken == trimmedToken &&
-                c.IsActive &&
-                !c.IsDefaultCashCustomer &&
-                c.Code != "WALK-IN-CASH", ct)
+        if (!string.IsNullOrWhiteSpace(phone))
+        {
+            var rawPhone = phone.Trim();
+            var normPhone = LoyaltyTokenHelper.NormalizePhone(rawPhone);
+            var customer = await _context.Customers
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c =>
+                    c.IsActive &&
+                    !c.IsDefaultCashCustomer &&
+                    c.Code != "WALK-IN-CASH" &&
+                    ((!string.IsNullOrEmpty(normPhone) && c.NormalizedPhone == normPhone) ||
+                     (c.Phone != null && c.Phone == rawPhone)), ct)
+                ?? throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
+
+            var resolvedKey = !string.IsNullOrWhiteSpace(customer.LoyaltyCardToken)
+                ? customer.LoyaltyCardToken
+                : customer.LoyaltyMemberCode ?? string.Empty;
+
+            return await GetPublicCardAsync(resolvedKey, ct);
+        }
+
+        throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
+    }
+
+    public async Task<PublicLoyaltyCardDto> GetPublicCardAsync(string token, CancellationToken ct = default)
+    {
+        var customer = await ResolvePublicCustomerEntityAsync(token, asNoTracking: true, ct)
             ?? throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
 
-        var tenantId = customer.TenantId
-            ?? throw new LoyaltyDomainException("ERR_TENANT_NOT_FOUND", 404);
+        var resolvedToken = string.IsNullOrWhiteSpace(customer.LoyaltyCardToken)
+            ? (customer.LoyaltyMemberCode ?? LoyaltyTokenHelper.ExtractLookupToken(token))
+            : customer.LoyaltyCardToken;
 
-        var tenant = await _context.Tenants
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == tenantId && t.IsActive, ct)
-            ?? throw new LoyaltyDomainException("ERR_TENANT_NOT_FOUND", 404);
+        Tenant? tenant = null;
+        if (customer.TenantId.HasValue && customer.TenantId.Value != Guid.Empty)
+        {
+            tenant = await _context.Tenants
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == customer.TenantId.Value && t.IsActive, ct);
+        }
+        if (tenant == null)
+        {
+            tenant = await _context.Tenants
+                .AsNoTracking()
+                .Where(t => t.IsActive)
+                .OrderBy(t => t.CreatedAt)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new LoyaltyDomainException("ERR_TENANT_NOT_FOUND", 404);
+        }
+
+        var tenantId = tenant.Id;
 
         var settings = await _context.LoyaltySettings
             .IgnoreQueryFilters()
@@ -361,7 +414,7 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
                       && c.Code != "WALK-IN-CASH"
                       && c.LoyaltyCardToken != null
                       && t.IsActive
-                orderby (c.LoyaltyCardToken == trimmedToken ? 0 : 1), t.Name
+                orderby (c.Id == customer.Id ? 0 : 1), t.Name
                 select new StoreCardSummaryDto
                 {
                     StoreName = t.Name,
@@ -377,7 +430,7 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
             {
                 StoreName = tenant.Name,
                 StoreLogo = tenant.LogoUrl,
-                CardToken = trimmedToken
+                CardToken = resolvedToken
             });
         }
 
@@ -387,7 +440,7 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
             StoreLogo = tenant.LogoUrl,
             CustomerName = customer.Name,
             LoyaltyMemberCode = customer.LoyaltyMemberCode ?? string.Empty,
-            LoyaltyCardToken = trimmedToken,
+            LoyaltyCardToken = resolvedToken,
             LoyaltyPointsBalance = customer.LoyaltyPointsBalance,
             IsLoyaltyEnabled = isLoyaltyEnabled,
             RecentTransactions = transactions,
@@ -404,20 +457,14 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
             throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
         }
 
-        var trimmedToken = token.Trim();
         await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         try
         {
-            var customer = await _context.Customers
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(c =>
-                    c.LoyaltyCardToken == trimmedToken &&
-                    c.IsActive &&
-                    !c.IsDefaultCashCustomer &&
-                    c.Code != "WALK-IN-CASH", ct)
+            var customer = await ResolvePublicCustomerEntityAsync(token, asNoTracking: false, ct)
                 ?? throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
 
             var tenantId = customer.TenantId
+                ?? (await _context.Tenants.AsNoTracking().Where(t => t.IsActive).OrderBy(t => t.CreatedAt).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct))
                 ?? throw new LoyaltyDomainException("ERR_TENANT_NOT_FOUND", 404);
 
             var settings = await _context.LoyaltySettings
@@ -531,20 +578,19 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
             throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
         }
 
-        var trimmedToken = token.Trim();
+        string returnLookupKey = LoyaltyTokenHelper.ExtractLookupToken(token);
         await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         try
         {
-            var customer = await _context.Customers
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(c =>
-                    c.LoyaltyCardToken == trimmedToken &&
-                    c.IsActive &&
-                    !c.IsDefaultCashCustomer &&
-                    c.Code != "WALK-IN-CASH", ct)
+            var customer = await ResolvePublicCustomerEntityAsync(token, asNoTracking: false, ct)
                 ?? throw new LoyaltyDomainException("ERR_LOYALTY_CARD_NOT_FOUND", 404);
 
+            returnLookupKey = string.IsNullOrWhiteSpace(customer.LoyaltyCardToken)
+                ? (customer.LoyaltyMemberCode ?? returnLookupKey)
+                : customer.LoyaltyCardToken;
+
             var tenantId = customer.TenantId
+                ?? (await _context.Tenants.AsNoTracking().Where(t => t.IsActive).OrderBy(t => t.CreatedAt).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct))
                 ?? throw new LoyaltyDomainException("ERR_TENANT_NOT_FOUND", 404);
 
             var voucher = await _context.LoyaltyRedemptionVouchers
@@ -589,7 +635,7 @@ public class LoyaltyRewardsService : ILoyaltyRewardsService
             throw;
         }
 
-        return await GetPublicCardAsync(trimmedToken, ct);
+        return await GetPublicCardAsync(returnLookupKey, ct);
     }
 
     public async Task<PosVoucherLookupDto> GetPosVoucherAsync(string code, CancellationToken ct = default)

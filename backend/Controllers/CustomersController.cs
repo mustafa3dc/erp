@@ -127,18 +127,25 @@ public class CustomersController : ControllerBase
 
         var now = DateTime.UtcNow;
         var trimmedPhone = dto.Phone?.Trim();
+        var memberCode = !string.IsNullOrWhiteSpace(dto.LoyaltyMemberCode)
+            ? dto.LoyaltyMemberCode.Trim().ToUpperInvariant()
+            : LoyaltyTokenHelper.GenerateMemberCode();
+        var cardToken = !string.IsNullOrWhiteSpace(dto.LoyaltyCardToken)
+            ? dto.LoyaltyCardToken.Trim()
+            : LoyaltyTokenHelper.GenerateUrlSafeCardToken();
+
         var customer = new Customer
         {
             Id = Guid.NewGuid(),
-            Code = $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}",
+            Code = string.IsNullOrWhiteSpace(dto.Code) ? $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}" : dto.Code.Trim(),
             Name = trimmedName,
             Phone = trimmedPhone,
             NormalizedPhone = LoyaltyTokenHelper.NormalizePhone(trimmedPhone),
             Email = dto.Email?.Trim(),
             CreditLimit = dto.CreditLimit ?? 0m,
-            LoyaltyPointsBalance = 0.0000m,
-            LoyaltyMemberCode = LoyaltyTokenHelper.GenerateMemberCode(),
-            LoyaltyCardToken = LoyaltyTokenHelper.GenerateUrlSafeCardToken(),
+            LoyaltyPointsBalance = dto.LoyaltyPointsBalance ?? 0.0000m,
+            LoyaltyMemberCode = memberCode,
+            LoyaltyCardToken = cardToken,
             IsDefaultCashCustomer = false,
             IsActive = true,
             CreatedBy = User.Identity?.Name ?? "System",
@@ -165,12 +172,114 @@ public class CustomersController : ControllerBase
             customer.CreatedAt
         });
     }
+
+    [HttpPost("sync-loyalty-cards")]
+    public async Task<ActionResult<ApiResponse<List<PosCustomerLookupDto>>>> SyncLoyaltyCards(
+        [FromBody] List<QuickCreateCustomerDto> items,
+        CancellationToken ct)
+    {
+        if (items == null || items.Count == 0)
+        {
+            return Ok(ApiResponse<List<PosCustomerLookupDto>>.Ok(new List<PosCustomerLookupDto>()));
+        }
+
+        var existing = await _context.Customers
+            .Where(c => c.IsActive && !c.IsDefaultCashCustomer)
+            .ToListAsync(ct);
+
+        var now = DateTime.UtcNow;
+        var results = new List<PosCustomerLookupDto>();
+
+        foreach (var item in items.Take(200))
+        {
+            var trimmedName = item.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedName)) continue;
+            var trimmedPhone = item.Phone?.Trim();
+            var normPhone = LoyaltyTokenHelper.NormalizePhone(trimmedPhone);
+
+            var matched = existing.FirstOrDefault(c =>
+                (item.Id.HasValue && c.Id == item.Id.Value) ||
+                (!string.IsNullOrWhiteSpace(item.LoyaltyCardToken) && c.LoyaltyCardToken == item.LoyaltyCardToken.Trim()) ||
+                (!string.IsNullOrWhiteSpace(item.LoyaltyMemberCode) && string.Equals(c.LoyaltyMemberCode, item.LoyaltyMemberCode.Trim(), StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrWhiteSpace(normPhone) && c.NormalizedPhone == normPhone && string.Equals(c.Name.Trim(), trimmedName, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrWhiteSpace(item.Code) && string.Equals(c.Code, item.Code.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+            if (matched != null)
+            {
+                if (string.IsNullOrWhiteSpace(matched.LoyaltyMemberCode))
+                {
+                    matched.LoyaltyMemberCode = !string.IsNullOrWhiteSpace(item.LoyaltyMemberCode)
+                        ? item.LoyaltyMemberCode.Trim().ToUpperInvariant()
+                        : LoyaltyTokenHelper.GenerateMemberCode();
+                }
+                if (string.IsNullOrWhiteSpace(matched.LoyaltyCardToken))
+                {
+                    matched.LoyaltyCardToken = !string.IsNullOrWhiteSpace(item.LoyaltyCardToken)
+                        ? item.LoyaltyCardToken.Trim()
+                        : LoyaltyTokenHelper.GenerateUrlSafeCardToken();
+                }
+                if (!string.IsNullOrWhiteSpace(normPhone) && string.IsNullOrWhiteSpace(matched.NormalizedPhone))
+                {
+                    matched.NormalizedPhone = normPhone;
+                }
+            }
+            else
+            {
+                matched = new Customer
+                {
+                    Id = item.Id.HasValue && item.Id.Value != Guid.Empty ? item.Id.Value : Guid.NewGuid(),
+                    Code = !string.IsNullOrWhiteSpace(item.Code) ? item.Code.Trim() : $"CUST-{now:yyMMdd}-{Random.Shared.Next(1000, 9999)}",
+                    Name = trimmedName,
+                    Phone = trimmedPhone,
+                    NormalizedPhone = normPhone,
+                    Email = item.Email?.Trim(),
+                    CreditLimit = item.CreditLimit ?? 0m,
+                    LoyaltyPointsBalance = item.LoyaltyPointsBalance ?? 0.0000m,
+                    LoyaltyMemberCode = !string.IsNullOrWhiteSpace(item.LoyaltyMemberCode)
+                        ? item.LoyaltyMemberCode.Trim().ToUpperInvariant()
+                        : LoyaltyTokenHelper.GenerateMemberCode(),
+                    LoyaltyCardToken = !string.IsNullOrWhiteSpace(item.LoyaltyCardToken)
+                        ? item.LoyaltyCardToken.Trim()
+                        : LoyaltyTokenHelper.GenerateUrlSafeCardToken(),
+                    IsDefaultCashCustomer = false,
+                    IsActive = true,
+                    CreatedBy = User.Identity?.Name ?? "Sync",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+                _context.Customers.Add(matched);
+                existing.Add(matched);
+            }
+
+            results.Add(new PosCustomerLookupDto
+            {
+                Id = matched.Id,
+                Code = matched.Code,
+                Name = matched.Name,
+                Phone = matched.Phone,
+                LoyaltyMemberCode = matched.LoyaltyMemberCode,
+                LoyaltyCardToken = matched.LoyaltyCardToken,
+                LoyaltyPointsBalance = matched.LoyaltyPointsBalance,
+                CreditLimit = matched.CreditLimit,
+                CurrentBalance = matched.CurrentBalance,
+                IsDefaultCashCustomer = matched.IsDefaultCashCustomer
+            });
+        }
+
+        await _context.SaveChangesAsync(ct);
+        return Ok(ApiResponse<List<PosCustomerLookupDto>>.Ok(results));
+    }
 }
 
 public class QuickCreateCustomerDto
 {
+    public Guid? Id { get; set; }
+    public string? Code { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public decimal? CreditLimit { get; set; }
+    public decimal? LoyaltyPointsBalance { get; set; }
+    public string? LoyaltyMemberCode { get; set; }
+    public string? LoyaltyCardToken { get; set; }
 }

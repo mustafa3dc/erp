@@ -46,12 +46,14 @@ import ElectronicScaleModal from '../modals/ElectronicScaleModal';
 import DigitalLoyaltyCardModal, { DigitalLoyaltyCustomerInfo } from '../modals/DigitalLoyaltyCardModal';
 import RewardHandoverModal from '../modals/RewardHandoverModal';
 import ManualVoucherLookupModal from '../modals/ManualVoucherLookupModal';
+import QrCodeSvg from '../QrCodeSvg';
 import {
   claimPosVoucher,
   fetchPendingPosVouchers,
   lookupCustomerByMemberCode,
   lookupPosVoucher,
-  PosVoucherLookupResult
+  PosVoucherLookupResult,
+  syncCustomersToBackend
 } from '../../services/loyaltyRewardsService';
 import { 
   ActiveShift, 
@@ -1045,8 +1047,13 @@ export default function PosTerminalView({
       try {
         const token = localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         if (tenantCountryCode) headers['X-Tenant-Country'] = tenantCountryCode;
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+        if (matchedCustomer && matchedCustomer.loyaltyCardToken) {
+          syncCustomersToBackend([matchedCustomer]).catch(() => {});
+        }
 
         fetch('/api/pos/invoices', {
           method: 'POST',
@@ -2740,7 +2747,11 @@ export default function PosTerminalView({
                       currency: currencySymbol,
                       paymentMethod: lastCompletedOrder.paymentMethod || 'CASH',
                       openDrawer: (lastCompletedOrder.paymentMethod || 'CASH').toUpperCase() === 'CASH',
-                      cutPaper: true
+                      cutPaper: true,
+                      qrData:
+                        lastCompletedOrder.customerInfo?.loyaltyCardToken && typeof window !== 'undefined'
+                          ? `${window.location.origin}/card/${encodeURIComponent(lastCompletedOrder.customerInfo.loyaltyCardToken)}`
+                          : undefined
                     });
                   } else {
                     window.print();
@@ -2761,15 +2772,26 @@ export default function PosTerminalView({
                 {isAr ? 'إغلاق' : 'Close'}
               </button>
             </div>
-            {lastCompletedOrder.customerInfo?.loyaltyCardToken && (
-              <button
-                type="button"
-                onClick={() => setDigitalCardCustomer(lastCompletedOrder.customerInfo!)}
-                className="mt-2.5 w-full px-3.5 py-2 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
-              >
-                <QrCode size={15} />
-                <span>{getTranslation(lang, 'ui.digitalWallet.cardModalBtn')}</span>
-              </button>
+            {lastCompletedOrder.customerInfo?.loyaltyCardToken && typeof window !== 'undefined' && (
+              <div className="mt-3 pt-3 border-t border-dashed border-border flex flex-col items-center gap-2 text-center">
+                <div className="bg-white p-2 rounded-lg border border-border inline-flex items-center justify-center shadow-xs">
+                  <QrCodeSvg
+                    value={`${window.location.origin}/card/${encodeURIComponent(lastCompletedOrder.customerInfo.loyaltyCardToken)}`}
+                    size={90}
+                  />
+                </div>
+                <div className="text-[11px] font-semibold text-muted-foreground">
+                  {getTranslation(lang, 'ui.digitalWallet.receiptFooterQrTitle')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDigitalCardCustomer(lastCompletedOrder.customerInfo!)}
+                  className="w-full px-3.5 py-2 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  <QrCode size={15} />
+                  <span>{getTranslation(lang, 'ui.digitalWallet.cardModalBtn')}</span>
+                </button>
+              </div>
             )}
           </div>
         </ModalBackdropPortal>

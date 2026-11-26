@@ -1168,7 +1168,9 @@
       "cardNotFoundDesc": "تأكد من صحة الرابط أو اطلب من المتجر إعادة إرسال رابط بطاقتك.",
       "poweredBy": "مدعوم بواسطة نظام فاتورة",
       "closeBtn": "إغلاق",
-      "switchLanguageBtn": "English"
+      "switchLanguageBtn": "English",
+      "receiptFooterQrTitle": "امسح الرمز لمتابعة نقاطك واستبدال المكافآت",
+      "receiptFooterQrSubtitle": "بطاقة الولاء الرقمية"
     },
     "posLoyaltyScan": {
       "memberAttachedToast": "تم ربط عضو الولاء: {name} (الرصيد: {points} نقطة)",

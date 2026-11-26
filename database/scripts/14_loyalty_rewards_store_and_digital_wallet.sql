@@ -39,7 +39,7 @@ WHERE is_default_cash_customer = FALSE
   AND (loyalty_member_code IS NULL OR btrim(loyalty_member_code) = '');
 
 UPDATE customers
-SET loyalty_card_token = replace(replace(replace(encode(gen_random_bytes(24), 'base64'), '+', '-'), '/', '_'), '=', '')
+SET loyalty_card_token = substr(md5(random()::text || id::text) || md5(clock_timestamp()::text || id::text), 1, 32)
 WHERE is_default_cash_customer = FALSE
   AND UPPER(COALESCE(code, '')) <> 'WALK-IN-CASH'
   AND (loyalty_card_token IS NULL OR btrim(loyalty_card_token) = '');

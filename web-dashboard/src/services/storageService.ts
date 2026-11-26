@@ -2376,16 +2376,20 @@ export function normalizeLoyaltyPhone(phone?: string | null): string {
   return converted;
 }
 
+const ALPHANUMERIC_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
 export function generateLocalCardToken(): string {
-  const bytes = new Uint8Array(18);
+  const bytes = new Uint8Array(32);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
   } else {
     for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
   }
-  let binary = '';
-  bytes.forEach(b => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  let token = '';
+  for (let i = 0; i < bytes.length; i++) {
+    token += ALPHANUMERIC_CHARS[bytes[i] % ALPHANUMERIC_CHARS.length];
+  }
+  return token;
 }
 
 export function generateLocalMemberCode(existingCodes: Set<string>): string {

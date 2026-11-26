@@ -158,10 +158,11 @@ export default function PublicLoyaltyCardPage({
     setShowAddToHomeHint(prev => !prev);
   };
 
+  const effectiveCardToken = card?.loyaltyCardToken || token;
   const cardUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/card/${encodeURIComponent(token)}`
-      : `/card/${token}`;
+    typeof window !== 'undefined' && effectiveCardToken
+      ? `${window.location.origin}/card/${encodeURIComponent(effectiveCardToken)}`
+      : `/card/${encodeURIComponent(effectiveCardToken || '')}`;
 
   const isIos =
     typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');

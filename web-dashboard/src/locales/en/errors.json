@@ -42,7 +42,9 @@
       "INVALID_EXPENSE_AMOUNT": "Expense amount is invalid, must be greater than zero",
       "VOUCHER_NOT_FOUND": "Expense voucher not found",
       "VOUCHER_ALREADY_APPROVED": "This expense voucher has already been approved and disbursed",
-      "CATEGORY_CODE_EXISTS": "An expense category with this code already exists"
+      "CATEGORY_CODE_EXISTS": "An expense category with this code already exists",
+      "ERR_CATEGORY_NAME_REQUIRED": "Please enter the category name.",
+      "ERR_INVALID_CATEGORY_BUDGET": "Monthly budget cap cannot be negative."
     },
     "LEDGER": {
       "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",

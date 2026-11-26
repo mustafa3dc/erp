@@ -1,6 +1,9 @@
 -- 17_remove_seeded_expense_categories.sql
 -- Removes pre-populated default expense categories cleanly and detaches any references safely.
 
+ALTER TABLE IF EXISTS expense_categories
+    ADD COLUMN IF NOT EXISTS monthly_budget_cap NUMERIC(18, 4) NOT NULL DEFAULT 0.0000;
+
 ALTER TABLE IF EXISTS expense_vouchers
     ALTER COLUMN expense_category_id DROP NOT NULL;
 

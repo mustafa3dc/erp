@@ -42,7 +42,9 @@
       "INVALID_EXPENSE_AMOUNT": "مبلغ المصروف غير صالح، يجب أن يكون أكبر من صفر",
       "VOUCHER_NOT_FOUND": "سند المصروف المطلوب غير موجود",
       "VOUCHER_ALREADY_APPROVED": "تم اعتماد وصرف هذا السند مسبقاً",
-      "CATEGORY_CODE_EXISTS": "رمز تصنيف المصروف مسجل مسبقاً"
+      "CATEGORY_CODE_EXISTS": "رمز تصنيف المصروف مسجل مسبقاً",
+      "ERR_CATEGORY_NAME_REQUIRED": "يرجى إدخال اسم التصنيف.",
+      "ERR_INVALID_CATEGORY_BUDGET": "سقف الميزانية الشهرية لا يمكن أن يكون سالباً."
     },
     "LEDGER": {
       "IMMUTABLE": "سجل القيود غير قابل للتعديل أو الحذف إطلاقاً",

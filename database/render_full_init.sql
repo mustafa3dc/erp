@@ -1442,6 +1442,7 @@ CREATE TABLE IF NOT EXISTS expense_categories (
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     code VARCHAR(50) NOT NULL,
     name VARCHAR(150) NOT NULL,
+    monthly_budget_cap NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,
     description TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

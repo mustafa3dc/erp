@@ -1434,6 +1434,9 @@ public class ExpenseCategory : ITenantEntity
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
+    [Column("monthly_budget_cap", TypeName = "numeric(18, 4)")]
+    public decimal MonthlyBudgetCap { get; set; } = 0.0000m;
+
     [Column("description")]
     public string? Description { get; set; }
 

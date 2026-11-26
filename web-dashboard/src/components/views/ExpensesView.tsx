@@ -14,7 +14,9 @@ import {
   Filter, 
   AlertTriangle,
   X,
-  CalendarClock
+  CalendarClock,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -93,12 +95,48 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   const [vNotes, setVNotes] = useState('');
   const [vDate, setVDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  // Form state - Category
-  const [cCode, setCCode] = useState('');
+  // Form state - Category (Single unified Name, auto-generated Code, optional formatted Monthly Cap)
+  const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [cName, setCName] = useState('');
-  const [cNameAr, setCNameAr] = useState('');
-  const [cBudget, setCBudget] = useState<number | ''>('');
+  const [cBudgetInput, setCBudgetInput] = useState('');
   const [cDesc, setCDesc] = useState('');
+  const [categoryFormError, setCategoryFormError] = useState('');
+  const [isCategorySaving, setIsCategorySaving] = useState(false);
+
+  const formatBudgetInputDisplay = (raw: string): string => {
+    const cleaned = raw.replace(/[^0-9.]/g, '');
+    if (!cleaned) return '';
+    const parts = cleaned.split('.');
+    const intPart = parts[0].replace(/^0+(?=\d)/, '');
+    const formattedInt = Number(intPart || '0').toLocaleString('en-US');
+    return parts.length > 1 ? `${formattedInt}.${parts[1].slice(0, 4)}` : formattedInt;
+  };
+
+  const parseBudgetInputValue = (formatted: string): number => {
+    const raw = formatted.replace(/,/g, '').trim();
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const openNewCategoryModal = () => {
+    setEditingCategory(null);
+    setCName('');
+    setCBudgetInput('');
+    setCDesc('');
+    setCategoryFormError('');
+    setIsCategoryModalOpen(true);
+  };
+
+  const openEditCategoryModal = (cat: ExpenseCategory) => {
+    setEditingCategory(cat);
+    setCName(cat.name || cat.nameAr || '');
+    const cap = Number(cat.monthlyBudgetCap ?? cat.budgetLimit ?? 0);
+    setCBudgetInput(cap > 0 ? cap.toLocaleString('en-US') : '');
+    setCDesc(cat.description || '');
+    setCategoryFormError('');
+    setIsCategoryModalOpen(true);
+  };
 
   // Fetch real data from API with fallback
   useEffect(() => {
@@ -278,55 +316,138 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
     showToast(getTranslation(lang, 'expenses.rejectSuccess'));
   };
 
-  // Handle Create Category
-  const handleCreateCategory = async (e: React.FormEvent) => {
+  // Handle Create / Update Category (auto-generated sequential Code, single unified Name)
+  const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cCode.trim() || !cName.trim()) return;
+    setCategoryFormError('');
 
-    const payload = {
-      code: cCode.trim().toUpperCase(),
-      name: cName.trim(),
-      nameAr: cNameAr.trim() || undefined,
-      budgetLimit: cBudget ? Number(cBudget) : undefined,
-      description: cDesc.trim() || undefined
-    };
+    const trimmedName = cName.trim();
+    if (!trimmedName) {
+      setCategoryFormError(getTranslation(lang, 'errors.EXPENSES.ERR_CATEGORY_NAME_REQUIRED'));
+      return;
+    }
 
-    let newCat: ExpenseCategory = {
-      id: `CAT-${Date.now()}`,
-      tenantId: 'default',
-      code: payload.code,
-      name: payload.name,
-      nameAr: payload.nameAr,
-      budgetLimit: payload.budgetLimit,
-      totalSpent: 0,
-      description: payload.description,
-      isActive: true,
-      createdAt: new Date().toISOString()
-    };
+    const monthlyCap = parseBudgetInputValue(cBudgetInput);
+    if (monthlyCap < 0) {
+      setCategoryFormError(getTranslation(lang, 'errors.EXPENSES.ERR_INVALID_CATEGORY_BUDGET'));
+      return;
+    }
 
+    setIsCategorySaving(true);
     try {
-      const res = await apiClient.post('/api/expenses/categories', payload);
-      if (res && res.success && res.data) {
-        newCat = { ...newCat, id: res.data.id || newCat.id };
+      if (editingCategory) {
+        const updatePayload = {
+          name: trimmedName,
+          monthlyBudgetCap: monthlyCap,
+          description: cDesc.trim() || undefined,
+          isActive: editingCategory.isActive
+        };
+        let updatedCat: ExpenseCategory = {
+          ...editingCategory,
+          name: trimmedName,
+          nameAr: trimmedName,
+          monthlyBudgetCap: monthlyCap,
+          budgetLimit: monthlyCap,
+          description: cDesc.trim() || undefined,
+          updatedAt: new Date().toISOString()
+        };
+
+        try {
+          const res = await apiClient.put(`/api/expenses/categories/${editingCategory.id}`, updatePayload);
+          if (res && res.success && res.data) {
+            updatedCat = { ...updatedCat, ...res.data, budgetLimit: res.data.monthlyBudgetCap ?? monthlyCap };
+          } else if (res && res.errorCode) {
+            setCategoryFormError(getTranslation(lang, `errors.EXPENSES.${res.errorCode}`, res.errorCode));
+            return;
+          }
+        } catch {
+          // local fallback
+        }
+
+        const next = categories.map(c => c.id === editingCategory.id ? updatedCat : c);
+        setCategories(next);
+        saveStoredExpenseCategories(next);
+        setIsCategoryModalOpen(false);
+        showToast(getTranslation(lang, 'expenses.categoryUpdated'));
+      } else {
+        const createPayload = {
+          name: trimmedName,
+          monthlyBudgetCap: monthlyCap,
+          description: cDesc.trim() || undefined
+        };
+
+        let maxSeq = 0;
+        for (const c of categories) {
+          const m = (c.code || '').match(/^CAT-(\d+)$/i);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (num > maxSeq) maxSeq = num;
+          }
+        }
+        const nextNum = Math.max(categories.length + 1, maxSeq + 1);
+        const fallbackCode = `CAT-${String(nextNum).padStart(3, '0')}`;
+
+        let newCat: ExpenseCategory = {
+          id: `CAT-${Date.now()}`,
+          tenantId: 'default',
+          code: fallbackCode,
+          name: trimmedName,
+          nameAr: trimmedName,
+          monthlyBudgetCap: monthlyCap,
+          budgetLimit: monthlyCap,
+          totalSpent: 0,
+          description: cDesc.trim() || undefined,
+          isActive: true,
+          createdAt: new Date().toISOString()
+        };
+
+        try {
+          const res = await apiClient.post('/api/expenses/categories', createPayload);
+          if (res && res.success && res.data) {
+            newCat = {
+              ...newCat,
+              id: res.data.id || newCat.id,
+              code: res.data.code || newCat.code,
+              name: res.data.name || newCat.name,
+              monthlyBudgetCap: res.data.monthlyBudgetCap ?? monthlyCap,
+              budgetLimit: res.data.monthlyBudgetCap ?? monthlyCap
+            };
+          } else if (res && res.errorCode) {
+            setCategoryFormError(getTranslation(lang, `errors.EXPENSES.${res.errorCode}`, res.errorCode));
+            return;
+          }
+        } catch {
+          // local fallback
+        }
+
+        const next = [...categories, newCat];
+        setCategories(next);
+        saveStoredExpenseCategories(next);
+        if (isVoucherModalOpen) {
+          setVCategory(newCat.id);
+        }
+
+        setIsCategoryModalOpen(false);
+        setCName('');
+        setCBudgetInput('');
+        setCDesc('');
+        showToast(getTranslation(lang, 'expenses.categoryCreated'));
       }
+    } finally {
+      setIsCategorySaving(false);
+    }
+  };
+
+  const handleDeleteCategory = async (cat: ExpenseCategory) => {
+    try {
+      await apiClient.delete(`/api/expenses/categories/${cat.id}`);
     } catch {
       // local fallback
     }
-
-    const next = [...categories, newCat];
+    const next = categories.filter(c => c.id !== cat.id);
     setCategories(next);
     saveStoredExpenseCategories(next);
-    if (isVoucherModalOpen) {
-      setVCategory(newCat.id);
-    }
-
-    setIsCategoryModalOpen(false);
-    setCCode('');
-    setCName('');
-    setCNameAr('');
-    setCBudget('');
-    setCDesc('');
-    showToast(getTranslation(lang, 'expenses.categoryCreated'));
+    showToast(getTranslation(lang, 'expenses.categoryDeleted'));
   };
 
   return (
@@ -351,7 +472,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           <button 
             type="button" 
             className="btn-clean-secondary"
-            onClick={() => setIsCategoryModalOpen(true)}
+            onClick={openNewCategoryModal}
           >
             <Tag size={15} />
             <span>{getTranslation(lang, 'expenses.newCategory')}</span>
@@ -605,7 +726,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           lang={lang}
           categories={categories}
           onExpensesUpdated={() => setVouchers(getStoredExpenseVouchers())}
-          onOpenAddCategory={() => setIsCategoryModalOpen(true)}
+          onOpenAddCategory={openNewCategoryModal}
         />
       )}
 
@@ -618,10 +739,10 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                 <tr>
                   <th>{getTranslation(lang, 'expenses.categoryCode')}</th>
                   <th>{getTranslation(lang, 'expenses.categoryName')}</th>
-                  <th>{getTranslation(lang, 'expenses.categoryNameAr')}</th>
                   <th>{getTranslation(lang, 'expenses.budgetLimit')}</th>
                   <th>{getTranslation(lang, 'expenses.notes')}</th>
                   <th>{getTranslation(lang, 'expenses.status')}</th>
+                  <th style={{ textAlign: 'center' }}>{getTranslation(lang, 'expenses.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -636,7 +757,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                         action={
                           <button
                             type="button"
-                            onClick={() => setIsCategoryModalOpen(true)}
+                            onClick={openNewCategoryModal}
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-sm transition-all"
                           >
                             <Plus size={14} />
@@ -647,26 +768,54 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                     </td>
                   </tr>
                 ) : (
-                  categories.map(c => (
-                    <tr key={c.id}>
-                      <td className="font-mono font-bold text-primary" dir="ltr">
-                        {c.code}
-                      </td>
-                      <td className="font-semibold text-foreground">{c.name}</td>
-                      <td className="font-semibold text-foreground">{c.nameAr || '—'}</td>
-                      <td className="font-mono font-bold tabular-nums text-foreground" dir="ltr">
-                        {c.budgetLimit ? formatMoney(c.budgetLimit) : '—'}
-                      </td>
-                      <td className="text-xs text-muted-foreground">{c.description || '—'}</td>
-                      <td>
-                        <StatusBadge
-                          tone={c.isActive ? 'emerald' : 'slate'}
-                          dot
-                          label={c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
-                        />
-                      </td>
-                    </tr>
-                  ))
+                  categories.map(c => {
+                    const monthlyCap = Number(c.monthlyBudgetCap ?? c.budgetLimit ?? 0);
+                    return (
+                      <tr key={c.id}>
+                        <td>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-primary/10 text-primary font-mono text-xs font-bold tabular-nums" dir="ltr">
+                            {c.code}
+                          </span>
+                        </td>
+                        <td className="font-semibold text-foreground">{c.name || c.nameAr}</td>
+                        <td className="font-mono font-bold tabular-nums text-foreground" dir="ltr">
+                          {monthlyCap > 0 ? formatMoney(monthlyCap) : (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {getTranslation(lang, 'expenses.budgetUnlimited')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="text-xs text-muted-foreground">{c.description || '—'}</td>
+                        <td>
+                          <StatusBadge
+                            tone={c.isActive ? 'emerald' : 'slate'}
+                            dot
+                            label={c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
+                          />
+                        </td>
+                        <td>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditCategoryModal(c)}
+                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              title={getTranslation(lang, 'expenses.editCategory')}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(c)}
+                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors"
+                              title={getTranslation(lang, 'expenses.deleteCategory')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -704,7 +853,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                     </label>
                     <button
                       type="button"
-                      onClick={() => setIsCategoryModalOpen(true)}
+                      onClick={openNewCategoryModal}
                       className="text-[11px] font-semibold text-primary hover:underline"
                     >
                       {getTranslation(lang, 'expenses.quickAddCategoryBtn')}
@@ -848,111 +997,105 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
         </ModalBackdropPortal>
       )}
 
-      {/* Modal: New Expense Category */}
+      {/* Modal: Add / Edit Expense Category */}
       {isCategoryModalOpen && (
         <ModalBackdropPortal onClose={() => setIsCategoryModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
-          <div 
-            className="modal-content glass-panel" 
-            style={{ maxWidth: '520px', width: '92%', borderRadius: '16px', padding: '24px' }} 
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
             onClick={e => e.stopPropagation()}
             dir={isAr ? 'rtl' : 'ltr'}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Tag size={20} />
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/40">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Tag size={18} />
                 </div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{getTranslation(lang, 'expenses.newCategory')}</h3>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    {getTranslation(lang, editingCategory ? 'expenses.editCategory' : 'expenses.newCategory')}
+                  </h3>
+                  <span className="inline-flex items-center mt-0.5 px-2 py-0.5 rounded-md bg-muted border border-border text-[11px] font-mono text-muted-foreground" dir="ltr">
+                    {editingCategory ? editingCategory.code : getTranslation(lang, 'expenses.autoGeneratedCodeBadge')}
+                  </span>
+                </div>
               </div>
-              <button type="button" onClick={() => setIsCategoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                    {getTranslation(lang, 'expenses.categoryCode')}
-                  </label>
-                  <input 
-                    type="text" 
-                    value={cCode} 
-                    onChange={e => setCCode(e.target.value)} 
-                    placeholder="E.g. ADVERTISING"
-                    required
-                    className="input-clean"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', textTransform: 'uppercase' }}
-                  />
+            <form noValidate onSubmit={handleSaveCategory} className="p-5 space-y-4">
+              {categoryFormError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{categoryFormError}</span>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                    {getTranslation(lang, 'expenses.budgetLimit')}
-                  </label>
-                  <input 
-                    type="number" 
-                    step="1"
-                    min="0"
-                    placeholder="0"
-                    value={cBudget} 
-                    onChange={e => setCBudget(e.target.value ? Number(e.target.value) : '')} 
-                    className="input-clean"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
-                  />
-                </div>
-              </div>
+              )}
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                  {getTranslation(lang, 'expenses.categoryName')}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  {getTranslation(lang, 'expenses.categoryName')} *
                 </label>
-                <input 
-                  type="text" 
-                  value={cName} 
-                  onChange={e => setCName(e.target.value)} 
-                  required
-                  className="input-clean"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                <input
+                  type="text"
+                  autoFocus
+                  value={cName}
+                  onChange={e => {
+                    setCName(e.target.value);
+                    if (categoryFormError) setCategoryFormError('');
+                  }}
+                  placeholder={getTranslation(lang, 'expenses.categoryNamePlaceholder')}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                  {getTranslation(lang, 'expenses.categoryNameAr')}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  {getTranslation(lang, 'expenses.budgetLimitOptional')}
                 </label>
-                <input 
-                  type="text" 
-                  value={cNameAr} 
-                  onChange={e => setCNameAr(e.target.value)} 
-                  className="input-clean"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  dir="ltr"
+                  placeholder="600,000"
+                  value={cBudgetInput}
+                  onChange={e => setCBudgetInput(formatBudgetInputDisplay(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm font-bold text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {getTranslation(lang, 'expenses.budgetLimitHint')}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  {getTranslation(lang, 'expenses.categoryNotesOptional')}
+                </label>
+                <textarea
+                  rows={2}
+                  value={cDesc}
+                  onChange={e => setCDesc(e.target.value)}
+                  placeholder={getTranslation(lang, 'expenses.categoryNotesPlaceholder')}
+                  className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                  {getTranslation(lang, 'expenses.notes')}
-                </label>
-                <textarea 
-                  rows={2} 
-                  value={cDesc} 
-                  onChange={e => setCDesc(e.target.value)} 
-                  className="input-clean"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', resize: 'none' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button 
-                  type="button" 
-                  className="btn-clean-secondary"
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                <button
+                  type="button"
                   onClick={() => setIsCategoryModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-sm font-medium text-foreground transition-colors"
                 >
                   {getTranslation(lang, 'expenses.cancel')}
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn-clean-primary"
+                <button
+                  type="submit"
+                  disabled={isCategorySaving}
+                  className="px-5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
                 >
                   {getTranslation(lang, 'expenses.saveCategory')}
                 </button>

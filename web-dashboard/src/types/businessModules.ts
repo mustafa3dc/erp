@@ -8,6 +8,7 @@ export interface ExpenseCategory {
   name: string;
   nameAr?: string;
   description?: string;
+  monthlyBudgetCap?: number;
   budgetLimit?: number;
   totalSpent?: number;
   isActive: boolean;

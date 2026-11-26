@@ -35,11 +35,13 @@ public class ExpenseService : IExpenseService
     {
         return await _context.ExpenseCategories
             .AsNoTracking()
-            .OrderBy(c => c.Name)
+            .OrderBy(c => c.Code)
+            .ThenBy(c => c.Name)
             .Select(c => new ExpenseCategoryDto(
                 c.Id,
                 c.Code,
                 c.Name,
+                c.MonthlyBudgetCap,
                 c.Description,
                 c.IsActive,
                 c.CreatedAt,
@@ -50,19 +52,46 @@ public class ExpenseService : IExpenseService
 
     public async Task<ApiResponse<ExpenseCategoryDto>> CreateCategoryAsync(CreateExpenseCategoryRequest request)
     {
-        var existing = await _context.ExpenseCategories
-            .FirstOrDefaultAsync(c => c.Code.ToLower() == request.Code.Trim().ToLower());
-
-        if (existing != null)
+        if (string.IsNullOrWhiteSpace(request.Name))
         {
-            return ApiResponse<ExpenseCategoryDto>.Fail("ERR_CATEGORY_CODE_EXISTS", "EXPENSES");
+            return ApiResponse<ExpenseCategoryDto>.Fail("ERR_CATEGORY_NAME_REQUIRED", "EXPENSES");
+        }
+
+        var budgetCap = request.MonthlyBudgetCap ?? 0.0000m;
+        if (budgetCap < 0)
+        {
+            return ApiResponse<ExpenseCategoryDto>.Fail("ERR_INVALID_CATEGORY_BUDGET", "EXPENSES");
+        }
+
+        var existingCodes = await _context.ExpenseCategories
+            .AsNoTracking()
+            .Select(c => c.Code)
+            .ToListAsync();
+
+        var maxSeq = 0;
+        foreach (var existingCode in existingCodes)
+        {
+            if (existingCode != null && existingCode.StartsWith("CAT-", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(existingCode.AsSpan(4), out var parsedSeq) && parsedSeq > maxSeq)
+            {
+                maxSeq = parsedSeq;
+            }
+        }
+
+        var nextSeq = Math.Max(existingCodes.Count + 1, maxSeq + 1);
+        var generatedCode = $"CAT-{nextSeq:D3}";
+        while (existingCodes.Any(c => string.Equals(c, generatedCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            nextSeq++;
+            generatedCode = $"CAT-{nextSeq:D3}";
         }
 
         var category = new ExpenseCategory
         {
-            Code = request.Code.Trim().ToUpper(),
+            Code = generatedCode,
             Name = request.Name.Trim(),
-            Description = request.Description?.Trim(),
+            MonthlyBudgetCap = Math.Round(budgetCap, 4, MidpointRounding.AwayFromZero),
+            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -75,6 +104,7 @@ public class ExpenseService : IExpenseService
             category.Id,
             category.Code,
             category.Name,
+            category.MonthlyBudgetCap,
             category.Description,
             category.IsActive,
             category.CreatedAt,
@@ -86,14 +116,26 @@ public class ExpenseService : IExpenseService
 
     public async Task<ApiResponse<ExpenseCategoryDto>> UpdateCategoryAsync(Guid id, UpdateExpenseCategoryRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return ApiResponse<ExpenseCategoryDto>.Fail("ERR_CATEGORY_NAME_REQUIRED", "EXPENSES");
+        }
+
         var category = await _context.ExpenseCategories.FindAsync(id);
         if (category == null)
         {
             return ApiResponse<ExpenseCategoryDto>.Fail("ERR_CATEGORY_NOT_FOUND", "EXPENSES");
         }
 
+        var budgetCap = request.MonthlyBudgetCap ?? category.MonthlyBudgetCap;
+        if (budgetCap < 0)
+        {
+            return ApiResponse<ExpenseCategoryDto>.Fail("ERR_INVALID_CATEGORY_BUDGET", "EXPENSES");
+        }
+
         category.Name = request.Name.Trim();
-        category.Description = request.Description?.Trim();
+        category.MonthlyBudgetCap = Math.Round(budgetCap, 4, MidpointRounding.AwayFromZero);
+        category.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         category.IsActive = request.IsActive;
         category.UpdatedAt = DateTime.UtcNow;
 
@@ -103,6 +145,7 @@ public class ExpenseService : IExpenseService
             category.Id,
             category.Code,
             category.Name,
+            category.MonthlyBudgetCap,
             category.Description,
             category.IsActive,
             category.CreatedAt,

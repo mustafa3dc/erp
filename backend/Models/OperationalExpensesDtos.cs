@@ -6,6 +6,7 @@ public record ExpenseCategoryDto(
     Guid Id,
     string Code,
     string Name,
+    decimal MonthlyBudgetCap,
     string? Description,
     bool IsActive,
     DateTime CreatedAt,
@@ -13,15 +14,16 @@ public record ExpenseCategoryDto(
 );
 
 public record CreateExpenseCategoryRequest(
-    [Required] [MaxLength(50)] string Code,
-    [Required] [MaxLength(150)] string Name,
-    string? Description
+    [MaxLength(150)] string Name,
+    decimal? MonthlyBudgetCap = null,
+    string? Description = null
 );
 
 public record UpdateExpenseCategoryRequest(
-    [Required] [MaxLength(150)] string Name,
-    string? Description,
-    bool IsActive
+    [MaxLength(150)] string Name,
+    decimal? MonthlyBudgetCap = null,
+    string? Description = null,
+    bool IsActive = true
 );
 
 public record ExpenseVoucherDto(

@@ -256,6 +256,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ExpenseCategory>(entity =>
         {
             entity.HasIndex(ec => new { ec.TenantId, ec.Code });
+            entity.Property(ec => ec.MonthlyBudgetCap).HasColumnType("numeric(18, 4)");
             entity.HasMany(ec => ec.Vouchers)
                 .WithOne(v => v.ExpenseCategory)
                 .HasForeignKey(v => v.ExpenseCategoryId)

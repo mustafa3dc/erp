@@ -57,18 +57,18 @@ export default function IncomingPurchasesView({
       case 'cash':
         return {
           label: isAr ? 'نقدي / كاش' : 'Cash',
-          cls: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+          cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
         };
       case 'credit':
         return {
           label: isAr ? 'آجل بالكامل' : 'Credit',
-          cls: 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+          cls: 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800/60'
         };
       case 'partial':
       default:
         return {
           label: isAr ? 'دفع جزئي' : 'Partial',
-          cls: 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+          cls: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60'
         };
     }
   };

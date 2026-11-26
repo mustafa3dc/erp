@@ -411,59 +411,59 @@ export default function StockCountsView({
       <div className="module-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '1.25rem' }}>
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
-            <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+            <span className="module-kpi-label" style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 600 }}>
               {tr('kpiTotalSkus')}
             </span>
             <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: 'var(--foreground)', marginTop: '4px' }}>
-              {totalItemsCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>{tr('kpiItemsUnit')}</span>
+              {totalItemsCount} <span style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 500 }}>{tr('kpiItemsUnit')}</span>
             </div>
           </div>
-          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.14)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <PackageCheck size={22} />
           </div>
         </div>
 
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
-            <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+            <span className="module-kpi-label" style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 600 }}>
               {tr('kpiExactMatched')}
             </span>
-            <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
-              {matchedCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({((matchedCount / (totalItemsCount || 1)) * 100).toFixed(0)}%)</span>
+            <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: 'var(--badge-emerald-fg, #059669)', marginTop: '4px' }}>
+              {matchedCount} <span style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 500 }}>({((matchedCount / (totalItemsCount || 1)) * 100).toFixed(0)}%)</span>
             </div>
           </div>
-          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--badge-emerald-bg)', color: 'var(--badge-emerald-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CheckCircle2 size={22} />
           </div>
         </div>
 
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
-            <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+            <span className="module-kpi-label" style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 600 }}>
               {tr('kpiDiscrepancies')}
             </span>
-            <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: discrepancyCount > 0 ? '#ea580c' : '#64748b', marginTop: '4px' }}>
-              {discrepancyCount} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>({tr('kpiDiscrepancyBreakdown').replace('{short}', String(shortageCount)).replace('{surplus}', String(surplusCount))})</span>
+            <div className="module-kpi-value" style={{ fontSize: '22px', fontWeight: 800, color: discrepancyCount > 0 ? 'var(--badge-amber-fg, #ea580c)' : 'var(--muted-foreground)', marginTop: '4px' }}>
+              {discrepancyCount} <span style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 500 }}>({tr('kpiDiscrepancyBreakdown').replace('{short}', String(shortageCount)).replace('{surplus}', String(surplusCount))})</span>
             </div>
           </div>
-          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: discrepancyCount > 0 ? 'rgba(234, 88, 12, 0.1)' : 'rgba(100, 116, 139, 0.1)', color: discrepancyCount > 0 ? '#ea580c' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: discrepancyCount > 0 ? 'var(--badge-amber-bg)' : 'var(--muted)', color: discrepancyCount > 0 ? 'var(--badge-amber-fg)' : 'var(--muted-foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <AlertTriangle size={22} />
           </div>
         </div>
 
         <div className="module-kpi-card" style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="module-kpi-info">
-            <span className="module-kpi-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+            <span className="module-kpi-label" style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 600 }}>
               {tr('kpiNetValue')}
             </span>
-            <div className="module-kpi-value" style={{ fontSize: '20px', fontWeight: 800, color: netVarianceValue < 0 ? '#dc2626' : netVarianceValue > 0 ? '#059669' : '#64748b', marginTop: '4px' }}>
+            <div className="module-kpi-value" style={{ fontSize: '20px', fontWeight: 800, color: netVarianceValue < 0 ? 'var(--badge-red-fg, #dc2626)' : netVarianceValue > 0 ? 'var(--badge-emerald-fg, #059669)' : 'var(--muted-foreground)', marginTop: '4px' }}>
               {formatMoney(Math.abs(netVarianceValue))}
-              <span style={{ fontSize: '12px', fontWeight: 600, marginInlineStart: '6px', color: netVarianceValue < 0 ? '#dc2626' : netVarianceValue > 0 ? '#059669' : '#64748b' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, marginInlineStart: '6px', color: netVarianceValue < 0 ? 'var(--badge-red-fg, #dc2626)' : netVarianceValue > 0 ? 'var(--badge-emerald-fg, #059669)' : 'var(--muted-foreground)' }}>
                 {netVarianceValue < 0 ? tr('statusDeficit') : netVarianceValue > 0 ? tr('statusSurplus') : tr('statusBalanced')}
               </span>
             </div>
           </div>
-          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: netVarianceValue < 0 ? 'rgba(220, 38, 38, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: netVarianceValue < 0 ? '#dc2626' : '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: netVarianceValue < 0 ? 'var(--badge-red-bg)' : 'var(--badge-emerald-bg)', color: netVarianceValue < 0 ? 'var(--badge-red-fg)' : 'var(--badge-emerald-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {netVarianceValue >= 0 ? <TrendingUp size={22} /> : <TrendingDown size={22} />}
           </div>
         </div>
@@ -485,7 +485,7 @@ export default function StockCountsView({
         }}
       >
         <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '380px' }}>
-          <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: isAr ? '12px' : 'auto', left: isAr ? 'auto' : '12px', color: '#94a3b8' }} />
+          <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: isAr ? '12px' : 'auto', left: isAr ? 'auto' : '12px', color: 'var(--muted-foreground)' }} />
           <input
             type="text"
             placeholder={tr('searchPlaceholder')}
@@ -498,7 +498,7 @@ export default function StockCountsView({
               paddingLeft: isAr ? '12px' : '36px',
               borderRadius: '8px',
               border: '1px solid var(--border)',
-              background: 'var(--card)',
+              background: 'var(--background)',
               color: 'var(--foreground)',
               fontSize: '13px'
             }}
@@ -553,9 +553,9 @@ export default function StockCountsView({
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              border: '1px solid var(--border)',
-              background: statusFilter === 'DISCREPANCY' ? 'rgba(234, 88, 12, 0.15)' : 'transparent',
-              color: statusFilter === 'DISCREPANCY' ? '#ea580c' : '#64748b',
+              border: statusFilter === 'DISCREPANCY' ? '1px solid var(--badge-amber-border)' : '1px solid var(--border)',
+              background: statusFilter === 'DISCREPANCY' ? 'var(--badge-amber-bg)' : 'transparent',
+              color: statusFilter === 'DISCREPANCY' ? 'var(--badge-amber-fg)' : 'var(--muted-foreground)',
               cursor: 'pointer',
               fontSize: '12px',
               fontWeight: 600,
@@ -583,35 +583,35 @@ export default function StockCountsView({
           border: '1px solid var(--border)',
           borderRadius: '12px',
           overflow: 'hidden',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          boxShadow: 'var(--shadow-card)'
         }}
       >
         <div style={{ overflowX: 'auto', minWidth: '850px' }}>
           <table className="custom-data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
             <thead>
-              <tr style={{ background: 'var(--muted, #f8fafc)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '50px' }}>#</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{tr('colBarcodeSku')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{tr('colItemDesc')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '180px' }}>{tr('colWarehouseShelf')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '90px' }}>{tr('colUnit')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colSystemQty')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '140px' }}>{tr('colActualQty')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colVariance')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '120px' }}>{tr('colFinancialImpact')}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569', width: '110px' }}>{tr('colStatus')}</th>
+              <tr style={{ background: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '50px' }}>#</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '140px' }}>{tr('colBarcodeSku')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{tr('colItemDesc')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '180px' }}>{tr('colWarehouseShelf')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '90px' }}>{tr('colUnit')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '120px' }}>{tr('colSystemQty')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '140px' }}>{tr('colActualQty')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '120px' }}>{tr('colVariance')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '120px' }}>{tr('colFinancialImpact')}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)', width: '110px' }}>{tr('colStatus')}</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--muted-foreground)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                      <AlertTriangle size={32} color="#94a3b8" />
+                      <AlertTriangle size={32} className="text-muted-foreground" />
                       <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--foreground)' }}>
                         {tr('emptyTitle')}
                       </p>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted-foreground)' }}>
                         {tr('emptySubtitle')}
                       </p>
                     </div>
@@ -626,13 +626,15 @@ export default function StockCountsView({
                   return (
                     <tr
                       key={item.rowKey}
-                      style={{
-                        borderBottom: '1px solid var(--border)',
-                        background: hasDiscrepancy ? (variance < 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)') : 'transparent',
-                        transition: 'background-color 0.15s ease'
-                      }}
+                      className={`border-b border-border transition-colors ${
+                        hasDiscrepancy
+                          ? variance < 0
+                            ? 'bg-red-50/70 dark:bg-red-950/30'
+                            : 'bg-emerald-50/70 dark:bg-emerald-950/30'
+                          : ''
+                      }`}
                     >
-                      <td style={{ padding: '12px 14px', fontSize: '12px', color: '#64748b', fontFamily: 'monospace' }}>
+                      <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--muted-foreground)', fontFamily: 'monospace' }}>
                         {index + 1}
                       </td>
 
@@ -640,7 +642,7 @@ export default function StockCountsView({
                         <div style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', fontSize: '12px' }} dir="ltr">
                           {item.sku}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }} dir="ltr">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px', fontFamily: 'monospace' }} dir="ltr">
                           <BarcodeIcon size={12} />
                           <span>{item.barcode}</span>
                         </div>
@@ -650,8 +652,8 @@ export default function StockCountsView({
                         <div style={{ fontWeight: 700, color: 'var(--foreground)', fontSize: '13px' }}>
                           <bdi dir="auto">{item.name}</bdi>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                          {tr('standardCostPrefix')} <span dir="ltr">{formatMoney(item.unitCost)}</span>
+                        <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
+                          {tr('standardCostPrefix')} <span dir="ltr" className="tabular-nums">{formatMoney(item.unitCost)}</span>
                         </div>
                       </td>
 
@@ -659,20 +661,20 @@ export default function StockCountsView({
                         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--foreground)' }}>
                           <bdi dir="auto">{item.warehouse}</bdi>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', marginTop: '2px', fontFamily: 'monospace' }}>
                           {tr('shelfPrefix')} <strong dir="ltr">{item.shelf}</strong>
                         </div>
                       </td>
 
-                      <td style={{ padding: '12px 14px', fontSize: '12px', color: '#64748b' }}>
+                      <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--muted-foreground)' }}>
                         {item.unit}
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--foreground)', fontFamily: 'monospace' }} dir="ltr">
+                        <div className="tabular-nums" style={{ fontSize: '14px', fontWeight: 800, color: 'var(--foreground)', fontFamily: 'monospace' }} dir="ltr">
                           {item.systemQty}
                         </div>
-                        <div style={{ fontSize: '10px', color: '#64748b' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--muted-foreground)' }}>
                           {tr('systemLedgerHint')}
                         </div>
                       </td>
@@ -687,14 +689,15 @@ export default function StockCountsView({
                           value={item.physicalCountInput}
                           onChange={(e) => handleUpdatePhysical(item.rowKey, e.target.value)}
                           dir="ltr"
+                          className="tabular-nums"
                           style={{
                             width: '90px',
                             height: '36px',
-                            background: 'var(--card, #ffffff)',
+                            background: 'var(--background)',
                             border: hasDiscrepancy
                               ? (variance < 0 ? '2px solid #ef4444' : '2px solid #10b981')
-                              : '1px solid var(--border, #cbd5e1)',
-                            color: 'var(--foreground, #0f172a)',
+                              : '1px solid var(--border)',
+                            color: 'var(--foreground)',
                             borderRadius: '8px',
                             padding: '4px 10px',
                             textAlign: 'center',
@@ -707,15 +710,15 @@ export default function StockCountsView({
 
                       <td style={{ padding: '12px 14px' }}>
                         {variance === 0 ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#f1f5f9', color: '#475569' }}>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-muted text-muted-foreground border border-border tabular-nums">
                             0
                           </span>
                         ) : variance > 0 ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border tabular-nums bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60">
                             +{variance} ({tr('varianceSurplus')})
                           </span>
                         ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border tabular-nums bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800/60">
                             {variance} ({tr('varianceShortage')})
                           </span>
                         )}
@@ -724,28 +727,26 @@ export default function StockCountsView({
                       <td style={{ padding: '12px 14px' }}>
                         <div
                           dir="ltr"
-                          style={{
-                            fontWeight: 800,
-                            fontSize: '12px',
-                            color: variance === 0 ? '#64748b' : variance > 0 ? '#059669' : '#dc2626',
-                            fontFamily: 'monospace'
-                          }}
+                          className={`font-mono text-xs font-extrabold tabular-nums ${
+                            variance === 0
+                              ? 'text-muted-foreground'
+                              : variance > 0
+                                ? 'text-emerald-600 dark:text-emerald-300'
+                                : 'text-red-600 dark:text-red-300'
+                          }`}
                         >
                           {variance === 0 ? '-' : (variance > 0 ? `+${formatMoney(varianceValue)}` : `-${formatMoney(Math.abs(varianceValue))}`)}
                         </div>
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          background: variance === 0 ? '#ecfdf5' : '#fffbeb',
-                          color: variance === 0 ? '#047857' : '#b45309',
-                          border: `1px solid ${variance === 0 ? '#a7f3d0' : '#fde68a'}`
-                        }}>
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            variance === 0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                              : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60'
+                          }`}
+                        >
                           {variance === 0 ? tr('badgeMatched') : tr('badgeDiscrepancy')}
                         </span>
                       </td>

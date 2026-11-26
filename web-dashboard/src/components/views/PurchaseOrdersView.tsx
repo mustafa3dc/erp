@@ -177,12 +177,12 @@ export default function PurchaseOrdersView({
       case 'RECEIVED_POSTED':
         return {
           label: isAr ? 'مستلم ومورد' : 'Received',
-          cls: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+          cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
         };
       case 'SUBMITTED':
         return {
           label: isAr ? 'قيد الشحن' : 'In Transit',
-          cls: 'bg-sky-500/10 text-sky-600 border border-sky-500/20'
+          cls: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60'
         };
       case 'DRAFT':
       default:

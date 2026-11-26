@@ -209,9 +209,9 @@ export default function DeliveryLogisticsView({ lang }: DeliveryLogisticsViewPro
                 borderRadius: '20px',
                 fontSize: '11px',
                 fontWeight: 700,
-                background: d.status === 'OUT_FOR_DELIVERY' ? '#fffbeb' : d.status === 'DELIVERED' ? '#ecfdf5' : 'var(--primary-light)',
-                color: d.status === 'OUT_FOR_DELIVERY' ? '#b45309' : d.status === 'DELIVERED' ? '#047857' : 'var(--primary)',
-                border: `1px solid ${d.status === 'OUT_FOR_DELIVERY' ? '#fde68a' : d.status === 'DELIVERED' ? '#a7f3d0' : 'var(--primary-border)'}`
+                background: d.status === 'OUT_FOR_DELIVERY' ? 'var(--badge-amber-bg)' : d.status === 'DELIVERED' ? 'var(--badge-emerald-bg)' : 'var(--primary-light)',
+                color: d.status === 'OUT_FOR_DELIVERY' ? 'var(--badge-amber-fg)' : d.status === 'DELIVERED' ? 'var(--badge-emerald-fg)' : 'var(--primary)',
+                border: `1px solid ${d.status === 'OUT_FOR_DELIVERY' ? 'var(--badge-amber-border)' : d.status === 'DELIVERED' ? 'var(--badge-emerald-border)' : 'var(--primary-border)'}`
               }}>
                 {d.status === 'OUT_FOR_DELIVERY' ? (isAr ? 'قيد التوصيل' : 'Out for Delivery') :
                  d.status === 'DELIVERED' ? (isAr ? 'تم التسليم بنجاح' : 'Delivered') :
@@ -221,27 +221,27 @@ export default function DeliveryLogisticsView({ lang }: DeliveryLogisticsViewPro
 
             {/* Customer Info */}
             <div>
-              <strong style={{ fontSize: '14px', color: '#0f172a', fontWeight: 700, display: 'block' }}>{d.customerName}</strong>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--foreground)', fontWeight: 700, display: 'block' }}>{d.customerName}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '4px' }}>
                 <Phone size={12} />
                 <span>{d.customerPhone}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#475569', marginTop: '4px' }}>
-                <MapPin size={12} style={{ color: '#ea580c' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '4px' }}>
+                <MapPin size={12} style={{ color: 'var(--badge-amber-fg)' }} />
                 <span>{d.address}</span>
               </div>
             </div>
 
             {/* Driver & COD Bar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-subtle, var(--muted))', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>{isAr ? 'المندوب المسؤول:' : 'Courier:'}</span>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>{d.driverName}</span>
+                <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'المندوب المسؤول:' : 'Courier:'}</span>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--foreground)' }}>{d.driverName}</span>
               </div>
 
               <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>{isAr ? 'مبلغ التحصيل (COD):' : 'COD Amount:'}</span>
-                <strong style={{ fontSize: '14px', color: '#047857', fontWeight: 800 }}>${d.codAmount.toFixed(2)}</strong>
+                <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', display: 'block' }}>{isAr ? 'مبلغ التحصيل (COD):' : 'COD Amount:'}</span>
+                <strong style={{ fontSize: '14px', color: 'var(--badge-emerald-fg)', fontWeight: 800 }}>${d.codAmount.toFixed(2)}</strong>
               </div>
             </div>
 

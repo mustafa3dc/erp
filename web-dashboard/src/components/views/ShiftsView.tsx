@@ -741,17 +741,17 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                   <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: 'var(--muted)', border: '1px solid var(--border)', fontFamily: 'monospace', fontWeight: 600 }}>
                     {activeShift.terminalId}
                   </span>
-                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 700 }}>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: 'var(--badge-emerald-bg)', color: 'var(--badge-emerald-fg)', border: '1px solid var(--badge-emerald-border)', fontWeight: 700 }}>
                     {isAr ? 'وردية نشطة' : 'Active Shift'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Calendar size={13} className="text-primary" />
                     <span>{isAr ? 'تاريخ ووقت الفتح:' : 'Opened at:'}</span>
                     <strong style={{ fontFamily: 'monospace', color: 'var(--foreground)' }}>{activeShift.startTime}</strong>
                   </span>
-                  <span style={{ fontSize: '12px', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--badge-emerald-fg)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Timer size={13} className="text-emerald-600" />
                     <span>{isAr ? 'المدة المنقضية:' : 'Elapsed:'}</span>
                     <strong style={{ fontWeight: 700 }}>{calculateShiftDuration(activeShift.openedAt || activeShift.startTime, new Date(), isAr)}</strong>
@@ -1126,18 +1126,18 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
         <div className="table-responsive" style={{ overflowX: 'auto' }}>
           <table className="custom-data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
             <thead>
-              <tr style={{ background: 'var(--muted, #f8fafc)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'رقم التقرير' : 'Z-Report #'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'الكاشير' : 'Cashier'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'نقطة البيع' : 'Terminal'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'تاريخ ووقت الفتح' : 'Open Timestamp'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'تاريخ ووقت الإغلاق' : 'Close Timestamp'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'المدة' : 'Duration'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'مبيعات الكاش' : 'Cash Sales'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'مبيعات البطاقات' : 'Card Sales'}</th>
-                {isIraqTenant && <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'زين كاش / كي كارد' : 'ZainCash / Qi'}</th>}
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'الفارق (عجز/فائض)' : 'Variance'}</th>
-                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>{isAr ? 'الحالة' : 'Status'}</th>
+              <tr style={{ background: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'رقم التقرير' : 'Z-Report #'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'الكاشير' : 'Cashier'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'نقطة البيع' : 'Terminal'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'تاريخ ووقت الفتح' : 'Open Timestamp'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'تاريخ ووقت الإغلاق' : 'Close Timestamp'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'المدة' : 'Duration'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'مبيعات الكاش' : 'Cash Sales'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'مبيعات البطاقات' : 'Card Sales'}</th>
+                {isIraqTenant && <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'زين كاش / كي كارد' : 'ZainCash / Qi'}</th>}
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'الفارق (عجز/فائض)' : 'Variance'}</th>
+                <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--muted-foreground)' }}>{isAr ? 'الحالة' : 'Status'}</th>
               </tr>
             </thead>
             <tbody>
@@ -1179,7 +1179,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
                         {s.difference === 0 ? formatShiftMoney(0) : (s.difference > 0 ? `+${formatShiftMoney(s.difference)}` : `-${formatShiftMoney(Math.abs(s.difference))}`)}
                       </td>
                       <td style={{ padding: '12px 14px' }}>
-                        <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                        <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, background: 'var(--badge-emerald-bg)', color: 'var(--badge-emerald-fg)', border: '1px solid var(--badge-emerald-border)' }}>
                           {isAr ? 'مغلقة ومعتمدة' : 'Audited'}
                         </span>
                       </td>

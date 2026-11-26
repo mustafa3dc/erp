@@ -1102,13 +1102,13 @@ export default function PosTerminalView({
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: '#f8fafc',
-            border: '1px solid #cbd5e1',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
             padding: '4px 12px',
             borderRadius: '20px',
             fontSize: '11px',
             fontWeight: 700,
-            color: '#1e293b'
+            color: 'var(--foreground)'
           }}>
             <Building2 size={14} style={{ color: 'var(--primary)' }} />
             <span>{isAr ? 'مستودع البيع والخصم:' : 'Sales Hub:'}</span>
@@ -1148,18 +1148,18 @@ export default function PosTerminalView({
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: '#ecfdf5',
-              border: '1px solid #a7f3d0',
+              background: 'var(--badge-emerald-bg)',
+              border: '1px solid var(--badge-emerald-border)',
               padding: '4px 10px',
               borderRadius: '20px',
               fontSize: '11px',
-              color: '#065f46',
+              color: 'var(--badge-emerald-fg)',
               fontWeight: 700
             }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
               <span>{isAr ? `وردية: ${activeShift.cashierName}` : `Shift: ${activeShift.cashierName}`}</span>
-              <span style={{ color: '#047857', fontSize: '10px' }}>({activeShift.terminalId})</span>
-              <span style={{ color: '#047857', fontSize: '10px', fontFamily: 'monospace' }}>• {activeShift.startTime}</span>
+              <span style={{ opacity: 0.85, fontSize: '10px' }}>({activeShift.terminalId})</span>
+              <span style={{ opacity: 0.85, fontSize: '10px', fontFamily: 'monospace' }}>• {activeShift.startTime}</span>
               {onNavigateToShifts && (
                 <button
                   type="button"
@@ -1167,7 +1167,7 @@ export default function PosTerminalView({
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#059669',
+                    color: 'var(--badge-emerald-fg)',
                     fontSize: '10px',
                     cursor: 'pointer',
                     padding: '0 2px',
@@ -1183,12 +1183,12 @@ export default function PosTerminalView({
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: '#fff1f2',
-              border: '1px solid #fecdd3',
+              background: 'var(--badge-red-bg)',
+              border: '1px solid var(--badge-red-border)',
               padding: '4px 10px',
               borderRadius: '20px',
               fontSize: '11px',
-              color: '#be123c',
+              color: 'var(--badge-red-fg)',
               fontWeight: 700
             }}>
               <Lock size={12} />
@@ -1286,10 +1286,10 @@ export default function PosTerminalView({
         <div style={{
           margin: '0 0 12px 0',
           padding: '12px 16px',
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
+          background: 'var(--badge-red-bg)',
+          border: '1px solid var(--badge-red-border)',
           borderRadius: 'var(--radius)',
-          color: '#991b1b',
+          color: 'var(--badge-red-fg)',
           fontSize: '12px',
           fontWeight: 700,
           display: 'flex',
@@ -1299,13 +1299,13 @@ export default function PosTerminalView({
           boxShadow: '0 2px 8px rgba(220, 38, 38, 0.08)'
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#dc2626' }} />
+            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--badge-red-fg)' }} />
             <div style={{ whiteSpace: 'pre-line', lineHeight: '1.5' }}>{stockError}</div>
           </div>
           <button
             type="button"
             onClick={() => setStockError(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b', padding: '4px' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--badge-red-fg)', padding: '4px' }}
           >
             <X size={16} />
           </button>
@@ -1537,9 +1537,9 @@ export default function PosTerminalView({
                         <span style={{
                           fontSize: '10px',
                           fontWeight: 700,
-                          color: currentAvailable > 5 ? '#059669' : currentAvailable > 0 ? '#d97706' : '#dc2626',
-                          background: currentAvailable > 5 ? '#ecfdf5' : currentAvailable > 0 ? '#fffbeb' : '#fee2e2',
-                          border: `1px solid ${currentAvailable > 5 ? '#a7f3d0' : currentAvailable > 0 ? '#fde68a' : '#fecaca'}`,
+                          color: currentAvailable > 5 ? 'var(--badge-emerald-fg)' : currentAvailable > 0 ? 'var(--badge-amber-fg)' : 'var(--badge-red-fg)',
+                          background: currentAvailable > 5 ? 'var(--badge-emerald-bg)' : currentAvailable > 0 ? 'var(--badge-amber-bg)' : 'var(--badge-red-bg)',
+                          border: `1px solid ${currentAvailable > 5 ? 'var(--badge-emerald-border)' : currentAvailable > 0 ? 'var(--badge-amber-border)' : 'var(--badge-red-border)'}`,
                           padding: '2px 6px',
                           borderRadius: '4px',
                           display: 'inline-block'
@@ -1553,16 +1553,16 @@ export default function PosTerminalView({
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '10px' }}>
                       <div>
-                        <span style={{ fontSize: '15px', fontWeight: 800, color: isOutOfStock ? '#94a3b8' : '#059669' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 800, color: isOutOfStock ? 'var(--muted-foreground)' : 'var(--badge-emerald-fg)' }}>
                           {formatMoney(p.sellingPrice)}
                         </span>
                       </div>
                       <button 
                         disabled={isOutOfStock}
                         style={{ 
-                          background: isOutOfStock ? '#e2e8f0' : 'var(--primary)', 
+                          background: isOutOfStock ? 'var(--muted)' : 'var(--primary)', 
                           border: 'none', 
-                          color: isOutOfStock ? '#94a3b8' : '#fff', 
+                          color: isOutOfStock ? 'var(--muted-foreground)' : '#fff', 
                           borderRadius: '6px', 
                           width: '28px', 
                           height: '28px', 
@@ -1679,10 +1679,10 @@ export default function PosTerminalView({
                       padding: '10px 12px',
                       borderRadius: 'var(--radius)',
                       background: isBreached 
-                        ? 'rgba(239, 68, 68, 0.08)' 
+                        ? 'rgba(239, 68, 68, 0.1)' 
                         : isModified 
-                          ? 'rgba(16, 185, 129, 0.06)' 
-                          : '#f8fafc',
+                          ? 'rgba(16, 185, 129, 0.08)' 
+                          : 'var(--surface-subtle, var(--muted))',
                       border: isBreached 
                         ? '1px solid rgba(239, 68, 68, 0.4)' 
                         : isModified 
@@ -1739,18 +1739,18 @@ export default function PosTerminalView({
                     {/* Stock Deficit Warning (dynamically validates bundles & shared cart component demand) */}
                     {lineIssue && (
                       <div style={{
-                        background: '#fef2f2',
-                        border: '1px solid #fecaca',
+                        background: 'var(--badge-red-bg)',
+                        border: '1px solid var(--badge-red-border)',
                         borderRadius: '6px',
                         padding: '6px 8px',
-                        color: '#dc2626',
+                        color: 'var(--badge-red-fg)',
                         fontSize: '11px',
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px'
                       }}>
-                        <AlertCircle size={14} style={{ color: '#dc2626', flexShrink: 0 }} />
+                        <AlertCircle size={14} style={{ color: 'var(--badge-red-fg)', flexShrink: 0 }} />
                         <span>
                           {item.product.isBundle && lineIssue.conflictingComponent
                             ? t('posMessages.cartComponentConflict', isAr
@@ -2090,8 +2090,8 @@ export default function PosTerminalView({
                   {/* Shift Locked Warning Banner */}
                   {!isShiftActive && (
                     <div style={{
-                      background: '#fff1f2',
-                      border: '1.5px solid #fecdd3',
+                      background: 'var(--badge-red-bg)',
+                      border: '1.5px solid var(--badge-red-border)',
                       borderRadius: '10px',
                       padding: '12px',
                       marginBottom: '10px',
@@ -2099,11 +2099,11 @@ export default function PosTerminalView({
                       flexDirection: 'column',
                       gap: '8px'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#be123c', fontWeight: 700, fontSize: '13px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--badge-red-fg)', fontWeight: 700, fontSize: '13px' }}>
                         <Lock size={16} style={{ flexShrink: 0 }} />
                         <span>{isAr ? 'الوردية مقفلة حالياً - البيع معطّل' : 'Shift Locked - Checkout Disabled'}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: '11px', color: '#881337', lineHeight: 1.5 }}>
+                      <p style={{ margin: 0, fontSize: '11px', color: 'var(--foreground)', opacity: 0.9, lineHeight: 1.5 }}>
                         {isAr 
                           ? 'يرجى فتح وردية كاشير جديدة وتسجيل الرصيد النقدي الافتتاحي (الفكة) لتفعيل عمليات البيع وإصدار الفواتير.'
                           : 'Please start a cashier shift and register opening float to enable sales.'}
@@ -2135,8 +2135,8 @@ export default function PosTerminalView({
                             onClick={onNavigateToShifts}
                             style={{
                               background: 'var(--card)',
-                              color: '#be123c',
-                              border: '1px solid #fecdd3',
+                              color: 'var(--badge-red-fg)',
+                              border: '1px solid var(--badge-red-border)',
                               padding: '6px 10px',
                               borderRadius: '6px',
                               fontSize: '12px',
@@ -2153,12 +2153,12 @@ export default function PosTerminalView({
 
                   {hasFloorBreach && (
                     <div style={{
-                      background: 'var(--destructive-light)',
-                      border: '1px solid var(--destructive-border)',
+                      background: 'var(--badge-red-bg)',
+                      border: '1px solid var(--badge-red-border)',
                       borderRadius: '8px',
                       padding: '8px 10px',
                       marginBottom: '10px',
-                      color: 'var(--destructive)',
+                      color: 'var(--badge-red-fg)',
                       fontSize: '11px',
                       fontWeight: 700,
                       display: 'flex',
@@ -2172,12 +2172,12 @@ export default function PosTerminalView({
 
                   {hasStockDeficit && (
                     <div style={{
-                      background: '#fff1f2',
-                      border: '1.5px solid #fecdd3',
+                      background: 'var(--badge-red-bg)',
+                      border: '1.5px solid var(--badge-red-border)',
                       borderRadius: '8px',
                       padding: '8px 10px',
                       marginBottom: '10px',
-                      color: '#be123c',
+                      color: 'var(--badge-red-fg)',
                       fontSize: '11px',
                       fontWeight: 700,
                       display: 'flex',
@@ -2280,8 +2280,8 @@ export default function PosTerminalView({
                           padding: '10px 4px',
                           borderRadius: 'var(--radius)',
                           border: 'none',
-                          background: canCheckout ? '#db2777' : '#e2e8f0',
-                          color: canCheckout ? '#ffffff' : '#94a3b8',
+                          background: canCheckout ? '#db2777' : 'var(--muted)',
+                          color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
                           fontWeight: 700,
                           fontSize: '12px',
                           display: 'flex',
@@ -2307,8 +2307,8 @@ export default function PosTerminalView({
                           padding: '10px 4px',
                           borderRadius: 'var(--radius)',
                           border: 'none',
-                          background: canCheckout ? '#d97706' : '#e2e8f0',
-                          color: canCheckout ? '#ffffff' : '#94a3b8',
+                          background: canCheckout ? '#d97706' : 'var(--muted)',
+                          color: canCheckout ? '#ffffff' : 'var(--muted-foreground)',
                           fontWeight: 700,
                           fontSize: '12px',
                           display: 'flex',
@@ -2441,35 +2441,35 @@ export default function PosTerminalView({
                   marginTop: '10px',
                   padding: '10px',
                   borderRadius: '8px',
-                  background: '#eff6ff',
-                  border: '1.5px dashed #3b82f6',
+                  background: 'var(--badge-blue-bg)',
+                  border: '1.5px dashed var(--badge-blue-border)',
                   fontSize: '11px'
                 }}>
-                  <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: '6px', textAlign: 'center', borderBottom: '1px solid #bfdbfe', paddingBottom: '4px' }}>
+                  <div style={{ fontWeight: 800, color: 'var(--badge-blue-fg)', marginBottom: '6px', textAlign: 'center', borderBottom: '1px solid var(--badge-blue-border)', paddingBottom: '4px' }}>
                     {isAr ? 'عقد بيع بالتقسيط المعتمد' : 'Installment Contract Schedule'}
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1e40af', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--foreground)', marginBottom: '2px' }}>
                     <span>{isAr ? 'الدفعة الأولى (المقدمة):' : 'Down Payment:'}</span>
                     <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{formatMoney(lastCompletedOrder.installmentDetails.downPayment)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1e40af', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--foreground)', marginBottom: '2px' }}>
                     <span>{isAr ? 'المتبقي المقسط:' : 'Remaining Balance:'}</span>
                     <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{formatMoney(lastCompletedOrder.installmentDetails.remainingAmount)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1e40af', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--foreground)', marginBottom: '2px' }}>
                     <span>{isAr ? 'مدة التقسيط:' : 'Tenor:'}</span>
                     <span style={{ fontWeight: 700 }}>{lastCompletedOrder.installmentDetails.count} {isAr ? 'أشهر' : 'Months'}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1e40af', marginBottom: '2px', borderTop: '1px dashed #bfdbfe', paddingTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--badge-blue-fg)', marginBottom: '2px', borderTop: '1px dashed var(--badge-blue-border)', paddingTop: '4px' }}>
                     <span style={{ fontWeight: 700 }}>{isAr ? 'القسط الشهري:' : 'Monthly Installment:'}</span>
-                    <span style={{ fontWeight: 900, color: '#1d4ed8', fontFamily: 'monospace' }}>{formatMoney(lastCompletedOrder.installmentDetails.monthlyAmount)}</span>
+                    <span style={{ fontWeight: 900, color: 'var(--badge-blue-fg)', fontFamily: 'monospace' }}>{formatMoney(lastCompletedOrder.installmentDetails.monthlyAmount)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', marginTop: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginTop: '2px' }}>
                     <span>{isAr ? 'تاريخ أول قسط:' : 'First Due Date:'}</span>
                     <span style={{ fontWeight: 700 }}>{lastCompletedOrder.installmentDetails.firstDueDate}</span>
                   </div>
                   {lastCompletedOrder.installmentDetails.guarantorName && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', marginTop: '2px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginTop: '2px' }}>
                       <span>{isAr ? 'الكفيل:' : 'Guarantor:'}</span>
                       <span>{lastCompletedOrder.installmentDetails.guarantorName} ({lastCompletedOrder.installmentDetails.guarantorPhone || '—'})</span>
                     </div>
@@ -2489,14 +2489,14 @@ export default function PosTerminalView({
                   marginTop: '10px',
                   padding: '10px',
                   borderRadius: '8px',
-                  background: '#eff6ff',
-                  border: '1.5px dashed #3b82f6',
+                  background: 'var(--badge-blue-bg)',
+                  border: '1.5px dashed var(--badge-blue-border)',
                   textAlign: 'center'
                 }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#1d4ed8', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--badge-blue-fg)', marginBottom: '4px' }}>
                     {lastCompletedOrder.receiptNotice || (isAr ? 'قيد التجهيز من المخزن - يرجى مراجعة أمين المخزن للاستلام' : 'Pending Dispatch - Please claim at warehouse')}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#2563eb', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--badge-blue-fg)', marginBottom: '6px' }}>
                     {isAr ? `مستودع التجهيز: ${lastCompletedOrder.targetWarehouseName || lastCompletedOrder.warehouseName}` : `Hub: ${lastCompletedOrder.targetWarehouseName || lastCompletedOrder.warehouseName}`}
                   </div>
                   <div style={{
@@ -2513,7 +2513,7 @@ export default function PosTerminalView({
                   }}>
                     *DSP-{lastCompletedOrder.orderNumber.replace(/[^0-9]/g, '')}*
                   </div>
-                  <div style={{ fontSize: '9px', color: '#64748b', marginTop: '3px' }}>
+                  <div style={{ fontSize: '9px', color: 'var(--muted-foreground)', marginTop: '3px' }}>
                     {isAr ? 'رمز استلام البضاعة من أمين المخزن' : 'Dispatch Order Claim Barcode'}
                   </div>
                 </div>
@@ -2580,7 +2580,7 @@ export default function PosTerminalView({
 
               <button 
                 onClick={() => setShowReceiptModal(false)}
-                style={{ padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: '#f8fafc', color: 'var(--foreground)', cursor: 'pointer', fontWeight: 600 }}
+                style={{ padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--muted)', color: 'var(--foreground)', cursor: 'pointer', fontWeight: 600 }}
               >
                 {isAr ? 'إغلاق' : 'Close'}
               </button>
@@ -2599,7 +2599,7 @@ export default function PosTerminalView({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'var(--badge-blue-bg)', color: 'var(--badge-blue-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CalendarClock size={20} />
                 </div>
                 <div>
@@ -2690,16 +2690,16 @@ export default function PosTerminalView({
               <div style={{
                 padding: '10px 14px',
                 borderRadius: '8px',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
+                background: 'var(--badge-blue-bg)',
+                border: '1px solid var(--badge-blue-border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
               }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#1e40af' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--badge-blue-fg)' }}>
                   {isAr ? 'القسط الشهري المستحق:' : 'Monthly Installment:'}
                 </span>
-                <span style={{ fontSize: '16px', fontWeight: 900, color: '#1d4ed8', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: '16px', fontWeight: 900, color: 'var(--badge-blue-fg)', fontFamily: 'monospace' }}>
                   {formatMoney(posInstallmentCount > 0 ? Math.round(Math.max(0, grandTotal - posDownPayment) / posInstallmentCount) : 0)} / {isAr ? 'شهر' : 'mo'}
                 </span>
               </div>

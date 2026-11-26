@@ -378,10 +378,11 @@ export default function TransfersView({
                     </span>
                     <span style={{ 
                       fontSize: '11px', 
-                      background: '#f1f5f9', 
+                      background: 'var(--muted)', 
                       padding: '2px 8px', 
                       borderRadius: '4px', 
-                      color: '#64748b',
+                      color: 'var(--muted-foreground)',
+                      border: '1px solid var(--border)',
                       fontWeight: 600
                     }}>
                       {t.id}
@@ -390,7 +391,7 @@ export default function TransfersView({
 
                   {/* Route Flow */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a' }} dir="auto">
+                    <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--foreground)' }} dir="auto">
                       {t.fromWarehouse}
                     </span>
                     <ArrowRight size={14} style={{ color: 'var(--primary)', transform: isAr ? 'rotate(180deg)' : 'none' }} />
@@ -405,9 +406,9 @@ export default function TransfersView({
                   borderRadius: '20px',
                   fontSize: '12px',
                   fontWeight: 700,
-                  background: t.status === 'In-Transit' ? '#fffbeb' : t.status === 'Received' ? '#ecfdf5' : 'var(--primary-light)',
-                  color: t.status === 'In-Transit' ? '#b45309' : t.status === 'Received' ? '#047857' : 'var(--primary)',
-                  border: `1px solid ${t.status === 'In-Transit' ? '#fde68a' : t.status === 'Received' ? '#a7f3d0' : 'var(--primary-border)'}`
+                  background: t.status === 'In-Transit' ? 'var(--badge-amber-bg)' : t.status === 'Received' ? 'var(--badge-emerald-bg)' : 'var(--primary-light)',
+                  color: t.status === 'In-Transit' ? 'var(--badge-amber-fg)' : t.status === 'Received' ? 'var(--badge-emerald-fg)' : 'var(--primary)',
+                  border: `1px solid ${t.status === 'In-Transit' ? 'var(--badge-amber-border)' : t.status === 'Received' ? 'var(--badge-emerald-border)' : 'var(--primary-border)'}`
                 }}>
                   {t.status === 'In-Transit' ? (isAr ? 'في الطريق' : 'In-Transit') :
                    t.status === 'Received' ? (isAr ? 'تم الاستلام' : 'Received') :
@@ -418,32 +419,32 @@ export default function TransfersView({
               {/* Carrier & Logistics Box */}
               <div style={{ 
                 fontSize: '12px', 
-                color: '#475569', 
+                color: 'var(--muted-foreground)', 
                 lineHeight: '1.7', 
-                background: '#f8fafc', 
+                background: 'var(--surface-subtle, var(--muted))', 
                 padding: '12px 14px', 
                 borderRadius: '10px', 
-                border: '1px solid #e2e8f0' 
+                border: '1px solid var(--border)' 
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <User size={13} style={{ color: 'var(--primary)' }} />
-                    <span>{isAr ? 'السائق:' : 'Driver:'} <strong style={{ color: '#0f172a' }}>{t.driverName}</strong></span>
+                    <span>{isAr ? 'السائق:' : 'Driver:'} <strong style={{ color: 'var(--foreground)' }}>{t.driverName}</strong></span>
                   </div>
                   {t.driverPhone && (
-                    <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{t.driverPhone}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontFamily: 'monospace' }}>{t.driverPhone}</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <Truck size={13} style={{ color: '#64748b' }} />
-                  <span>{isAr ? 'الشاحنة والمركبة:' : 'Truck:'} <span style={{ color: '#0f172a', fontWeight: 600 }}>{t.truckPlate}</span></span>
+                  <Truck size={13} style={{ color: 'var(--muted-foreground)' }} />
+                  <span>{isAr ? 'الشاحنة والمركبة:' : 'Truck:'} <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{t.truckPlate}</span></span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <Clock size={13} style={{ color: '#64748b' }} />
-                  <span>{isAr ? 'وقت الإرسال:' : 'Dispatched:'} <span style={{ color: '#0f172a' }}>{t.dispatchDate}</span></span>
+                  <Clock size={13} style={{ color: 'var(--muted-foreground)' }} />
+                  <span>{isAr ? 'وقت الإرسال:' : 'Dispatched:'} <span style={{ color: 'var(--foreground)' }}>{t.dispatchDate}</span></span>
                 </div>
                 {t.receivedDate && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#047857' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: 'var(--badge-emerald-fg)' }}>
                     <CheckCircle2 size={13} />
                     <span>{isAr ? 'تاريخ الاستلام:' : 'Delivered:'} {t.receivedDate} ({t.receivedBy || ''})</span>
                   </div>
@@ -453,7 +454,7 @@ export default function TransfersView({
               {/* Manifest Items List */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--muted-foreground)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <Layers size={13} style={{ color: 'var(--primary)' }} />
                     <span>{isAr ? 'محتويات الشحنة (Cargo Items):' : 'Cargo Manifest Items:'}</span>
                   </span>
@@ -462,7 +463,7 @@ export default function TransfersView({
                   </span>
                 </div>
 
-                <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px 12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ background: 'var(--surface-subtle, var(--muted))', borderRadius: '8px', padding: '8px 12px', border: '1px solid var(--border)' }}>
                   {t.items.map((item, idx) => (
                     <div 
                       key={idx} 
@@ -472,12 +473,12 @@ export default function TransfersView({
                         alignItems: 'center',
                         fontSize: '12px', 
                         padding: '6px 0', 
-                        borderBottom: idx < t.items.length - 1 ? '1px dashed #e2e8f0' : 'none' 
+                        borderBottom: idx < t.items.length - 1 ? '1px dashed var(--border)' : 'none' 
                       }}
                     >
                       <div>
-                        <span style={{ color: '#0f172a', display: 'block', fontWeight: 600 }}>{item.name}</span>
-                        <span style={{ fontSize: '10px', color: '#64748b', fontFamily: 'monospace' }}>{item.sku}</span>
+                        <span style={{ color: 'var(--foreground)', display: 'block', fontWeight: 600 }}>{item.name}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--muted-foreground)', fontFamily: 'monospace' }}>{item.sku}</span>
                       </div>
                       <strong style={{ color: 'var(--primary)', fontFamily: 'monospace', fontSize: '13px' }}>
                         {item.qty} {item.unit || (isAr ? 'قطعة' : 'pcs')}
@@ -489,7 +490,7 @@ export default function TransfersView({
 
               {/* Notes */}
               {t.notes && (
-                <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontStyle: 'italic', background: '#f1f5f9', padding: '6px 10px', borderRadius: '6px' }}>
+                <p style={{ margin: 0, fontSize: '11px', color: 'var(--muted-foreground)', fontStyle: 'italic', background: 'var(--muted)', padding: '6px 10px', borderRadius: '6px' }}>
                   {t.notes}
                 </p>
               )}
@@ -507,23 +508,23 @@ export default function TransfersView({
                     gap: '6px',
                     padding: '9px 12px',
                     borderRadius: '8px',
-                    background: '#f8fafc',
-                    border: '1px solid #cbd5e1',
-                    color: '#334155',
+                    background: 'var(--muted)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--foreground)',
                     fontSize: '12px',
                     fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f1f5f9';
+                    e.currentTarget.style.background = 'var(--accent)';
                     e.currentTarget.style.color = 'var(--primary)';
                     e.currentTarget.style.borderColor = 'var(--primary)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f8fafc';
-                    e.currentTarget.style.color = '#334155';
-                    e.currentTarget.style.borderColor = '#cbd5e1';
+                    e.currentTarget.style.background = 'var(--muted)';
+                    e.currentTarget.style.color = 'var(--foreground)';
+                    e.currentTarget.style.borderColor = 'var(--border)';
                   }}
                 >
                   <FileText size={15} />

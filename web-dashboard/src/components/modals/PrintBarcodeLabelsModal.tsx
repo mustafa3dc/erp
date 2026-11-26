@@ -204,9 +204,9 @@ export default function PrintBarcodeLabelsModal({
 
         {/* Content & Items List */}
         <div className="invoice-modal-form" style={{ padding: '4px' }}>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={{ background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: 'var(--muted-foreground)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <span>{isAr ? 'تعديل عدد النسخ لكل مادة بناءً على الكمية المستلمة الفورية:' : 'Adjust copies per received item:'}</span>
-            <span style={{ fontWeight: 800, color: '#047857' }}>{items.length} مواد مشمولة</span>
+            <span style={{ fontWeight: 800, color: 'var(--badge-emerald-fg)' }}>{items.length} مواد مشمولة</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -217,7 +217,7 @@ export default function PrintBarcodeLabelsModal({
                   key={item.id} 
                   style={{
                     background: 'var(--card)',
-                    border: '1px solid #e2e8f0',
+                    border: '1px solid var(--border)',
                     borderRadius: '10px',
                     padding: '12px',
                     display: 'flex',
@@ -227,24 +227,24 @@ export default function PrintBarcodeLabelsModal({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', width: '130px', textAlign: 'center' }}>
+                    <div className="bg-white p-2.5 rounded-lg border border-border text-center shrink-0" style={{ width: '134px' }}>
                       <BarcodeSvg value={item.barcode} width={110} height={24} color="#000000" />
-                      <div style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--foreground)', letterSpacing: '1px', marginTop: '2px' }}>
+                      <div style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a', letterSpacing: '1px', marginTop: '2px' }}>
                         {item.barcode}
                       </div>
                     </div>
                     <div>
                       <h4 style={{ margin: '0 0 4px 0', fontSize: '13px', fontWeight: 700, color: 'var(--foreground)' }}>{item.nameAr}</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
-                        <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>SKU: {item.sku}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--muted-foreground)', fontFamily: 'monospace' }}>
+                        <span style={{ background: 'var(--muted)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--foreground)' }}>SKU: {item.sku}</span>
                         <span>الوحدة: {item.uom}</span>
-                        <span style={{ color: '#047857', fontWeight: 700 }}>سعر البيع: ${item.newSellingPrice || item.currentSellingPrice || 0}</span>
+                        <span style={{ color: 'var(--badge-emerald-fg)', fontWeight: 700 }}>سعر البيع: ${item.newSellingPrice || item.currentSellingPrice || 0}</span>
                       </div>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{isAr ? 'عدد النسخ:' : 'Copies:'}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{isAr ? 'عدد النسخ:' : 'Copies:'}</span>
                     <input 
                       type="number"
                       min="1"
@@ -258,7 +258,9 @@ export default function PrintBarcodeLabelsModal({
                         width: '65px',
                         padding: '6px',
                         borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
+                        border: '1px solid var(--border)',
+                        background: 'var(--background)',
+                        color: 'var(--foreground)',
                         fontSize: '13px',
                         fontWeight: 800,
                         textAlign: 'center',
@@ -273,8 +275,8 @@ export default function PrintBarcodeLabelsModal({
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid var(--border)', marginTop: '8px' }}>
+          <span style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>
             {isAr ? 'جاهز للطباعة الحرارية ومقاس A4' : 'Ready for Thermal & A4 sticker sheets'}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -284,9 +286,9 @@ export default function PrintBarcodeLabelsModal({
               style={{
                 padding: '8px 16px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1px solid var(--border)',
                 background: 'var(--card)',
-                color: '#64748b',
+                color: 'var(--muted-foreground)',
                 fontSize: '12px',
                 cursor: 'pointer'
               }}

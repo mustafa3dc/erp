@@ -265,7 +265,8 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 fontSize: '0.78rem',
                 border: '1px solid var(--border)',
                 borderRadius: '8px',
-                background: '#f8fafc',
+                background: 'var(--background)',
+                color: 'var(--foreground)',
                 outline: 'none'
               }}
             />
@@ -282,7 +283,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   background: 'transparent',
                   border: 'none',
                   cursor: 'pointer',
-                  color: '#94a3b8',
+                  color: 'var(--muted-foreground)',
                   padding: 0
                 }}
               >
@@ -291,7 +292,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             )}
           </div>
 
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'inline-flex', background: 'var(--muted)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <button
               type="button"
               onClick={() => setRacksViewMode('units')}
@@ -304,9 +305,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 border: 'none',
                 fontSize: '0.75rem',
                 fontWeight: racksViewMode === 'units' ? 700 : 500,
-                background: racksViewMode === 'units' ? '#ffffff' : 'transparent',
-                color: racksViewMode === 'units' ? '#0f172a' : '#64748b',
-                boxShadow: racksViewMode === 'units' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                background: racksViewMode === 'units' ? 'var(--card)' : 'transparent',
+                color: racksViewMode === 'units' ? 'var(--foreground)' : 'var(--muted-foreground)',
+                boxShadow: racksViewMode === 'units' ? 'var(--shadow-xs)' : 'none',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
@@ -326,9 +327,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 border: 'none',
                 fontSize: '0.75rem',
                 fontWeight: racksViewMode === 'pallets' ? 700 : 500,
-                background: racksViewMode === 'pallets' ? '#ffffff' : 'transparent',
-                color: racksViewMode === 'pallets' ? '#0f172a' : '#64748b',
-                boxShadow: racksViewMode === 'pallets' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                background: racksViewMode === 'pallets' ? 'var(--card)' : 'transparent',
+                color: racksViewMode === 'pallets' ? 'var(--foreground)' : 'var(--muted-foreground)',
+                boxShadow: racksViewMode === 'pallets' ? 'var(--shadow-xs)' : 'none',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
@@ -341,20 +342,20 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
       </div>
 
       {/* Color Legend Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: '16px', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '1rem', fontSize: '0.75rem', color: '#475569' }}>
-        <span style={{ fontWeight: 700, color: '#334155' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: '16px', padding: '8px 12px', background: 'var(--surface-subtle, var(--muted))', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+        <span style={{ fontWeight: 700, color: 'var(--foreground)' }}>
           {tr('legendTitle')}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#2563eb', display: 'inline-block' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#3b82f6', display: 'inline-block' }}></span>
           <span>{tr('legendStable')}</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ea580c', display: 'inline-block' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#f97316', display: 'inline-block' }}></span>
           <span>{tr('legendCrowded')}</span>
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#991b1b', display: 'inline-block' }}></span>
+          <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ef4444', display: 'inline-block' }}></span>
           <span>{tr('legendFull')}</span>
         </span>
       </div>
@@ -372,9 +373,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
-            background: '#f8fafc',
+            background: 'var(--surface-subtle, var(--muted))',
             borderRadius: '12px',
-            border: '1.5px dashed #cbd5e1',
+            border: '1.5px dashed var(--border)',
             margin: '1rem 0'
           }}
         >
@@ -383,22 +384,22 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              background: '#e0f2fe',
+              background: 'var(--badge-blue-bg)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '1rem',
-              color: '#0284c7'
+              color: 'var(--badge-blue-fg)'
             }}
           >
             <Warehouse size={32} strokeWidth={1.75} />
           </div>
 
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--foreground)', marginBottom: '0.5rem' }}>
             {tr('emptyTitle')}
           </h3>
 
-          <p style={{ fontSize: '0.84rem', color: '#64748b', maxWidth: '440px', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+          <p style={{ fontSize: '0.84rem', color: 'var(--muted-foreground)', maxWidth: '440px', marginBottom: '1.5rem', lineHeight: 1.6 }}>
             {tr('emptySubtitle')}
           </p>
 
@@ -415,11 +416,11 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               fontSize: '0.88rem',
               fontWeight: 700,
               borderRadius: '8px',
-              backgroundColor: '#0284c7',
+              backgroundColor: 'var(--primary)',
               color: '#ffffff',
               border: 'none',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+              boxShadow: '0 2px 6px var(--primary-glow)'
             }}
           >
             <Plus size={16} />
@@ -432,8 +433,8 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             const clampedPct = Math.min(100, Math.max(0, bay.occupancy));
             const isFull = clampedPct >= 100;
             const isCrowded = clampedPct >= 70 && !isFull;
-            const statusColor = isFull ? '#991b1b' : isCrowded ? '#ea580c' : '#2563eb';
-            const statusBg = isFull ? 'rgba(153, 27, 27, 0.12)' : isCrowded ? 'rgba(234, 88, 12, 0.12)' : 'rgba(37, 99, 235, 0.12)';
+            const statusColor = isFull ? 'var(--badge-red-fg, #ef4444)' : isCrowded ? 'var(--badge-amber-fg, #f97316)' : 'var(--badge-blue-fg, #3b82f6)';
+            const statusBg = isFull ? 'var(--badge-red-bg)' : isCrowded ? 'var(--badge-amber-bg)' : 'var(--badge-blue-bg)';
             const availableCount = Math.max(0, bay.totalCapacity - bay.usedCapacity);
             const overExtra = Math.max(0, bay.usedCapacity - bay.totalCapacity);
 
@@ -445,13 +446,13 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 className="rack-bay-box"
                 onClick={() => setSelectedRackDrawer(bay)}
                 style={{
-                  background: bay.isHighlighted ? '#eff6ff' : '#f8fafc',
+                  background: bay.isHighlighted ? 'var(--badge-blue-bg)' : 'var(--surface-subtle, var(--card))',
                   border: bay.isHighlighted
-                    ? '2px solid #2563eb'
+                    ? '2px solid var(--primary)'
                     : isFull
-                    ? '1px solid rgba(153, 27, 27, 0.4)'
+                    ? '1px solid var(--badge-red-border)'
                     : isCrowded
-                    ? '1px solid rgba(234, 88, 12, 0.4)'
+                    ? '1px solid var(--badge-amber-border)'
                     : '1px solid var(--border)',
                   borderRadius: '10px',
                   padding: '10px',
@@ -459,8 +460,8 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   flexDirection: 'column',
                   gap: '6px',
                   boxShadow: bay.isHighlighted
-                    ? '0 0 0 3px rgba(37, 99, 235, 0.3), 0 4px 10px rgba(37, 99, 235, 0.2)'
-                    : '0 1px 2px rgba(0,0,0,0.02)',
+                    ? '0 0 0 3px var(--primary-glow)'
+                    : 'var(--shadow-xs)',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                   position: 'relative'
@@ -469,7 +470,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               >
                 {/* Header row */}
                 <div className="rack-bay-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
-                  <span className="rack-code" dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', color: '#0f172a' }}>
+                  <span className="rack-code" dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', color: 'var(--foreground)' }}>
                     {bay.bayCode}
                   </span>
                   <span
@@ -516,7 +517,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                           style={{
                             height: '10px',
                             borderRadius: '2px',
-                            background: slotFilled ? statusColor : '#e2e8f0',
+                            background: slotFilled ? statusColor : 'var(--border)',
                             border: '1px solid rgba(0,0,0,0.05)'
                           }}
                         />
@@ -526,16 +527,16 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 )}
 
                 {/* Unambiguous occupied vs. capacity breakdown */}
-                <div style={{ fontSize: '0.72rem', color: '#1e293b', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--foreground)', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                   <span>{tr('occupiedPrefix')}</span>
                   <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
                     {bay.usedCapacity}
                   </span>
-                  <span style={{ color: '#64748b', fontWeight: 600 }}>{tr('capacityOfSeparator')}</span>
+                  <span style={{ color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('capacityOfSeparator')}</span>
                   <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block' }}>
                     {bay.totalCapacity}
                   </span>
-                  <span style={{ color: '#475569', fontWeight: 600 }}>{unitLabel}</span>
+                  <span style={{ color: 'var(--muted-foreground)', fontWeight: 600 }}>{unitLabel}</span>
                 </div>
 
                 {overExtra > 0 ? (
@@ -546,9 +547,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                       gap: '4px',
                       fontSize: '0.66rem',
                       fontWeight: 700,
-                      color: '#b91c1c',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      color: 'var(--badge-red-fg)',
+                      background: 'var(--badge-red-bg)',
+                      border: '1px solid var(--badge-red-border)',
                       borderRadius: '4px',
                       padding: '2px 6px',
                       width: 'fit-content'
@@ -558,12 +559,12 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                     <span>{tr('overCapacityBadge').replace('{extra}', String(overExtra))}</span>
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.68rem', color: isFull ? '#b91c1c' : '#64748b', fontWeight: isFull ? 700 : 500 }}>
+                  <div style={{ fontSize: '0.68rem', color: isFull ? 'var(--badge-red-fg)' : 'var(--muted-foreground)', fontWeight: isFull ? 700 : 500 }}>
                     {tr('availPrefix')} <span dir="ltr" style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums' }}>{availableCount}</span> {unitLabel}
                   </div>
                 )}
 
-                <small className="rack-label" style={{ fontSize: '0.68rem', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '4px', marginTop: '2px' }}>
+                <small className="rack-label" style={{ fontSize: '0.68rem', color: 'var(--muted-foreground)', borderTop: '1px dashed var(--border)', paddingTop: '4px', marginTop: '2px' }}>
                   <bdi dir="auto">{bay.label}</bdi>
                 </small>
               </div>
@@ -630,14 +631,14 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--foreground, #0f172a)' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--foreground)' }}>
                     {tr('bayDetailsTitle').replace('{code}', selectedRackDrawer.bayCode)}
                   </h3>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', background: '#e2e8f0', color: '#334155', padding: '2px 8px', borderRadius: '4px' }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem', background: 'var(--muted)', color: 'var(--foreground)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px' }}>
                     <bdi dir="auto">{selectedRackDrawer.label}</bdi>
                   </span>
                 </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
                   {tr('warehousePrefix').replace('{name}', isAr ? warehouse.nameAr : (warehouse.nameEn || warehouse.nameAr))}
                 </p>
               </div>
@@ -651,7 +652,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   cursor: 'pointer',
                   padding: '6px',
                   borderRadius: '6px',
-                  color: '#64748b'
+                  color: 'var(--muted-foreground)'
                 }}
               >
                 <X size={20} />
@@ -669,9 +670,9 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
               }}
             >
               {/* Capacity Progress Metric */}
-              <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border, #e2e8f0)', background: 'var(--card, #ffffff)' }}>
+              <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--card)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--muted-foreground)' }}>
                     {tr('capacityOccupancyLabel')}
                   </span>
                   <span
@@ -680,43 +681,43 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                       fontSize: '0.82rem',
                       fontWeight: 800,
                       fontVariantNumeric: 'tabular-nums',
-                      color: selectedRackDrawer.occupancy >= 100 ? '#991b1b' : selectedRackDrawer.occupancy >= 70 ? '#ea580c' : '#2563eb'
+                      color: selectedRackDrawer.occupancy >= 100 ? 'var(--badge-red-fg)' : selectedRackDrawer.occupancy >= 70 ? 'var(--badge-amber-fg)' : 'var(--badge-blue-fg)'
                     }}
                   >
                     {Math.min(100, selectedRackDrawer.occupancy)}%
                   </span>
                 </div>
-                <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ height: '8px', background: 'var(--muted)', borderRadius: '4px', overflow: 'hidden' }}>
                   <div
                     style={{
                       height: '100%',
                       width: `${Math.min(100, selectedRackDrawer.occupancy)}%`,
-                      background: selectedRackDrawer.occupancy >= 100 ? '#991b1b' : selectedRackDrawer.occupancy >= 70 ? '#ea580c' : '#2563eb',
+                      background: selectedRackDrawer.occupancy >= 100 ? '#ef4444' : selectedRackDrawer.occupancy >= 70 ? '#f97316' : '#3b82f6',
                       borderRadius: '4px',
                       transition: 'width 0.3s ease'
                     }}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
-                  <span>{tr('usedLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{selectedRackDrawer.usedCapacity}</strong></span>
-                  <span>{tr('availableLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.max(0, selectedRackDrawer.totalCapacity - selectedRackDrawer.usedCapacity)}</strong></span>
-                  <span>{tr('totalLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums' }}>{selectedRackDrawer.totalCapacity}</strong></span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+                  <span>{tr('usedLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{selectedRackDrawer.usedCapacity}</strong></span>
+                  <span>{tr('availableLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{Math.max(0, selectedRackDrawer.totalCapacity - selectedRackDrawer.usedCapacity)}</strong></span>
+                  <span>{tr('totalLabel')} <strong dir="ltr" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--foreground)' }}>{selectedRackDrawer.totalCapacity}</strong></span>
                 </div>
               </div>
 
               {/* Stored Items List */}
               <div>
-                <h5 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: 'var(--foreground, #0f172a)' }}>
+                <h5 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: 'var(--foreground)' }}>
                   {tr('storedItemsTitle')} (<span dir="ltr">{selectedRackDrawer.items.length}</span>)
                 </h5>
 
                 {selectedRackDrawer.items.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '2rem 1rem', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
-                    <Box size={32} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block' }} />
-                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                  <div style={{ textAlign: 'center', padding: '2rem 1rem', background: 'var(--surface-subtle, var(--muted))', borderRadius: '10px', border: '1px dashed var(--border)' }}>
+                    <Box size={32} className="text-muted-foreground" style={{ margin: '0 auto 8px', display: 'block' }} />
+                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--foreground)' }}>
                       {tr('emptyBayTitle')}
                     </p>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
                       {tr('emptyBaySubtitle')}
                     </p>
                   </div>
@@ -728,8 +729,8 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                         style={{
                           padding: '10px 12px',
                           borderRadius: '8px',
-                          border: '1px solid var(--border, #e2e8f0)',
-                          background: 'var(--card, #ffffff)',
+                          border: '1px solid var(--border)',
+                          background: 'var(--card)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -737,10 +738,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                         }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground, #0f172a)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.72rem', color: '#64748b' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.72rem', color: 'var(--muted-foreground)' }}>
                             <span dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 600 }}>{prod.sku}</span>
                             <span>•</span>
                             <span>{prod.category}</span>
@@ -756,10 +757,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                           </div>
                         </div>
                         <div style={{ textAlign: isAr ? 'left' : 'right' }}>
-                          <div dir="ltr" style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--foreground, #0f172a)', fontVariantNumeric: 'tabular-nums' }}>
+                          <div dir="ltr" style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--foreground)', fontVariantNumeric: 'tabular-nums' }}>
                             {prod.currentStock || 0}
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>
                             {prod.unit || tr('defaultUnit')}
                           </div>
                         </div>

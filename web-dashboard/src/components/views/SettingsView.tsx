@@ -92,7 +92,7 @@ const WORLD_COUNTRIES = [
 ];
 
 const INPUT_CLS =
-  'w-full h-10 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background ps-3 pe-3 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors';
+  'w-full h-10 rounded-lg border border-border bg-background ps-3 pe-3 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-primary transition-colors';
 
 // ─── Reusable Sub-Components ──────────────────────────────────────────────────
 
@@ -113,8 +113,8 @@ function PillSwitch({
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-        checked ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+        checked ? 'bg-primary' : 'bg-muted border border-border'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <span
@@ -136,8 +136,8 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white dark:bg-card rounded-xl border border-slate-200/80 dark:border-border p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2.5 pb-3.5 border-b border-slate-100 dark:border-border/60">
+    <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2.5 pb-3.5 border-b border-border/60">
         <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
           {icon}
         </div>
@@ -151,7 +151,7 @@ function SectionCard({
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+      <label className="block text-xs font-semibold text-muted-foreground">
         {label}
       </label>
       {children}
@@ -173,7 +173,7 @@ function SwitchRow({
   isAr: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between p-3.5 rounded-lg border border-slate-200/80 dark:border-border bg-slate-50/50 dark:bg-muted/20">
+    <div className="flex items-center justify-between p-3.5 rounded-lg border border-border bg-muted/40">
       <div>
         <p className="text-sm font-semibold text-foreground">{title}</p>
         {description && (
@@ -184,8 +184,8 @@ function SwitchRow({
         <span
           className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
             checked
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
-              : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+              : 'bg-muted text-muted-foreground border-border'
           }`}
         >
           {checked ? (isAr ? 'مفعلة' : 'Enabled') : (isAr ? 'معطلة' : 'Disabled')}
@@ -207,7 +207,7 @@ function StatusBadge({
 }) {
   if (locked) {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
         <Lock className="w-3 h-3" />
         {isAr ? 'غير مشمولة' : 'Locked'}
       </span>
@@ -215,13 +215,13 @@ function StatusBadge({
   }
   if (enabled) {
     return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60">
         {isAr ? 'مفعلة' : 'Enabled'}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
       {isAr ? 'معطلة' : 'Disabled'}
     </span>
   );
@@ -605,7 +605,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
   return (
     <div className="max-w-5xl mx-auto w-full pb-24">
       {/* Page Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-slate-200 dark:border-border mb-5">
+      <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-border mb-5">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
             <Settings className="w-4 h-4" />
@@ -625,8 +625,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
         <div
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
             isSaving
-              ? 'bg-primary/8 text-primary border-primary/20'
-              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
+              ? 'bg-primary/10 text-primary border-primary/25'
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
           }`}
         >
           {isSaving ? (
@@ -644,7 +644,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-slate-200 dark:border-border mb-6 overflow-x-auto">
+      <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -730,11 +730,11 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
           >
             {/* Logo Upload */}
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <label className="block text-xs font-semibold text-muted-foreground">
                 {isAr ? 'شعار المنشأة' : 'Organization Logo'}
               </label>
               <div
-                className="flex flex-col items-center justify-center gap-2 p-6 rounded-lg border-2 border-dashed border-slate-200 dark:border-border bg-slate-50/50 dark:bg-muted/20 cursor-pointer hover:border-primary/50 transition-colors"
+                className="flex flex-col items-center justify-center gap-2 p-6 rounded-lg border-2 border-dashed border-border bg-muted/40 cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => logoInputRef.current?.click()}
               >
                 {localSettings.logoUrl ? (
@@ -763,7 +763,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 <button
                   type="button"
                   onClick={() => setLocal('logoUrl', '')}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                  className="text-xs text-destructive hover:opacity-80 font-medium"
                 >
                   {isAr ? 'إزالة الشعار' : 'Remove logo'}
                 </button>
@@ -775,7 +775,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               <FieldRow label={isAr ? 'ترويسة الوصل' : 'Receipt Header'}>
                 <textarea
                   rows={3}
-                  className="w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background ps-3 pe-3 pt-2 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors resize-none"
+                  className="w-full rounded-lg border border-border bg-background ps-3 pe-3 pt-2 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-primary transition-colors resize-none"
                   value={localSettings.receiptHeader || ''}
                   onChange={(e) => setLocal('receiptHeader', e.target.value)}
                   placeholder={isAr ? 'نص الترويسة على الوصل...' : 'Receipt header text...'}
@@ -784,7 +784,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               <FieldRow label={isAr ? 'تذييل الوصل' : 'Receipt Footer'}>
                 <textarea
                   rows={3}
-                  className="w-full rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background ps-3 pe-3 pt-2 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors resize-none"
+                  className="w-full rounded-lg border border-border bg-background ps-3 pe-3 pt-2 text-sm text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-primary transition-colors resize-none"
                   value={localSettings.receiptFooter || ''}
                   onChange={(e) => setLocal('receiptFooter', e.target.value)}
                   placeholder={isAr ? 'نص التذييل على الوصل...' : 'Receipt footer text...'}
@@ -793,7 +793,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             </div>
 
             {/* Language & Theme (instant sync, not isDirty) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-border/60">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border/60">
               <FieldRow label={isAr ? 'لغة الواجهة' : 'Interface Language'}>
                 <div className="flex items-center gap-2">
                   <Languages className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -825,8 +825,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                       onClick={() => handleThemeChange(t.val as SupportedTheme)}
                       className={`flex-1 flex items-center justify-center gap-1.5 h-10 rounded-lg text-xs font-semibold border transition-all ${
                         settings.theme === t.val
-                          ? 'border-primary bg-primary/8 text-primary'
-                          : 'border-slate-200 dark:border-border bg-white dark:bg-background text-muted-foreground hover:text-foreground'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       {t.icon}
@@ -843,7 +843,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             icon={<Download className="w-4 h-4" />}
             title={isAr ? 'إدارة البيانات والنسخ الاحتياطي' : 'Data & Backup Management'}
           >
-            <div className="flex items-center justify-between flex-wrap gap-3 p-3.5 rounded-lg border border-slate-200/80 dark:border-border bg-slate-50/50 dark:bg-muted/20">
+            <div className="flex items-center justify-between flex-wrap gap-3 p-3.5 rounded-lg border border-border bg-muted/40">
               <div>
                 <p className="text-sm font-semibold text-foreground">
                   {isAr ? 'تصدير واستعادة بيانات النظام' : 'Export & Restore System Data'}
@@ -856,7 +856,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               </div>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card text-sm font-semibold text-foreground hover:bg-slate-50 dark:hover:bg-muted/30 transition-colors"
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-card text-sm font-semibold text-foreground hover:bg-muted transition-colors"
                 onClick={() => {
                   const data = {
                     settings,
@@ -1025,9 +1025,9 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             />
 
             {settings.multiCurrencyEnabled && (
-              <div className="mt-2 rounded-lg border border-slate-200 dark:border-border p-4 space-y-3">
+              <div className="mt-2 rounded-lg border border-border p-4 space-y-3 bg-muted/20">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  <span className="text-xs font-semibold text-muted-foreground">
                     {isAr
                       ? 'العملات الثانوية المعتمدة وأسعار الصرف:'
                       : 'Secondary Currencies & Conversion Rates:'}
@@ -1036,7 +1036,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                     <select
                       value={newCurrencyCode}
                       onChange={(e) => setNewCurrencyCode(e.target.value)}
-                      className="h-8 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
                     >
                       {Object.values(CURRENCY_REGISTRY)
                         .filter((c) => c.code !== settings.baseCurrency)
@@ -1053,12 +1053,12 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                       value={newCurrencyRate}
                       onChange={(e) => setNewCurrencyRate(Number(e.target.value))}
                       placeholder={isAr ? 'سعر الصرف' : 'Rate'}
-                      className="w-24 h-8 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="w-24 h-8 rounded-lg border border-border bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
                     />
                     <button
                       type="button"
                       onClick={handleAddSecondaryCurrency}
-                      className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
+                      className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>{isAr ? 'إضافة عملة' : 'Add Currency'}</span>
@@ -1067,23 +1067,23 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-xs rounded-lg overflow-hidden border border-slate-200 dark:border-border">
+                  <table className="w-full border-collapse text-xs rounded-lg overflow-hidden border border-border">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-muted/30 text-start">
-                        <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-start">
+                      <tr className="bg-muted text-start">
+                        <th className="px-3 py-2 font-semibold text-muted-foreground text-start">
                           {isAr ? 'العملة' : 'Currency'}
                         </th>
-                        <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-start">
+                        <th className="px-3 py-2 font-semibold text-muted-foreground text-start">
                           {isAr ? 'الرمز' : 'Symbol'}
                         </th>
-                        <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-start">
+                        <th className="px-3 py-2 font-semibold text-muted-foreground text-start">
                           {isAr
                             ? settings.baseCurrency === 'IQD'
                               ? 'سعر الصرف (1 دولار = د.ع)'
                               : `سعر الصرف (1 ${settings.baseCurrency} =)`
                             : `Rate (1 ${settings.baseCurrency} =)`}
                         </th>
-                        <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-center">
+                        <th className="px-3 py-2 font-semibold text-muted-foreground text-center">
                           {isAr ? 'الإجراء' : 'Action'}
                         </th>
                       </tr>
@@ -1104,7 +1104,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                         (settings.secondaryCurrencies || []).map((curr) => (
                           <tr
                             key={curr.code}
-                            className="border-t border-slate-200 dark:border-border"
+                            className="border-t border-border"
                           >
                             <td className="px-3 py-2.5 font-semibold text-foreground">
                               {isAr ? curr.nameAr : curr.nameEn} ({curr.code})
@@ -1119,7 +1119,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                                 onChange={(e) =>
                                   handleUpdateSecondaryRate(curr.code, Number(e.target.value))
                                 }
-                                className="w-32 h-7 rounded border border-slate-200 dark:border-border bg-white dark:bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                className="w-32 h-7 rounded border border-border bg-background px-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring/40"
                               />
                             </td>
                             <td className="px-3 py-2.5 text-center">
@@ -1214,8 +1214,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                       onClick={() => setLocal('paperWidth', w)}
                       className={`flex-1 h-10 rounded-lg border text-sm font-semibold transition-all ${
                         localSettings.paperWidth === w
-                          ? 'border-primary bg-primary/8 text-primary'
-                          : 'border-slate-200 dark:border-border bg-white dark:bg-background text-muted-foreground hover:text-foreground'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       {w}
@@ -1263,7 +1263,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             title={isAr ? 'الموازين الإلكترونية وموازين الباركود' : 'Electronic Weighing Scales'}
           >
             {/* Scale Enable Toggle */}
-            <div className="flex items-center justify-between p-3.5 rounded-lg border border-slate-200/80 dark:border-border bg-slate-50/50 dark:bg-muted/20">
+            <div className="flex items-center justify-between p-3.5 rounded-lg border border-border bg-muted/40">
               <div>
                 <p className="text-sm font-semibold text-foreground">
                   {isAr ? 'تفعيل دعم الموازين الإلكترونية' : 'Enable Electronic Scale Support'}
@@ -1276,11 +1276,11 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               </div>
               <div className="flex items-center gap-2.5 shrink-0 ms-4">
                 {currentScaleSettings.enabled ? (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60">
                     {isAr ? 'مفعلة' : 'Enabled'}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
                     {isAr ? 'معطلة' : 'Disabled'}
                   </span>
                 )}
@@ -1505,7 +1505,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                <div className="p-4 rounded-xl border border-slate-200/80 dark:border-border bg-slate-50/40 dark:bg-muted/20 space-y-3">
+                <div className="p-4 rounded-xl border border-border bg-muted/40 space-y-3">
                   <div className="flex items-center gap-2 text-xs font-bold text-primary">
                     <Sparkles className="w-4 h-4" />
                     <span>{lTr('earningRuleTitle')}</span>
@@ -1532,7 +1532,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   </FieldRow>
                 </div>
 
-                <div className="p-4 rounded-xl border border-slate-200/80 dark:border-border bg-slate-50/40 dark:bg-muted/20 space-y-3">
+                <div className="p-4 rounded-xl border border-border bg-muted/40 space-y-3">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
                     <Coins className="w-4 h-4" />
                     <span>{lTr('redemptionRuleTitle')}</span>
@@ -1695,7 +1695,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               return (
                 <div
                   key={module.key}
-                  className="flex items-center justify-between p-4 rounded-xl border border-slate-200/80 dark:border-border bg-white dark:bg-card shadow-sm"
+                  className="flex items-center justify-between p-4 rounded-xl border border-border bg-card shadow-sm"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -1722,8 +1722,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
 
       {/* ── isDirty Sticky Action Bar ─────────────────────────────────────── */}
       {isDirty && (
-        <div className="fixed bottom-0 start-0 end-0 z-50 border-t border-slate-200 dark:border-border bg-white/95 dark:bg-card/95 backdrop-blur-sm px-6 py-3 flex items-center justify-between gap-4 shadow-lg">
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+        <div className="fixed bottom-0 start-0 end-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm px-6 py-3 flex items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-300">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>
               {isAr ? 'توجد تعديلات غير محفوظة' : 'Unsaved changes pending'}
@@ -1733,7 +1733,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             <button
               type="button"
               onClick={handleDiscard}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card text-sm font-semibold text-foreground hover:bg-slate-50 dark:hover:bg-muted/30 transition-colors"
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-border bg-card text-sm font-semibold text-foreground hover:bg-muted transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
               <span>{isAr ? 'تراجع' : 'Discard'}</span>
@@ -1785,8 +1785,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               maxWidth: '480px',
               width: '100%',
               padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-              border: '1px solid #fee2e2',
+              boxShadow: 'var(--shadow-elevated)',
+              border: '1px solid var(--badge-red-border)',
             }}
           >
             <div
@@ -1803,8 +1803,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                     width: '38px',
                     height: '38px',
                     borderRadius: '10px',
-                    background: '#fee2e2',
-                    color: '#dc2626',
+                    background: 'var(--badge-red-bg)',
+                    color: 'var(--badge-red-fg)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1813,7 +1813,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   <AlertTriangle size={20} />
                 </div>
                 <h3
-                  style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#991b1b' }}
+                  style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--badge-red-fg)' }}
                 >
                   {isAr ? 'تأكيد تصفير المنظومة بالكامل' : 'Confirm System Wipe'}
                 </h3>
@@ -1824,7 +1824,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#94a3b8',
+                  color: 'var(--muted-foreground)',
                   cursor: 'pointer',
                 }}
               >
@@ -1835,7 +1835,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             <p
               style={{
                 fontSize: '0.85rem',
-                color: '#475569',
+                color: 'var(--muted-foreground)',
                 lineHeight: 1.5,
                 margin: '0 0 16px',
               }}
@@ -1851,7 +1851,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   display: 'block',
                   fontSize: '0.82rem',
                   fontWeight: 600,
-                  color: '#334155',
+                  color: 'var(--foreground)',
                   marginBottom: '6px',
                 }}
               >
@@ -1869,6 +1869,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   height: '40px',
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
+                  background: 'var(--background)',
                   padding: '0 12px',
                   fontSize: '13px',
                   color: 'var(--foreground)',
@@ -1887,7 +1888,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
                   background: 'var(--card)',
-                  color: '#475569',
+                  color: 'var(--foreground)',
                   fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer',

@@ -543,10 +543,10 @@ export default function PurchaseOcrReviewWorkspace({
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
             <span className="text-xs font-bold text-foreground">{tr('editableFormTitle')}</span>
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
               extracted.matchedSupplierId && !createNewSupplier
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60'
             }`}>
               {extracted.matchedSupplierId && !createNewSupplier ? tr('supplierMatchedBadge') : tr('supplierNewBadge')}
             </span>
@@ -671,7 +671,7 @@ export default function PurchaseOcrReviewWorkspace({
                   onClick={() => handlePaymentMethodChange('cash')}
                   className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
                     paymentMethod === 'cash'
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
                       : 'border-border bg-background text-muted-foreground'
                   }`}
                 >
@@ -683,7 +683,7 @@ export default function PurchaseOcrReviewWorkspace({
                   onClick={() => handlePaymentMethodChange('credit')}
                   className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
                     paymentMethod === 'credit'
-                      ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                      ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800/60'
                       : 'border-border bg-background text-muted-foreground'
                   }`}
                 >
@@ -769,7 +769,7 @@ export default function PurchaseOcrReviewWorkspace({
                         {isMatched ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 shrink-0">
                                 <Check className="w-3 h-3" />
                                 <span>{tr('badgeMatched')}</span>
                               </span>
@@ -804,7 +804,7 @@ export default function PurchaseOcrReviewWorkspace({
                         ) : row.isNewProduct ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60 shrink-0">
                                 <PackagePlus className="w-3 h-3" />
                                 <span>{tr('badgeNewItem')}</span>
                               </span>
@@ -850,7 +850,7 @@ export default function PurchaseOcrReviewWorkspace({
                           /* Linking Mode: Inline Searchable Product Picker */
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60 shrink-0">
                                 <Search className="w-3 h-3" />
                                 <span>{tr('badgeUnmatched')}</span>
                               </span>
@@ -966,8 +966,8 @@ export default function PurchaseOcrReviewWorkspace({
                               title={isLowOrNegativeMargin ? tr('lowMarginWarning') : tr('marginLabel')}
                               className={`shrink-0 text-[10.5px] font-mono tabular-nums font-bold px-1.5 py-1 rounded-md border ${
                                 isLowOrNegativeMargin
-                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
+                                  ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800/60'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
                               }`}
                               dir="ltr"
                             >

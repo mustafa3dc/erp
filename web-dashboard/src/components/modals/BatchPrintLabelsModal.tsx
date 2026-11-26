@@ -102,10 +102,10 @@ export default function BatchPrintLabelsModal({
               <Barcode size={18} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#fff' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--foreground)' }}>
                 {isAr ? 'طباعة ملصقات الباركود الجماعية' : 'Batch Barcode Label Sheet'}
               </h3>
-              <small style={{ color: '#94a3b8' }}>
+              <small style={{ color: 'var(--muted-foreground)' }}>
                 {isAr ? `تم تحديد ${selectedProducts.length} صنف لطباعة ملصقات الرفوف` : `Ready to print labels for ${selectedProducts.length} items`}
               </small>
             </div>

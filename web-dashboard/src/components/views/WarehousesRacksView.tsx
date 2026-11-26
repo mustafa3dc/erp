@@ -471,7 +471,7 @@ export default function WarehousesRacksView({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
-              <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--muted-foreground)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Filter size={14} style={{ color: 'var(--primary)' }} />
                 {tr('filterCountryLabel')}
               </span>
@@ -480,9 +480,9 @@ export default function WarehousesRacksView({
                   type="button"
                   onClick={() => setSelectedCountryFilter('ALL')}
                   style={{
-                    background: selectedCountryFilter === 'ALL' ? 'var(--primary)' : '#ffffff',
+                    background: selectedCountryFilter === 'ALL' ? 'var(--primary)' : 'var(--card)',
                     border: selectedCountryFilter === 'ALL' ? '1px solid var(--primary)' : '1px solid var(--border)',
-                    color: selectedCountryFilter === 'ALL' ? '#ffffff' : '#475569',
+                    color: selectedCountryFilter === 'ALL' ? '#ffffff' : 'var(--muted-foreground)',
                     borderRadius: '8px',
                     padding: '6px 14px',
                     fontSize: '0.8rem',
@@ -505,9 +505,9 @@ export default function WarehousesRacksView({
                       type="button"
                       onClick={() => setSelectedCountryFilter(c.code)}
                       style={{
-                        background: isSelected ? 'var(--primary)' : '#ffffff',
+                        background: isSelected ? 'var(--primary)' : 'var(--card)',
                         border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
-                        color: isSelected ? '#ffffff' : '#475569',
+                        color: isSelected ? '#ffffff' : 'var(--muted-foreground)',
                         borderRadius: '8px',
                         padding: '6px 12px',
                         fontSize: '0.8rem',
@@ -525,8 +525,8 @@ export default function WarehousesRacksView({
                         fontWeight: 800,
                         padding: '1px 5px',
                         borderRadius: '4px',
-                        background: isSelected ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
-                        color: isSelected ? '#ffffff' : '#334155'
+                        background: isSelected ? 'rgba(255,255,255,0.22)' : 'var(--muted)',
+                        color: isSelected ? '#ffffff' : 'var(--foreground)'
                       }}>
                         {c.code}
                       </span>
@@ -538,7 +538,7 @@ export default function WarehousesRacksView({
             </div>
 
             <div style={{ position: 'relative', width: '280px', minWidth: '220px' }}>
-              <Search size={15} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', [isAr ? 'right' : 'left']: '10px', color: '#64748b' }} />
+              <Search size={15} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', [isAr ? 'right' : 'left']: '10px', color: 'var(--muted-foreground)' }} />
               <input
                 type="text"
                 value={searchQuery}
@@ -546,13 +546,13 @@ export default function WarehousesRacksView({
                 placeholder={tr('searchPlaceholder')}
                 style={{
                   width: '100%',
-                  background: 'var(--card)',
+                  background: 'var(--background)',
                   border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: isAr ? '7px 32px 7px 10px' : '7px 10px 7px 32px',
                   color: 'var(--foreground)',
                   fontSize: '0.82rem',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                  boxShadow: 'none'
                 }}
               />
             </div>
@@ -582,11 +582,11 @@ export default function WarehousesRacksView({
                     padding: '8px 16px',
                     borderRadius: '10px',
                     border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
-                    background: isSelected ? 'var(--primary)' : '#ffffff',
-                    color: isSelected ? '#ffffff' : '#334155',
+                    background: isSelected ? 'var(--primary)' : 'var(--card)',
+                    color: isSelected ? '#ffffff' : 'var(--foreground)',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    boxShadow: isSelected ? '0 2px 8px var(--primary-glow)' : '0 1px 2px rgba(0,0,0,0.03)'
+                    boxShadow: isSelected ? '0 2px 8px var(--primary-glow)' : 'var(--shadow-xs)'
                   }}
                 >
                   <span style={{
@@ -594,8 +594,8 @@ export default function WarehousesRacksView({
                     fontWeight: 800,
                     padding: '2px 6px',
                     borderRadius: '4px',
-                    background: isSelected ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
-                    color: isSelected ? '#ffffff' : '#334155'
+                    background: isSelected ? 'rgba(255,255,255,0.22)' : 'var(--muted)',
+                    color: isSelected ? '#ffffff' : 'var(--muted-foreground)'
                   }}>
                     {countryDef.code}
                   </span>
@@ -609,8 +609,8 @@ export default function WarehousesRacksView({
                       fontSize: '0.72rem',
                       padding: '2px 7px',
                       borderRadius: '999px',
-                      background: isSelected ? 'rgba(255, 255, 255, 0.25)' : (pct > 80 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'),
-                      color: isSelected ? '#ffffff' : (pct > 80 ? '#ef4444' : '#10b981'),
+                      background: isSelected ? 'rgba(255, 255, 255, 0.22)' : (pct > 80 ? 'var(--badge-red-bg)' : 'var(--badge-emerald-bg)'),
+                      color: isSelected ? '#ffffff' : (pct > 80 ? 'var(--badge-red-fg)' : 'var(--badge-emerald-fg)'),
                       fontWeight: 800,
                       fontVariantNumeric: 'tabular-nums'
                     }}
@@ -618,7 +618,7 @@ export default function WarehousesRacksView({
                     {pct}%
                   </span>
                   {h.status === 'maintenance' && (
-                    <span style={{ fontSize: '0.68rem', color: isSelected ? '#ffffff' : '#f59e0b', background: isSelected ? 'rgba(0,0,0,0.2)' : 'rgba(245, 158, 11, 0.15)', padding: '1px 5px', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '0.68rem', color: isSelected ? '#ffffff' : 'var(--badge-amber-fg)', background: isSelected ? 'rgba(0,0,0,0.2)' : 'var(--badge-amber-bg)', padding: '1px 5px', borderRadius: '4px' }}>
                       {tr('maintBadge')}
                     </span>
                   )}
@@ -639,13 +639,13 @@ export default function WarehousesRacksView({
               gridTemplateColumns: '1fr auto',
               gap: '2rem',
               alignItems: 'center',
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+              boxShadow: 'var(--shadow-card)'
             }}
           >
             <div className="wh-info-left">
               {/* Warehouse Title, Country Code, Hub Code, Status, and Storage Type */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#475569' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px', background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>
                   {activeCountry.code}
                 </span>
                 <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--foreground)' }}>
@@ -664,9 +664,9 @@ export default function WarehousesRacksView({
                   {activeWh.code}
                 </span>
                 <span style={{
-                  background: activeWh.status === 'active' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                  color: activeWh.status === 'active' ? '#059669' : '#d97706',
-                  border: activeWh.status === 'active' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(245, 158, 11, 0.25)',
+                  background: activeWh.status === 'active' ? 'var(--badge-emerald-bg)' : 'var(--badge-amber-bg)',
+                  color: activeWh.status === 'active' ? 'var(--badge-emerald-fg)' : 'var(--badge-amber-fg)',
+                  border: activeWh.status === 'active' ? '1px solid var(--badge-emerald-border)' : '1px solid var(--badge-amber-border)',
                   padding: '2px 8px',
                   borderRadius: '6px',
                   fontSize: '0.78rem',
@@ -683,9 +683,9 @@ export default function WarehousesRacksView({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '5px',
-                  background: isColdStorage ? 'rgba(6, 182, 212, 0.1)' : 'rgba(59, 130, 246, 0.08)',
-                  border: `1px solid ${isColdStorage ? 'rgba(6, 182, 212, 0.35)' : 'rgba(59, 130, 246, 0.25)'}`,
-                  color: isColdStorage ? '#0891b2' : 'var(--primary)',
+                  background: isColdStorage ? 'var(--badge-blue-bg)' : 'var(--primary-light)',
+                  border: `1px solid ${isColdStorage ? 'var(--badge-blue-border)' : 'var(--primary-border)'}`,
+                  color: isColdStorage ? 'var(--badge-blue-fg)' : 'var(--primary)',
                   padding: '3px 10px',
                   borderRadius: '6px',
                   fontSize: '0.78rem',
@@ -698,7 +698,7 @@ export default function WarehousesRacksView({
 
               {/* Geographic Location & Address Banner */}
               <div style={{
-                background: '#f8fafc',
+                background: 'var(--surface-subtle, var(--muted))',
                 border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '8px 14px',
@@ -709,7 +709,7 @@ export default function WarehousesRacksView({
                 flexWrap: 'wrap',
                 gap: '12px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#334155', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--foreground)', flexWrap: 'wrap' }}>
                   <MapPin size={16} color="var(--primary)" />
                   <strong>{tr('locationLabel')}</strong>
                   <span>{resolvedCountryName}</span>
@@ -722,22 +722,22 @@ export default function WarehousesRacksView({
                   {activeWh.address && (
                     <>
                       <span>•</span>
-                      <span style={{ color: '#64748b' }}>{activeWh.address}</span>
+                      <span style={{ color: 'var(--muted-foreground)' }}>{activeWh.address}</span>
                     </>
                   )}
                   {activeWh.postalCode && (
-                    <span dir="ltr" style={{ background: '#e2e8f0', color: '#334155', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                    <span dir="ltr" style={{ background: 'var(--muted)', color: 'var(--foreground)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'monospace' }}>
                       {activeWh.postalCode}
                     </span>
                   )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem' }}>
-                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--muted-foreground)' }}>
                     <Clock size={13} color="var(--primary)" />
                     {resolvedTimezone}
                   </span>
-                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#059669', fontWeight: 700, background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                  <span dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--badge-emerald-fg)', fontWeight: 700, background: 'var(--badge-emerald-bg)', border: '1px solid var(--badge-emerald-border)', padding: '2px 8px', borderRadius: '4px' }}>
                     <DollarSign size={13} />
                     {resolvedCurrency}
                   </span>
@@ -745,7 +745,7 @@ export default function WarehousesRacksView({
               </div>
 
               {/* Operational Storage Type & Real Rack Count */}
-              <div className="wh-specs-row" style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', color: '#64748b', fontSize: '0.83rem', marginTop: '6px' }}>
+              <div className="wh-specs-row" style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', color: 'var(--muted-foreground)', fontSize: '0.83rem', marginTop: '6px' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <User size={15} color="var(--primary)" />
                   <strong style={{ color: 'var(--foreground)' }}>{tr('managerLabel')}</strong> {activeWh.manager || tr('unassigned')}
@@ -756,9 +756,9 @@ export default function WarehousesRacksView({
                   <span dir="ltr" style={{ display: 'inline-block' }}>{activeWh.phone || tr('notRecorded')}</span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isColdStorage ? <Snowflake size={15} color="#0891b2" /> : <Package size={15} color="var(--primary)" />}
+                  {isColdStorage ? <Snowflake size={15} color="var(--badge-blue-fg)" /> : <Package size={15} color="var(--primary)" />}
                   <strong style={{ color: 'var(--foreground)' }}>{tr('storageTypeLabel')}</strong>{' '}
-                  <span style={{ color: isColdStorage ? '#0891b2' : 'var(--foreground)', fontWeight: isColdStorage ? 700 : 500 }}>
+                  <span style={{ color: isColdStorage ? 'var(--badge-blue-fg)' : 'var(--foreground)', fontWeight: isColdStorage ? 700 : 500 }}>
                     {storageTypeText}
                   </span>
                 </span>
@@ -772,31 +772,31 @@ export default function WarehousesRacksView({
 
               {/* Dynamic Numerical Capacity Chips */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginTop: '1.25rem' }}>
-                <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{tr('totalCapacityLabel')}</div>
+                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('totalCapacityLabel')}</div>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--foreground)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{activeWh.capacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{tr('capacityUnit')}</span>
+                    <span dir="ltr">{activeWh.capacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{tr('occupiedVolumeLabel')}</div>
+                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('occupiedVolumeLabel')}</div>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{occupiedCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{tr('capacityUnit')}</span>
+                    <span dir="ltr">{occupiedCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{tr('availableSpaceLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{availableCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{tr('capacityUnit')}</span>
+                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('availableSpaceLabel')}</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--badge-emerald-fg)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                    <span dir="ltr">{availableCapacity.toLocaleString()}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('capacityUnit')}</span>
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{tr('storedSkusLabel')}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#d97706', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span dir="ltr">{activeWhProducts.length}</span> <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{tr('isolatedItemsUnit')}</span>
+                <div style={{ background: 'var(--surface-subtle, var(--muted))', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('storedSkusLabel')}</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--badge-amber-fg)', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                    <span dir="ltr">{activeWhProducts.length}</span> <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{tr('isolatedItemsUnit')}</span>
                   </div>
                 </div>
               </div>
@@ -810,7 +810,7 @@ export default function WarehousesRacksView({
                 color={occupancyPct > 80 ? '#ef4444' : occupancyPct > 60 ? '#f59e0b' : 'var(--primary)'}
                 size={110}
               />
-              <div style={{ marginTop: '8px', fontSize: '0.78rem', color: occupancyPct > 80 ? '#ef4444' : '#64748b', fontWeight: 700 }}>
+              <div style={{ marginTop: '8px', fontSize: '0.78rem', color: occupancyPct > 80 ? 'var(--badge-red-fg)' : 'var(--muted-foreground)', fontWeight: 700 }}>
                 {occupancyPct > 80 ? tr('highLoadAlert') : tr('optimalCapacity')}
               </div>
             </div>
@@ -836,7 +836,7 @@ export default function WarehousesRacksView({
               borderRadius: '14px',
               background: 'var(--card)',
               border: '1px solid var(--border)',
-              boxShadow: '0 1px 3px 0 rgba(0,0,0,0.05)'
+              boxShadow: 'var(--shadow-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '1.25rem' }}>
@@ -859,7 +859,7 @@ export default function WarehousesRacksView({
                     {activeWhProducts.length} {tr('isolatedItemsUnit')}
                   </span>
                 </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
                   {tr('liveGoodsSubtitle')}
                 </p>
               </div>
@@ -872,7 +872,7 @@ export default function WarehousesRacksView({
                     style={{
                       background: 'var(--card)',
                       border: '1px solid var(--border)',
-                      color: '#334155',
+                      color: 'var(--foreground)',
                       borderRadius: '8px',
                       padding: '7px 14px',
                       fontSize: '0.82rem',
@@ -881,7 +881,7 @@ export default function WarehousesRacksView({
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                      boxShadow: 'var(--shadow-xs)'
                     }}
                   >
                     <ExternalLink size={14} />
@@ -919,15 +919,15 @@ export default function WarehousesRacksView({
               <div style={{
                 padding: '2.5rem',
                 textAlign: 'center',
-                background: '#f8fafc',
+                background: 'var(--surface-subtle, var(--muted))',
                 borderRadius: '10px',
                 border: '1px dashed var(--border)'
               }}>
-                <Package size={36} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                <Package size={36} className="text-muted-foreground" style={{ margin: '0 auto 8px' }} />
                 <h5 style={{ margin: '0 0 4px', fontSize: '1rem', color: 'var(--foreground)' }}>
                   {tr('noGoodsTitle')}
                 </h5>
-                <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#64748b' }}>
+                <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: 'var(--muted-foreground)' }}>
                   {tr('noGoodsSubtitle')}
                 </p>
                 {onOpenAddGoods && (
@@ -953,14 +953,14 @@ export default function WarehousesRacksView({
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)', textAlign: isAr ? 'right' : 'left' }}>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colItemName')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colBarcodeSku')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colCategory')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colShelfBin')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colCurrentStock')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colSellingPrice')}</th>
-                      <th style={{ padding: '10px 14px', color: '#64748b', fontWeight: 600 }}>{tr('colStatus')}</th>
+                    <tr style={{ background: 'var(--muted)', borderBottom: '1px solid var(--border)', textAlign: isAr ? 'right' : 'left' }}>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colItemName')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colBarcodeSku')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colCategory')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colShelfBin')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colCurrentStock')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colSellingPrice')}</th>
+                      <th style={{ padding: '10px 14px', color: 'var(--muted-foreground)', fontWeight: 600 }}>{tr('colStatus')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -971,7 +971,7 @@ export default function WarehousesRacksView({
                         <tr
                           key={p.id}
                           style={{
-                            borderBottom: '1px solid #f1f5f9',
+                            borderBottom: '1px solid var(--border)',
                             transition: 'background 0.2s',
                             cursor: 'default'
                           }}
@@ -982,32 +982,33 @@ export default function WarehousesRacksView({
                             </strong>
                           </td>
                           <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: '0.8rem' }} dir="ltr">
-                            <div style={{ color: '#334155', fontWeight: 600 }}>{p.sku}</div>
-                            <div style={{ color: '#64748b', fontSize: '0.74rem' }}>{p.barcode}</div>
+                            <div style={{ color: 'var(--foreground)', fontWeight: 600 }}>{p.sku}</div>
+                            <div style={{ color: 'var(--muted-foreground)', fontSize: '0.74rem' }}>{p.barcode}</div>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
-                            <span style={{ background: '#f1f5f9', color: '#475569', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '5px', fontSize: '0.75rem', fontWeight: 600 }}>
+                            <span style={{ background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '5px', fontSize: '0.75rem', fontWeight: 600 }}>
                               {isAr ? p.category : (p.categoryEn || p.category)}
                             </span>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
-                            <span dir="ltr" style={{ background: '#f8fafc', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace', color: '#d97706', fontSize: '0.78rem', fontWeight: 700 }}>
+                            <span dir="ltr" style={{ background: 'var(--muted)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace', color: 'var(--badge-amber-fg)', fontSize: '0.78rem', fontWeight: 700 }}>
                               {p.shelf}
                             </span>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
-                            <strong dir="ltr" style={{ fontSize: '0.95rem', fontVariantNumeric: 'tabular-nums', color: isOut ? '#ef4444' : isLow ? '#d97706' : '#059669' }}>
+                            <strong dir="ltr" style={{ fontSize: '0.95rem', fontVariantNumeric: 'tabular-nums', color: isOut ? 'var(--badge-red-fg)' : isLow ? 'var(--badge-amber-fg)' : 'var(--badge-emerald-fg)' }}>
                               {p.currentStock.toLocaleString()}
                             </strong>{' '}
-                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.unit}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{p.unit}</span>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <strong dir="ltr" style={{ color: 'var(--foreground)', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(p.sellingPrice)}</strong>
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <span style={{
-                              background: isOut ? 'rgba(239, 68, 68, 0.1)' : isLow ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                              color: isOut ? '#ef4444' : isLow ? '#d97706' : '#059669',
+                              background: isOut ? 'var(--badge-red-bg)' : isLow ? 'var(--badge-amber-bg)' : 'var(--badge-emerald-bg)',
+                              color: isOut ? 'var(--badge-red-fg)' : isLow ? 'var(--badge-amber-fg)' : 'var(--badge-emerald-fg)',
+                              border: `1px solid ${isOut ? 'var(--badge-red-border)' : isLow ? 'var(--badge-amber-border)' : 'var(--badge-emerald-border)'}`,
                               padding: '2px 8px',
                               borderRadius: '6px',
                               fontSize: '0.74rem',

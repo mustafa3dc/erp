@@ -1790,27 +1790,27 @@ input[type="number"] {
 }
 
 .status-active, .status-received {
-  background-color: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
+  background-color: var(--badge-emerald-bg, #ecfdf5);
+  color: var(--badge-emerald-fg, #047857);
+  border: 1px solid var(--badge-emerald-border, #a7f3d0);
 }
 
 .status-pending {
-  background-color: #fffbeb;
-  color: #b45309;
-  border: 1px solid #fde68a;
+  background-color: var(--badge-amber-bg, #fffbeb);
+  color: var(--badge-amber-fg, #b45309);
+  border: 1px solid var(--badge-amber-border, #fde68a);
 }
 
 .status-in-transit {
-  background-color: var(--primary-light);
-  color: var(--primary);
-  border: 1px solid var(--primary-border);
+  background-color: var(--badge-blue-bg, var(--primary-light));
+  color: var(--badge-blue-fg, var(--primary));
+  border: 1px solid var(--badge-blue-border, var(--primary-border));
 }
 
 .status-danger {
-  background-color: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background-color: var(--badge-red-bg, #fef2f2);
+  color: var(--badge-red-fg, #dc2626);
+  border: 1px solid var(--badge-red-border, #fecaca);
 }
 
 .arrow-cell {
@@ -2158,9 +2158,9 @@ input[type="number"] {
   font-size: 0.78rem;
   font-weight: 800;
 }
-.variance-pill.zero { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-.variance-pill.plus { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
-.variance-pill.minus { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.variance-pill.zero { background: var(--muted, #f1f5f9); color: var(--muted-foreground, #475569); border: 1px solid var(--border, #e2e8f0); }
+.variance-pill.plus { background: var(--badge-emerald-bg, #ecfdf5); color: var(--badge-emerald-fg, #047857); border: 1px solid var(--badge-emerald-border, #a7f3d0); }
+.variance-pill.minus { background: var(--badge-red-bg, #fef2f2); color: var(--badge-red-fg, #dc2626); border: 1px solid var(--badge-red-border, #fecaca); }
 
 /* Suppliers Grid */
 .suppliers-grid {
@@ -9006,7 +9006,7 @@ table.items-table tr:nth-child(even) td {
 .dark .custom-data-table th,
 .dark table th {
   background-color: var(--muted) !important;
-  color: #cbd5e1 !important;
+  color: var(--muted-foreground) !important;
   font-weight: 700 !important;
   border-bottom: 1px solid var(--border) !important;
 }
@@ -9016,33 +9016,31 @@ table.items-table tr:nth-child(even) td {
 .dark table td {
   border-color: var(--border) !important;
   color: var(--foreground);
-  background-color: transparent !important;
 }
 
 .dark .inventory-master-table tbody tr,
 .dark .custom-data-table tbody tr,
 .dark table tbody tr {
-  background-color: transparent !important;
-  color: #f1f5f9 !important;
+  color: var(--foreground);
 }
 
-.dark .inventory-master-table tbody tr:nth-child(even),
-.dark .inventory-master-table tbody tr.inv-table-row:nth-child(even),
-.dark .custom-data-table tbody tr:nth-child(even),
-.dark table tbody tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.03) !important;
+.dark .inventory-master-table tbody tr:nth-child(even):not([class*="bg-"]),
+.dark .inventory-master-table tbody tr.inv-table-row:nth-child(even):not([class*="bg-"]),
+.dark .custom-data-table tbody tr:nth-child(even):not([class*="bg-"]),
+.dark table tbody tr:nth-child(even):not([class*="bg-"]) {
+  background-color: rgba(255, 255, 255, 0.025);
 }
 
 .dark .inventory-master-table tbody tr:hover,
 .dark .inventory-master-table tbody tr.inv-table-row:hover,
 .dark .custom-data-table tbody tr:hover,
 .dark table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.06) !important;
+  background-color: rgba(255, 255, 255, 0.045);
 }
 
-.dark .inventory-master-table td strong,
-.dark .custom-data-table tbody td strong {
-  color: #ffffff !important;
+.dark .inventory-master-table td strong:not([class*="text-"]),
+.dark .custom-data-table tbody td strong:not([class*="text-"]) {
+  color: var(--foreground);
 }
 
 /* Product Cards & Visual Surfaces */
@@ -9163,7 +9161,6 @@ table.items-table tr:nth-child(even) td {
 .dark .copilot-input-field,
 .dark .goods-mode-tab-btn.cyan-active,
 .dark .goods-select-input,
-.dark .mini-barcode-box,
 .dark .cat-pill-chip,
 .dark .supplier-chip,
 .dark .goods-modal-actions,
@@ -9183,6 +9180,22 @@ table.items-table tr:nth-child(even) td {
   background-color: var(--muted) !important;
   border-color: var(--border) !important;
   color: var(--foreground) !important;
+}
+
+/* Barcode & QR Code Scannability Exception: always preserve crisp white paper backing */
+.dark .mini-barcode-box,
+.dark .tx-barcode-preview,
+.dark .barcode-visual-surface,
+.dark .barcode-svg-wrapper {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.tx-barcode-preview {
+  background: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
 
 

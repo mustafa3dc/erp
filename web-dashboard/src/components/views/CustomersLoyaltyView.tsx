@@ -432,7 +432,7 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                    <td colSpan={9} className="text-muted-foreground" style={{ textAlign: 'center', padding: '40px 20px' }}>
                       {isAr ? 'سجل العملاء فارغ حالياً - النظام صافٍ وجاهز لتسجيل العملاء الجدد' : 'Customer registry is clean. Ready to enroll new clients.'}
                     </td>
                   </tr>
@@ -536,7 +536,7 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
               <tbody>
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '44px 20px', color: '#64748b' }}>
+                    <td colSpan={8} className="text-muted-foreground" style={{ textAlign: 'center', padding: '44px 20px' }}>
                       <div className="font-bold text-foreground text-sm mb-1">{lTr('noHistoryTitle')}</div>
                       <div className="text-xs text-muted-foreground">{lTr('noHistoryDesc')}</div>
                     </td>

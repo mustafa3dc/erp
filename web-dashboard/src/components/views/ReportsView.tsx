@@ -265,12 +265,12 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
                   </span>
 
                   {urgentWarningsCount === 0 ? (
-                    <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-medium px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60 text-xs font-medium px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                       <CheckCircle2 size={12} />
                       <span>{isAr ? 'آمن ومستقر' : 'Safe'}</span>
                     </span>
                   ) : (
-                    <span className="bg-amber-500/10 text-amber-600 border border-amber-500/20 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                    <span className="bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/60 text-xs font-semibold px-2.5 py-0.5 rounded-full">
                       {urgentWarningsCount} {isAr ? 'أصناف حرجة' : 'Items'}
                     </span>
                   )}
@@ -319,7 +319,7 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
                     <span>{isAr ? 'رادار البضاعة الراكدة والسيولة المجمدة' : 'Stagnant Goods & Frozen Capital'}</span>
                   </span>
 
-                  <span className="bg-sky-500/10 text-sky-600 border border-sky-500/20 text-xs font-semibold px-2.5 py-0.5 rounded-full font-mono inline-flex items-center">
+                  <span className="bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800/60 text-xs font-semibold px-2.5 py-0.5 rounded-full font-mono inline-flex items-center">
                     <bdi dir="ltr">{formatMoney(stagnantCapital)}</bdi>
                   </span>
                 </div>

@@ -193,7 +193,7 @@ export default function WarehouseDispatchQueueView({
             <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted-foreground)' }}>
               {isAr ? 'طلبات قيد التجهيز' : 'Pending Queue'}
             </span>
-            <span style={{ padding: '4px 8px', borderRadius: '12px', background: '#eff6ff', color: '#2563eb', fontSize: '11px', fontWeight: 800 }}>
+            <span style={{ padding: '4px 8px', borderRadius: '12px', background: 'var(--badge-blue-bg)', color: 'var(--badge-blue-fg)', fontSize: '11px', fontWeight: 800 }}>
               {pendingOrders.length}
             </span>
           </div>
@@ -417,8 +417,9 @@ export default function WarehouseDispatchQueueView({
                       borderRadius: '6px',
                       fontSize: '11px',
                       fontWeight: 700,
-                      background: isPending ? '#fef3c7' : '#ecfdf5',
-                      color: isPending ? '#b45309' : '#047857'
+                      background: isPending ? 'var(--badge-amber-bg)' : 'var(--badge-emerald-bg)',
+                      color: isPending ? 'var(--badge-amber-fg)' : 'var(--badge-emerald-fg)',
+                      border: `1px solid ${isPending ? 'var(--badge-amber-border)' : 'var(--badge-emerald-border)'}`
                     }}>
                       {isPending ? (isAr ? 'بانتظار التجهيز والتسليم' : 'Pending Picking') : (isAr ? 'تم الصرف والتسليم' : 'Dispatched')}
                     </span>
@@ -470,8 +471,9 @@ export default function WarehouseDispatchQueueView({
                               <span style={{ 
                                 padding: '3px 10px', 
                                 borderRadius: '6px', 
-                                background: '#eff6ff', 
-                                color: '#1d4ed8', 
+                                background: 'var(--badge-blue-bg)', 
+                                color: 'var(--badge-blue-fg)', 
+                                border: '1px solid var(--badge-blue-border)',
                                 fontWeight: 800,
                                 fontSize: '13px'
                               }}>

@@ -267,7 +267,7 @@ function DashboardApp() {
   });
   const [selectedDateRangeId, setSelectedDateRangeId] = useState<string>('today');
   const [searchTerm, setSearchTerm] = useState('');
-  const [expensesInitialTab, setExpensesInitialTab] = useState<'VOUCHERS' | 'RECURRING' | 'CATEGORIES'>('VOUCHERS');
+  const [expensesInitialTab, setExpensesInitialTab] = useState<'VOUCHERS' | 'RECURRING'>('VOUCHERS');
   const [dueRecurringExpenses, setDueRecurringExpenses] = useState<RecurringExpenseRule[]>([]);
 
   // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login, Digital Loyalty Wallet)

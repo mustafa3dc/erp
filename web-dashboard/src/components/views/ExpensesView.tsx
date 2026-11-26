@@ -15,9 +15,8 @@ import {
   AlertTriangle,
   X,
   CalendarClock,
-  Edit3,
-  Trash2,
-  RotateCcw
+  RotateCcw,
+  BellRing
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -31,45 +30,63 @@ import {
   getStoredAuthSession
 } from '../../services/storageService';
 import { checkUserHasPermission } from '../../config/navigationSchema';
-import { voidExpenseVoucher, formatRecurringErrorMessage } from '../../services/recurringExpensesService';
+import {
+  voidExpenseVoucher,
+  fetchRecurringExpenses,
+  formatRecurringErrorMessage
+} from '../../services/recurringExpensesService';
 import { 
   ExpenseCategory, 
   ExpenseVoucher, 
   ExpenseStatus, 
-  ExpensePaymentMethod 
+  ExpensePaymentMethod,
+  RecurringExpenseRule
 } from '../../types/businessModules';
 import { StatusBadge } from '../ui/StatusBadge';
 import { EmptyState } from '../ui/EmptyState';
 import { ModalBackdropPortal } from '../ui/dialog';
 import RecurringExpensesTab from '../RecurringExpensesTab';
+import ConfirmRecurringExpenseModal from '../ConfirmRecurringExpenseModal';
+import InlineCategorySelector from '../InlineCategorySelector';
 
 interface ExpensesViewProps {
   lang: 'en' | 'ar';
-  initialTab?: 'VOUCHERS' | 'RECURRING' | 'CATEGORIES';
+  initialTab?: 'VOUCHERS' | 'RECURRING';
 }
 
 export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: ExpensesViewProps) {
   const isAr = lang === 'ar';
   const { formatMoney } = useSettings();
 
-  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'RECURRING' | 'CATEGORIES'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'RECURRING'>(initialTab);
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
   const [categories, setCategories] = useState<ExpenseCategory[]>(() => getStoredExpenseCategories());
   const [vouchers, setVouchers] = useState<ExpenseVoucher[]>(() => getStoredExpenseVouchers());
+  const [dueRecurringRules, setDueRecurringRules] = useState<RecurringExpenseRule[]>([]);
+  const [confirmRecurringTarget, setConfirmRecurringTarget] = useState<RecurringExpenseRule | null>(null);
+
+  const loadDueRecurring = () => {
+    fetchRecurringExpenses()
+      .then(all => setDueRecurringRules(all.filter(r => r.isActive && r.isDue)))
+      .catch(() => setDueRecurringRules([]));
+  };
 
   useEffect(() => {
     const syncVouchers = () => {
       setVouchers(getStoredExpenseVouchers());
     };
+    loadDueRecurring();
     if (typeof window !== 'undefined') {
       window.addEventListener('erp_expenses_updated', syncVouchers);
+      window.addEventListener('erp_recurring_expenses_updated', loadDueRecurring);
     }
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('erp_expenses_updated', syncVouchers);
+        window.removeEventListener('erp_recurring_expenses_updated', loadDueRecurring);
       }
     };
   }, []);
@@ -87,7 +104,6 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
 
   // Modals state
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [voucherToApprove, setVoucherToApprove] = useState<ExpenseVoucher | null>(null);
   const [voucherToVoid, setVoucherToVoid] = useState<ExpenseVoucher | null>(null);
   const [voidReason, setVoidReason] = useState('');
@@ -110,49 +126,6 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   const [vPaymentMethod, setVPaymentMethod] = useState<ExpensePaymentMethod>('Cash');
   const [vNotes, setVNotes] = useState('');
   const [vDate, setVDate] = useState(() => new Date().toISOString().split('T')[0]);
-
-  // Form state - Category (Single unified Name, auto-generated Code, optional formatted Monthly Cap)
-  const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
-  const [cName, setCName] = useState('');
-  const [cBudgetInput, setCBudgetInput] = useState('');
-  const [cDesc, setCDesc] = useState('');
-  const [categoryFormError, setCategoryFormError] = useState('');
-  const [isCategorySaving, setIsCategorySaving] = useState(false);
-
-  const formatBudgetInputDisplay = (raw: string): string => {
-    const cleaned = raw.replace(/[^0-9.]/g, '');
-    if (!cleaned) return '';
-    const parts = cleaned.split('.');
-    const intPart = parts[0].replace(/^0+(?=\d)/, '');
-    const formattedInt = Number(intPart || '0').toLocaleString('en-US');
-    return parts.length > 1 ? `${formattedInt}.${parts[1].slice(0, 4)}` : formattedInt;
-  };
-
-  const parseBudgetInputValue = (formatted: string): number => {
-    const raw = formatted.replace(/,/g, '').trim();
-    if (!raw) return 0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  };
-
-  const openNewCategoryModal = () => {
-    setEditingCategory(null);
-    setCName('');
-    setCBudgetInput('');
-    setCDesc('');
-    setCategoryFormError('');
-    setIsCategoryModalOpen(true);
-  };
-
-  const openEditCategoryModal = (cat: ExpenseCategory) => {
-    setEditingCategory(cat);
-    setCName(cat.name || cat.nameAr || '');
-    const cap = Number(cat.monthlyBudgetCap ?? cat.budgetLimit ?? 0);
-    setCBudgetInput(cap > 0 ? cap.toLocaleString('en-US') : '');
-    setCDesc(cat.description || '');
-    setCategoryFormError('');
-    setIsCategoryModalOpen(true);
-  };
 
   // Fetch real data from API with fallback
   useEffect(() => {
@@ -349,140 +322,6 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
     }
   };
 
-  // Handle Create / Update Category (auto-generated sequential Code, single unified Name)
-  const handleSaveCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCategoryFormError('');
-
-    const trimmedName = cName.trim();
-    if (!trimmedName) {
-      setCategoryFormError(getTranslation(lang, 'errors.EXPENSES.ERR_CATEGORY_NAME_REQUIRED'));
-      return;
-    }
-
-    const monthlyCap = parseBudgetInputValue(cBudgetInput);
-    if (monthlyCap < 0) {
-      setCategoryFormError(getTranslation(lang, 'errors.EXPENSES.ERR_INVALID_CATEGORY_BUDGET'));
-      return;
-    }
-
-    setIsCategorySaving(true);
-    try {
-      if (editingCategory) {
-        const updatePayload = {
-          name: trimmedName,
-          monthlyBudgetCap: monthlyCap,
-          description: cDesc.trim() || undefined,
-          isActive: editingCategory.isActive
-        };
-        let updatedCat: ExpenseCategory = {
-          ...editingCategory,
-          name: trimmedName,
-          nameAr: trimmedName,
-          monthlyBudgetCap: monthlyCap,
-          budgetLimit: monthlyCap,
-          description: cDesc.trim() || undefined,
-          updatedAt: new Date().toISOString()
-        };
-
-        try {
-          const res = await apiClient.put(`/api/expenses/categories/${editingCategory.id}`, updatePayload);
-          if (res && res.success && res.data) {
-            updatedCat = { ...updatedCat, ...res.data, budgetLimit: res.data.monthlyBudgetCap ?? monthlyCap };
-          } else if (res && res.errorCode) {
-            setCategoryFormError(getTranslation(lang, `errors.EXPENSES.${res.errorCode}`, res.errorCode));
-            return;
-          }
-        } catch {
-          // local fallback
-        }
-
-        const next = categories.map(c => c.id === editingCategory.id ? updatedCat : c);
-        setCategories(next);
-        saveStoredExpenseCategories(next);
-        setIsCategoryModalOpen(false);
-        showToast(getTranslation(lang, 'expenses.categoryUpdated'));
-      } else {
-        const createPayload = {
-          name: trimmedName,
-          monthlyBudgetCap: monthlyCap,
-          description: cDesc.trim() || undefined
-        };
-
-        let maxSeq = 0;
-        for (const c of categories) {
-          const m = (c.code || '').match(/^CAT-(\d+)$/i);
-          if (m) {
-            const num = parseInt(m[1], 10);
-            if (num > maxSeq) maxSeq = num;
-          }
-        }
-        const nextNum = Math.max(categories.length + 1, maxSeq + 1);
-        const fallbackCode = `CAT-${String(nextNum).padStart(3, '0')}`;
-
-        let newCat: ExpenseCategory = {
-          id: `CAT-${Date.now()}`,
-          tenantId: 'default',
-          code: fallbackCode,
-          name: trimmedName,
-          nameAr: trimmedName,
-          monthlyBudgetCap: monthlyCap,
-          budgetLimit: monthlyCap,
-          totalSpent: 0,
-          description: cDesc.trim() || undefined,
-          isActive: true,
-          createdAt: new Date().toISOString()
-        };
-
-        try {
-          const res = await apiClient.post('/api/expenses/categories', createPayload);
-          if (res && res.success && res.data) {
-            newCat = {
-              ...newCat,
-              id: res.data.id || newCat.id,
-              code: res.data.code || newCat.code,
-              name: res.data.name || newCat.name,
-              monthlyBudgetCap: res.data.monthlyBudgetCap ?? monthlyCap,
-              budgetLimit: res.data.monthlyBudgetCap ?? monthlyCap
-            };
-          } else if (res && res.errorCode) {
-            setCategoryFormError(getTranslation(lang, `errors.EXPENSES.${res.errorCode}`, res.errorCode));
-            return;
-          }
-        } catch {
-          // local fallback
-        }
-
-        const next = [...categories, newCat];
-        setCategories(next);
-        saveStoredExpenseCategories(next);
-        if (isVoucherModalOpen) {
-          setVCategory(newCat.id);
-        }
-
-        setIsCategoryModalOpen(false);
-        setCName('');
-        setCBudgetInput('');
-        setCDesc('');
-        showToast(getTranslation(lang, 'expenses.categoryCreated'));
-      }
-    } finally {
-      setIsCategorySaving(false);
-    }
-  };
-
-  const handleDeleteCategory = async (cat: ExpenseCategory) => {
-    try {
-      await apiClient.delete(`/api/expenses/categories/${cat.id}`);
-    } catch {
-      // local fallback
-    }
-    const next = categories.filter(c => c.id !== cat.id);
-    setCategories(next);
-    saveStoredExpenseCategories(next);
-    showToast(getTranslation(lang, 'expenses.categoryDeleted'));
-  };
-
   return (
     <div className="view-content-wrapper fade-in" dir={isAr ? 'rtl' : 'ltr'}>
       {toastMsg && (
@@ -502,14 +341,6 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
         </div>
 
         <div className="module-actions-wrap">
-          <button 
-            type="button" 
-            className="btn-clean-secondary"
-            onClick={openNewCategoryModal}
-          >
-            <Tag size={15} />
-            <span>{getTranslation(lang, 'expenses.newCategory')}</span>
-          </button>
           <button 
             type="button" 
             className="btn-clean-primary"
@@ -559,20 +390,23 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           </div>
         </div>
 
-        <div className="module-kpi-card">
+        <div
+          className="module-kpi-card cursor-pointer"
+          onClick={() => setActiveTab('RECURRING')}
+        >
           <div className="module-kpi-info">
-            <span className="module-kpi-label">{getTranslation(lang, 'expenses.tabCategories')}</span>
-            <div className="module-kpi-value">
-              {categories.length} <span className="kpi-sub-unit">{getTranslation(lang, 'expenses.active')}</span>
+            <span className="module-kpi-label">{getTranslation(lang, 'expenses.dueRecurringCardLabel')}</span>
+            <div className="module-kpi-value tabular-nums">
+              {dueRecurringRules.length} <span className="kpi-sub-unit">{getTranslation(lang, 'ui.recurringExpenses.dueBadge')}</span>
             </div>
           </div>
           <div className="module-kpi-icon purple">
-            <Tag size={20} />
+            <CalendarClock size={20} />
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs (Clean 2-Tab Navigation) */}
       <div className="module-filter-pills" style={{ marginBottom: '16px' }}>
         <button 
           type="button"
@@ -590,19 +424,62 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
           <CalendarClock size={14} />
           <span>{getTranslation(lang, 'expenses.tabRecurring')}</span>
         </button>
-        <button 
-          type="button"
-          className={`module-filter-pill ${activeTab === 'CATEGORIES' ? 'active' : ''}`}
-          onClick={() => setActiveTab('CATEGORIES')}
-        >
-          <Tag size={14} />
-          <span>{getTranslation(lang, 'expenses.tabCategories')}</span>
-        </button>
       </div>
 
       {/* Tab 1: VOUCHERS */}
       {activeTab === 'VOUCHERS' && (
         <>
+          {/* Due Recurring Bills Top Banner (1-Click Payment Confirmation) */}
+          {dueRecurringRules.length > 0 && (
+            <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                    <BellRing size={17} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-foreground">
+                      {getTranslation(lang, 'ui.recurringExpenses.dueBannerTitle').replace(
+                        '{count}',
+                        String(dueRecurringRules.length)
+                      )}
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      {getTranslation(lang, 'ui.recurringExpenses.dueBannerSubtitle')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {dueRecurringRules.map(rule => (
+                  <div
+                    key={rule.id}
+                    className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-foreground truncate">{rule.title}</div>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5 tabular-nums" dir="ltr">
+                        <span className="font-semibold text-amber-600 dark:text-amber-400">
+                          {formatMoney(rule.amount)}
+                        </span>
+                        <span>•</span>
+                        <span>{new Date(rule.nextDueDate).toLocaleDateString(isAr ? 'ar-IQ' : 'en-US')}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRecurringTarget(rule)}
+                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-xs transition-all"
+                    >
+                      <CheckCircle2 size={13} />
+                      <span>{getTranslation(lang, 'ui.recurringExpenses.confirmPaymentBtn')}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Toolbar */}
           <div className="module-toolbar">
             <div className="module-search-box">
@@ -778,102 +655,12 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
         <RecurringExpensesTab
           lang={lang}
           categories={categories}
-          onExpensesUpdated={() => setVouchers(getStoredExpenseVouchers())}
-          onOpenAddCategory={openNewCategoryModal}
+          onExpensesUpdated={() => {
+            setVouchers(getStoredExpenseVouchers());
+            loadDueRecurring();
+          }}
+          onCategoriesChange={setCategories}
         />
-      )}
-
-      {/* Tab 3: CATEGORIES */}
-      {activeTab === 'CATEGORIES' && (
-        <div className="panel-clean">
-          <div className="table-responsive">
-            <table className="table-clean">
-              <thead>
-                <tr>
-                  <th>{getTranslation(lang, 'expenses.categoryCode')}</th>
-                  <th>{getTranslation(lang, 'expenses.categoryName')}</th>
-                  <th>{getTranslation(lang, 'expenses.budgetLimit')}</th>
-                  <th>{getTranslation(lang, 'expenses.notes')}</th>
-                  <th>{getTranslation(lang, 'expenses.status')}</th>
-                  <th style={{ textAlign: 'center' }}>{getTranslation(lang, 'expenses.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-0">
-                      <EmptyState
-                        lang={lang}
-                        icon={<Tag size={22} />}
-                        title={getTranslation(lang, 'expenses.noCategoriesFound')}
-                        subtitle={getTranslation(lang, 'expenses.noCategoriesSubtitle')}
-                        action={
-                          <button
-                            type="button"
-                            onClick={openNewCategoryModal}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-sm transition-all"
-                          >
-                            <Plus size={14} />
-                            <span>{getTranslation(lang, 'expenses.newCategory')}</span>
-                          </button>
-                        }
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  categories.map(c => {
-                    const monthlyCap = Number(c.monthlyBudgetCap ?? c.budgetLimit ?? 0);
-                    return (
-                      <tr key={c.id}>
-                        <td>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-primary/10 text-primary font-mono text-xs font-bold tabular-nums" dir="ltr">
-                            {c.code}
-                          </span>
-                        </td>
-                        <td className="font-semibold text-foreground">{c.name || c.nameAr}</td>
-                        <td className="font-mono font-bold tabular-nums text-foreground" dir="ltr">
-                          {monthlyCap > 0 ? formatMoney(monthlyCap) : (
-                            <span className="text-xs font-normal text-muted-foreground">
-                              {getTranslation(lang, 'expenses.budgetUnlimited')}
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-xs text-muted-foreground">{c.description || '—'}</td>
-                        <td>
-                          <StatusBadge
-                            tone={c.isActive ? 'emerald' : 'slate'}
-                            dot
-                            label={c.isActive ? getTranslation(lang, 'expenses.active') : getTranslation(lang, 'expenses.inactive')}
-                          />
-                        </td>
-                        <td>
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditCategoryModal(c)}
-                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                              title={getTranslation(lang, 'expenses.editCategory')}
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCategory(c)}
-                              className="p-1.5 rounded-lg border border-border bg-card hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 transition-colors"
-                              title={getTranslation(lang, 'expenses.deleteCategory')}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
       {/* Modal: New Expense Voucher */}
@@ -898,36 +685,19 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
             </div>
 
             <form onSubmit={handleCreateVoucher} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 600 }}>
-                      {getTranslation(lang, 'expenses.category')}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={openNewCategoryModal}
-                      className="text-[11px] font-semibold text-primary hover:underline"
-                    >
-                      {getTranslation(lang, 'expenses.quickAddCategoryBtn')}
-                    </button>
-                  </div>
-                  <select 
-                    className="select-clean" 
-                    value={vCategory} 
-                    onChange={e => setVCategory(e.target.value)} 
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px' }}
-                  >
-                    <option value="">{getTranslation(lang, 'expenses.optionalCategoryOption')}</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {isAr && c.nameAr ? c.nameAr : c.name}
-                      </option>
-                    ))}
-                  </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <InlineCategorySelector
+                    lang={lang}
+                    categories={categories}
+                    value={vCategory}
+                    valueMode="id"
+                    onChange={setVCategory}
+                    onCategoriesChange={setCategories}
+                  />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                     {getTranslation(lang, 'expenses.cashBox')}
                   </label>
@@ -1050,113 +820,16 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
         </ModalBackdropPortal>
       )}
 
-      {/* Modal: Add / Edit Expense Category */}
-      {isCategoryModalOpen && (
-        <ModalBackdropPortal onClose={() => setIsCategoryModalOpen(false)} dir={isAr ? 'rtl' : 'ltr'}>
-          <div
-            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
-            onClick={e => e.stopPropagation()}
-            dir={isAr ? 'rtl' : 'ltr'}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/40">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                  <Tag size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-foreground">
-                    {getTranslation(lang, editingCategory ? 'expenses.editCategory' : 'expenses.newCategory')}
-                  </h3>
-                  <span className="inline-flex items-center mt-0.5 px-2 py-0.5 rounded-md bg-muted border border-border text-[11px] font-mono text-muted-foreground" dir="ltr">
-                    {editingCategory ? editingCategory.code : getTranslation(lang, 'expenses.autoGeneratedCodeBadge')}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCategoryModalOpen(false)}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form noValidate onSubmit={handleSaveCategory} className="p-5 space-y-4">
-              {categoryFormError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center gap-2">
-                  <AlertTriangle size={15} className="shrink-0" />
-                  <span>{categoryFormError}</span>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  {getTranslation(lang, 'expenses.categoryName')} *
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={cName}
-                  onChange={e => {
-                    setCName(e.target.value);
-                    if (categoryFormError) setCategoryFormError('');
-                  }}
-                  placeholder={getTranslation(lang, 'expenses.categoryNamePlaceholder')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  {getTranslation(lang, 'expenses.budgetLimitOptional')}
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  dir="ltr"
-                  placeholder="600,000"
-                  value={cBudgetInput}
-                  onChange={e => setCBudgetInput(formatBudgetInputDisplay(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm font-bold text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  {getTranslation(lang, 'expenses.budgetLimitHint')}
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  {getTranslation(lang, 'expenses.categoryNotesOptional')}
-                </label>
-                <textarea
-                  rows={2}
-                  value={cDesc}
-                  onChange={e => setCDesc(e.target.value)}
-                  placeholder={getTranslation(lang, 'expenses.categoryNotesPlaceholder')}
-                  className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-sm font-medium text-foreground transition-colors"
-                >
-                  {getTranslation(lang, 'expenses.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCategorySaving}
-                  className="px-5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
-                >
-                  {getTranslation(lang, 'expenses.saveCategory')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </ModalBackdropPortal>
-      )}
+      {/* Inline Confirm Modal for Due Recurring Bills Banner */}
+      <ConfirmRecurringExpenseModal
+        rule={confirmRecurringTarget}
+        lang={lang}
+        onClose={() => setConfirmRecurringTarget(null)}
+        onConfirmed={() => {
+          loadDueRecurring();
+          setVouchers(getStoredExpenseVouchers());
+        }}
+      />
 
       {/* Confirmation Dialog: Approve & Deduct Voucher */}
       {voucherToApprove && (

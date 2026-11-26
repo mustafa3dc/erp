@@ -36,19 +36,20 @@ import { StatusBadge } from './ui/StatusBadge';
 import { EmptyState } from './ui/EmptyState';
 import { ModalBackdropPortal } from './ui/dialog';
 import ConfirmRecurringExpenseModal from './ConfirmRecurringExpenseModal';
+import InlineCategorySelector from './InlineCategorySelector';
 
 interface RecurringExpensesTabProps {
   lang: 'en' | 'ar';
   categories: ExpenseCategory[];
   onExpensesUpdated?: () => void;
-  onOpenAddCategory?: () => void;
+  onCategoriesChange?: (nextCategories: ExpenseCategory[]) => void;
 }
 
 export default function RecurringExpensesTab({
   lang,
   categories,
   onExpensesUpdated,
-  onOpenAddCategory
+  onCategoriesChange
 }: RecurringExpensesTabProps) {
   const isAr = lang === 'ar';
   const { formatMoney } = useSettings();
@@ -616,39 +617,16 @@ export default function RecurringExpensesTab({
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-foreground">
-                      {getTranslation(lang, 'ui.recurringExpenses.fieldCategory')}
-                    </label>
-                    {onOpenAddCategory && (
-                      <button
-                        type="button"
-                        onClick={onOpenAddCategory}
-                        className="text-[11px] font-semibold text-primary hover:underline"
-                      >
-                        {getTranslation(lang, 'expenses.quickAddCategoryBtn')}
-                      </button>
-                    )}
-                  </div>
-                  <select
+                <div className="sm:col-span-2">
+                  <InlineCategorySelector
+                    lang={lang}
+                    categories={categories}
                     value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  >
-                    <option value="">{getTranslation(lang, 'expenses.optionalCategoryOption')}</option>
-                    {categories.map(c => {
-                      const label = isAr && c.nameAr ? c.nameAr : c.name;
-                      return (
-                        <option key={c.id} value={label}>
-                          {label}
-                        </option>
-                      );
-                    })}
-                    {category && !categories.some(c => (isAr && c.nameAr ? c.nameAr : c.name) === category) && (
-                      <option value={category}>{category}</option>
-                    )}
-                  </select>
+                    valueMode="name"
+                    label={getTranslation(lang, 'ui.recurringExpenses.fieldCategory')}
+                    onChange={setCategory}
+                    onCategoriesChange={nextCats => onCategoriesChange?.(nextCats)}
+                  />
                 </div>
 
                 <div className="space-y-1.5">

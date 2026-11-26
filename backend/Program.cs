@@ -391,6 +391,20 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(cleanupCategoriesSqlPath));
                 }
+
+                // Ensure Treasury Transactions ledger & recurring budget cleanup migration is applied idempotently
+                string[] treasuryLedgerSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql")
+                };
+                var treasuryLedgerSqlPath = treasuryLedgerSqlPaths.FirstOrDefault(File.Exists);
+                if (treasuryLedgerSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryLedgerSqlPath));
+                }
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

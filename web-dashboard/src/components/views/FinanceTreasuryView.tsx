@@ -20,6 +20,7 @@ import {
   ArrowRightLeft
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
+import { getTranslation } from '../../lib/i18n';
 
 interface TreasuryAccount {
   id: string;
@@ -75,6 +76,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
   useEffect(() => {
     const handleTreasuryUpdate = () => {
       setAccounts(getStoredTreasuryAccounts());
+      setVouchers(getStoredTreasuryVouchers());
     };
     window.addEventListener('erp_treasury_updated', handleTreasuryUpdate);
     window.addEventListener('storage', handleTreasuryUpdate);
@@ -181,7 +183,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
           <button 
             type="button"
             className="btn-clean-primary"
-            onClick={() => showToast(isAr ? 'نموذج إصدار سند قبض جديد' : 'New Receipt Voucher Form')}
+            onClick={() => showToast(getTranslation(lang, 'finance.receiptVoucherToast'))}
           >
             <ArrowDownLeft size={15} />
             <span>{isAr ? 'سند قبض (+ Receipt)' : 'Receipt Voucher'}</span>
@@ -189,10 +191,10 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
           <button 
             type="button"
             className="btn-clean-secondary"
-            onClick={() => showToast(isAr ? 'نموذج إصدار سند صرف جديد' : 'New Payment Voucher Form')}
+            onClick={() => showToast(getTranslation(lang, 'finance.paymentVoucherToast'))}
           >
             <ArrowUpRight size={15} />
-            <span>{isAr ? 'سند صرف (- Payment)' : 'Payment Voucher'}</span>
+            <span>{getTranslation(lang, 'finance.paymentVoucher')}</span>
           </button>
         </div>
       </div>
@@ -407,7 +409,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                           color: v.type === 'RECEIPT' ? '#047857' : '#dc2626',
                           border: `1px solid ${v.type === 'RECEIPT' ? '#a7f3d0' : '#fecaca'}`
                         }}>
-                          {v.type === 'RECEIPT' ? (isAr ? 'سند قبض (+)' : 'Receipt (+)') : (isAr ? 'سند صرف (-)' : 'Payment (-)')}
+                          {v.type === 'RECEIPT' ? getTranslation(lang, 'finance.receiptVoucher') : getTranslation(lang, 'finance.paymentVoucher')}
                         </span>
                       </td>
                       <td>

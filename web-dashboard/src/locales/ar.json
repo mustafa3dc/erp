@@ -192,6 +192,13 @@
     "deleteCategory": "حذف التصنيف",
     "categoryUpdated": "تم تحديث تصنيف المصروف بنجاح",
     "categoryDeleted": "تم حذف تصنيف المصروف بنجاح",
+    "voidVoucher": "إلغاء السند",
+    "voided": "ملغي",
+    "voidConfirmTitle": "تأكيد إلغاء سند المصروف",
+    "voidConfirmMsg": "سيتم وسم السند كـ (ملغي) واستبعاده من إجمالي المصروفات، وإرجاع المبلغ إلى الصندوق فقط إذا تم خصمه فعلياً مسبقاً.",
+    "voidReasonPlaceholder": "سبب الإلغاء (اختياري)...",
+    "voidBtn": "تأكيد الإلغاء",
+    "voidSuccess": "تم إلغاء السند وتحديث السجلات بنجاح",
     "totalSpent": "إجمالي المصروف",
     "active": "نشط",
     "inactive": "معطل",
@@ -1378,7 +1385,18 @@
       "dashboardAlertsSubtitle": "تنبيهات المصاريف الثابتة المستحقة وحالة المخزون التي تتطلب إجراء",
       "dashboardDueCountLabel": "{count} مصاريف دورية مستحقة",
       "dashboardManageRecurringBtn": "إدارة المصاريف الثابتة",
-      "headerDueAlertLabel": "مصاريف دورية مستحقة"
+      "headerDueAlertLabel": "مصاريف دورية مستحقة",
+      "projectedMonthlyLabel": "التكلفة الشهرية المتوقعة",
+      "categoryCapLabel": "سقف التصنيف الشهري",
+      "autoSplitBtn": "تقسيم السقف الشهري تلقائياً ({amount})",
+      "overBudgetWarning": "تنبيه: التكلفة الشهرية المتوقعة ({projected}) تتجاوز سقف الميزانية الشهرية لهذا التصنيف ({cap}).",
+      "exceedsCapBadge": "يتجاوز السقف"
     }
+  },
+  "finance": {
+    "receiptVoucher": "سند قبض",
+    "paymentVoucher": "سند صرف",
+    "receiptVoucherToast": "نموذج إصدار سند قبض جديد",
+    "paymentVoucherToast": "نموذج إصدار سند صرف جديد"
   }
 }

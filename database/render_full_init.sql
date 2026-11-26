@@ -2197,3 +2197,23 @@ BEGIN
             FOREIGN KEY (recurring_expense_id) REFERENCES recurring_expenses(id) ON DELETE SET NULL;
     END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS treasury_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NULL,
+    cash_box_id UUID NOT NULL REFERENCES cash_boxes(id) ON DELETE RESTRICT,
+    expense_voucher_id UUID NULL REFERENCES expense_vouchers(id) ON DELETE SET NULL,
+    transaction_type VARCHAR(30) NOT NULL DEFAULT 'PAYMENT',
+    amount NUMERIC(18, 4) NOT NULL CHECK (amount > 0),
+    balance_after NUMERIC(18, 4) NOT NULL,
+    reference_number VARCHAR(100) NULL,
+    notes VARCHAR(500) NULL,
+    created_by VARCHAR(150) NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_treasury_transactions_tenant_box
+    ON treasury_transactions (tenant_id, cash_box_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_treasury_transactions_expense_voucher
+    ON treasury_transactions (expense_voucher_id);

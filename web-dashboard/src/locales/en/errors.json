@@ -44,7 +44,10 @@
       "VOUCHER_ALREADY_APPROVED": "This expense voucher has already been approved and disbursed",
       "CATEGORY_CODE_EXISTS": "An expense category with this code already exists",
       "ERR_CATEGORY_NAME_REQUIRED": "Please enter the category name.",
-      "ERR_INVALID_CATEGORY_BUDGET": "Monthly budget cap cannot be negative."
+      "ERR_INVALID_CATEGORY_BUDGET": "Monthly budget cap cannot be negative.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "Treasury cashbox balance is insufficient for this expense.",
+      "ERR_VOUCHER_ALREADY_VOIDED": "This expense voucher has already been voided.",
+      "ERR_VOUCHER_VOID_FAILED": "Failed to void expense voucher."
     },
     "LEDGER": {
       "IMMUTABLE": "Financial ledger entries are strictly immutable and cannot be edited or deleted",
@@ -82,7 +85,9 @@
       "ERR_INVALID_EXECUTION_MODE": "Invalid execution mode.",
       "ERR_RECURRING_NOT_FOUND": "Requested recurring expense rule was not found.",
       "ERR_CONCURRENCY_LOCK_TIMEOUT": "This recurring expense is already being processed; please retry.",
-      "ERR_RECURRING_CONFIRM_FAILED": "Unable to confirm recurring expense payment and post voucher."
+      "ERR_RECURRING_CONFIRM_FAILED": "Unable to confirm recurring expense payment and post voucher.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "Selected treasury account has insufficient balance for this expense.",
+      "ERR_EXPENSE_ACCOUNT_NOT_FOUND": "No active treasury cashbox account was found for deduction."
     }
   }
 }

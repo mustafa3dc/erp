@@ -1,5 +1,5 @@
 export type ExpensePaymentMethod = 'Cash' | 'BankTransfer' | 'Check';
-export type ExpenseStatus = 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+export type ExpenseStatus = 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Voided';
 
 export interface ExpenseCategory {
   id: string;
@@ -56,6 +56,9 @@ export interface RecurringExpenseRule {
   executionMode: RecurringExecutionMode | string;
   isActive: boolean;
   isDue: boolean;
+  projectedMonthlyAmount?: number;
+  categoryMonthlyBudgetCap?: number | null;
+  exceedsMonthlyCap?: boolean;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;

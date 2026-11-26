@@ -17,6 +17,9 @@ public class RecurringExpenseDto
     public string ExecutionMode { get; set; } = RecurringExpenseExecutionMode.RemindAndConfirm;
     public bool IsActive { get; set; }
     public bool IsDue { get; set; }
+    public decimal ProjectedMonthlyAmount { get; set; }
+    public decimal? CategoryMonthlyBudgetCap { get; set; }
+    public bool ExceedsMonthlyCap { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

@@ -192,6 +192,13 @@
     "deleteCategory": "Delete Category",
     "categoryUpdated": "Expense category updated successfully",
     "categoryDeleted": "Expense category deleted successfully",
+    "voidVoucher": "Void Voucher",
+    "voided": "Voided",
+    "voidConfirmTitle": "Confirm Void Expense Voucher",
+    "voidConfirmMsg": "The voucher will be marked as Voided, excluded from Total Expenses, and refunded to the cashbox only if a treasury deduction was recorded.",
+    "voidReasonPlaceholder": "Reason for voiding (optional)...",
+    "voidBtn": "Confirm Void",
+    "voidSuccess": "Expense voucher voided successfully",
     "totalSpent": "Total Spent",
     "active": "Active",
     "inactive": "Inactive",
@@ -1378,7 +1385,18 @@
       "dashboardAlertsSubtitle": "Due fixed bills and operational stock alerts requiring attention",
       "dashboardDueCountLabel": "{count} recurring bills due",
       "dashboardManageRecurringBtn": "Manage Recurring Bills",
-      "headerDueAlertLabel": "Due Recurring Bills"
+      "headerDueAlertLabel": "Due Recurring Bills",
+      "projectedMonthlyLabel": "Projected Monthly Equivalent",
+      "categoryCapLabel": "Category Monthly Cap",
+      "autoSplitBtn": "Auto-split monthly cap ({amount})",
+      "overBudgetWarning": "Warning: Projected monthly total ({projected}) exceeds this category's monthly budget cap ({cap}).",
+      "exceedsCapBadge": "Exceeds Cap"
     }
+  },
+  "finance": {
+    "receiptVoucher": "Receipt Voucher",
+    "paymentVoucher": "Payment Voucher",
+    "receiptVoucherToast": "New Receipt Voucher Form",
+    "paymentVoucherToast": "New Payment Voucher Form"
   }
 }

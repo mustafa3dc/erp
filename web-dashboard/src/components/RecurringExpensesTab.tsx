@@ -28,7 +28,9 @@ import {
   toggleRecurringExpense,
   deleteRecurringExpense,
   formatRecurringScheduleLabel,
-  formatRecurringErrorMessage
+  formatRecurringErrorMessage,
+  computeProjectedMonthlyAmount,
+  computeSuggestedSplitAmount
 } from '../services/recurringExpensesService';
 import { StatusBadge } from './ui/StatusBadge';
 import { EmptyState } from './ui/EmptyState';
@@ -157,6 +159,31 @@ export default function RecurringExpensesTab({
     const arr = MESSAGES[normLocale]?.ui?.recurringExpenses?.weekdays as string[] | undefined;
     return arr || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   }, [lang]);
+
+  const selectedCategoryCap = useMemo(() => {
+    if (!category.trim()) return 0;
+    const norm = category.trim().toLowerCase();
+    const matched = categories.find(
+      c =>
+        c.name.trim().toLowerCase() === norm ||
+        (c.nameAr && c.nameAr.trim().toLowerCase() === norm) ||
+        c.code.trim().toLowerCase() === norm
+    );
+    return Number(matched?.monthlyBudgetCap ?? matched?.budgetLimit ?? 0) || 0;
+  }, [category, categories]);
+
+  const liveProjectedMonthly = useMemo(() => {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) return 0;
+    return computeProjectedMonthlyAmount(amt, frequency, intervalDays);
+  }, [amount, frequency, intervalDays]);
+
+  const suggestedSplitAmount = useMemo(() => {
+    if (selectedCategoryCap <= 0) return 0;
+    return computeSuggestedSplitAmount(selectedCategoryCap, frequency, intervalDays);
+  }, [selectedCategoryCap, frequency, intervalDays]);
+
+  const isFormOverBudget = selectedCategoryCap > 0 && liveProjectedMonthly > selectedCategoryCap;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,7 +394,15 @@ export default function RecurringExpensesTab({
                 {rules.map(rule => (
                   <tr key={rule.id} className="hover:bg-muted/30 transition-colors">
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-foreground">{rule.title}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-semibold text-foreground">{rule.title}</span>
+                        {rule.exceedsMonthlyCap && (
+                          <StatusBadge
+                            tone="rose"
+                            label={getTranslation(lang, 'ui.recurringExpenses.exceedsCapBadge')}
+                          />
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         {rule.category || getTranslation(lang, 'expenses.uncategorized')}
                       </div>
@@ -626,11 +661,64 @@ export default function RecurringExpensesTab({
                     min="0.01"
                     required
                     dir="ltr"
+                    placeholder="0"
                     value={amount}
                     onChange={e => setAmount(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-sm font-bold text-foreground tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
+
+                {/* Smart Budget Cap Calculator & Auto-Split Helper */}
+                {selectedCategoryCap > 0 && (
+                  <div className="sm:col-span-2 p-3.5 rounded-xl bg-muted/50 border border-border space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>{getTranslation(lang, 'ui.recurringExpenses.projectedMonthlyLabel')}:</span>
+                        <strong
+                          className={`tabular-nums ${
+                            isFormOverBudget ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+                          }`}
+                          dir="ltr"
+                        >
+                          {formatMoney(liveProjectedMonthly)}
+                        </strong>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>{getTranslation(lang, 'ui.recurringExpenses.categoryCapLabel')}:</span>
+                        <strong className="text-primary tabular-nums" dir="ltr">
+                          {formatMoney(selectedCategoryCap)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {(frequency === 'Weekly' || frequency === 'CustomDays') && suggestedSplitAmount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAmount(String(suggestedSplitAmount))}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 text-xs font-semibold transition-colors tabular-nums"
+                      >
+                        <Zap size={13} />
+                        <span>
+                          {getTranslation(lang, 'ui.recurringExpenses.autoSplitBtn').replace(
+                            '{amount}',
+                            formatMoney(suggestedSplitAmount)
+                          )}
+                        </span>
+                      </button>
+                    )}
+
+                    {isFormOverBudget && (
+                      <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2">
+                        <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                        <span>
+                          {getTranslation(lang, 'ui.recurringExpenses.overBudgetWarning')
+                            .replace('{projected}', formatMoney(liveProjectedMonthly))
+                            .replace('{cap}', formatMoney(selectedCategoryCap))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Frequency-Specific Schedule Control */}
                 {(frequency === 'Monthly' || frequency === 'Yearly') && (

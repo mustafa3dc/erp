@@ -65,6 +65,7 @@ public class AppDbContext : DbContext
     public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
+    public DbSet<TreasuryTransaction> TreasuryTransactions => Set<TreasuryTransaction>();
 
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -567,6 +568,24 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(re => new { re.TenantId, re.IsActive, re.IsDeleted, re.NextDueDate });
             entity.Property(re => re.Amount).HasColumnType("numeric(18, 4)");
+        });
+
+        modelBuilder.Entity<TreasuryTransaction>(entity =>
+        {
+            entity.HasIndex(tt => new { tt.TenantId, tt.CashBoxId, tt.CreatedAt });
+            entity.HasIndex(tt => tt.ExpenseVoucherId);
+            entity.Property(tt => tt.Amount).HasColumnType("numeric(18, 4)");
+            entity.Property(tt => tt.BalanceAfter).HasColumnType("numeric(18, 4)");
+
+            entity.HasOne(tt => tt.CashBox)
+                .WithMany()
+                .HasForeignKey(tt => tt.CashBoxId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(tt => tt.ExpenseVoucher)
+                .WithMany()
+                .HasForeignKey(tt => tt.ExpenseVoucherId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

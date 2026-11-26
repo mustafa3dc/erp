@@ -53,7 +53,8 @@ public class RecurringExpenseService : IRecurringExpenseService
             .ThenBy(r => r.Title)
             .ToListAsync(ct);
 
-        return rules.Select(r => MapDto(r, todayUtc)).ToList();
+        var caps = await LoadCategoryCapsAsync(ct);
+        return rules.Select(r => MapDto(r, todayUtc, caps)).ToList();
     }
 
     public async Task<List<RecurringExpenseDto>> GetDueForDashboardAsync(CancellationToken ct = default)
@@ -70,7 +71,8 @@ public class RecurringExpenseService : IRecurringExpenseService
             .ThenBy(r => r.Title)
             .ToListAsync(ct);
 
-        return dueRules.Select(r => MapDto(r, todayUtc)).ToList();
+        var caps = await LoadCategoryCapsAsync(ct);
+        return dueRules.Select(r => MapDto(r, todayUtc, caps)).ToList();
     }
 
     public async Task<ApiResponse<RecurringExpenseDto>> CreateAsync(UpsertRecurringExpenseRequest request, CancellationToken ct = default)
@@ -115,7 +117,8 @@ public class RecurringExpenseService : IRecurringExpenseService
         _context.RecurringExpenses.Add(entity);
         await _context.SaveChangesAsync(ct);
 
-        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date));
+        var caps = await LoadCategoryCapsAsync(ct);
+        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date, caps));
     }
 
     public async Task<ApiResponse<RecurringExpenseDto>> UpdateAsync(Guid id, UpsertRecurringExpenseRequest request, CancellationToken ct = default)
@@ -158,7 +161,8 @@ public class RecurringExpenseService : IRecurringExpenseService
         entity.UpdatedAt = now;
 
         await _context.SaveChangesAsync(ct);
-        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date));
+        var caps = await LoadCategoryCapsAsync(ct);
+        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date, caps));
     }
 
     public async Task<ApiResponse<RecurringExpenseDto>> ToggleAsync(Guid id, CancellationToken ct = default)
@@ -173,7 +177,8 @@ public class RecurringExpenseService : IRecurringExpenseService
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
 
-        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date));
+        var caps = await LoadCategoryCapsAsync(ct);
+        return ApiResponse<RecurringExpenseDto>.Ok(MapDto(entity, DateTimeOffset.UtcNow.Date, caps));
     }
 
     public async Task<ApiResponse<bool>> DeleteAsync(Guid id, CancellationToken ct = default)
@@ -222,7 +227,7 @@ public class RecurringExpenseService : IRecurringExpenseService
             }
 
             var now = DateTimeOffset.UtcNow;
-            var voucherResult = await PostExpenseVoucherForCycleAsync(
+            var (voucherResult, postError) = await PostExpenseVoucherForCycleAsync(
                 rule,
                 rule.NextDueDate,
                 finalAmount,
@@ -231,6 +236,12 @@ public class RecurringExpenseService : IRecurringExpenseService
                 confirmedBy ?? "Owner",
                 "CONFIRM_RECURRING",
                 ct);
+
+            if (postError != null || voucherResult == null)
+            {
+                await tx.RollbackAsync(ct);
+                return ApiResponse<ConfirmRecurringExpenseResponseDto>.Fail(postError ?? "ERR_RECURRING_CONFIRM_FAILED", "RECURRING");
+            }
 
             rule.LastExecutedDate = now;
             var nextCycle = AdvanceCycle(rule, rule.NextDueDate);
@@ -244,9 +255,10 @@ public class RecurringExpenseService : IRecurringExpenseService
             await _context.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
 
+            var caps = await LoadCategoryCapsAsync(ct);
             return ApiResponse<ConfirmRecurringExpenseResponseDto>.Ok(new ConfirmRecurringExpenseResponseDto
             {
-                Rule = MapDto(rule, DateTimeOffset.UtcNow.Date),
+                Rule = MapDto(rule, DateTimeOffset.UtcNow.Date, caps),
                 ExpenseVoucher = voucherResult
             });
         }
@@ -322,7 +334,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
                 if (!alreadyPosted)
                 {
-                    await PostExpenseVoucherForCycleAsync(
+                    var (_, postError) = await PostExpenseVoucherForCycleAsync(
                         rule,
                         cycleDate,
                         rule.Amount,
@@ -331,6 +343,12 @@ public class RecurringExpenseService : IRecurringExpenseService
                         "AutoRecurringScheduler",
                         "AUTO_POST_RECURRING",
                         ct);
+
+                    if (postError != null)
+                    {
+                        _logger.LogWarning("Auto-post skipped for recurring rule {RuleId} on cycle {CycleDate}: {ErrorCode}", rule.Id, cycleDate, postError);
+                        break;
+                    }
                 }
 
                 rule.LastExecutedDate = DateTimeOffset.UtcNow;
@@ -359,7 +377,7 @@ public class RecurringExpenseService : IRecurringExpenseService
         }
     }
 
-    private async Task<ExpenseVoucherDto> PostExpenseVoucherForCycleAsync(
+    private async Task<(ExpenseVoucherDto? Voucher, string? ErrorCode)> PostExpenseVoucherForCycleAsync(
         RecurringExpense rule,
         DateTimeOffset cycleDate,
         decimal amount,
@@ -392,14 +410,23 @@ public class RecurringExpenseService : IRecurringExpenseService
         {
             cashBox = await _context.CashBoxes
                 .IgnoreQueryFilters()
+                .OrderBy(cb => cb.Code)
                 .FirstOrDefaultAsync(cb => cb.TenantId == tenantId && cb.IsActive, ct);
         }
 
-        if (cashBox != null)
+        if (cashBox == null)
         {
-            cashBox.CurrentBalance -= amount;
-            cashBox.UpdatedAt = DateTime.UtcNow;
+            return (null, "ERR_EXPENSE_ACCOUNT_NOT_FOUND");
         }
+
+        var roundedAmount = Math.Round(amount, 4, MidpointRounding.AwayFromZero);
+        if (cashBox.CurrentBalance < roundedAmount)
+        {
+            return (null, "ERR_INSUFFICIENT_TREASURY_BALANCE");
+        }
+
+        cashBox.CurrentBalance -= roundedAmount;
+        cashBox.UpdatedAt = DateTime.UtcNow;
 
         var voucherNumber = $"RECV-{cycleDate:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..4].ToUpperInvariant()}";
         var mergedNotes = string.IsNullOrWhiteSpace(customNotes)
@@ -413,11 +440,11 @@ public class RecurringExpenseService : IRecurringExpenseService
             VoucherNumber = voucherNumber,
             VoucherDate = cycleDate.UtcDateTime,
             ExpenseCategoryId = category?.Id,
-            CashBoxId = cashBox?.Id,
-            Amount = Math.Round(amount, 4, MidpointRounding.AwayFromZero),
+            CashBoxId = cashBox.Id,
+            Amount = roundedAmount,
             Currency = "IQD",
             ExchangeRate = 1.0000m,
-            BaseCurrencyAmount = Math.Round(amount, 4, MidpointRounding.AwayFromZero),
+            BaseCurrencyAmount = roundedAmount,
             PaymentMethod = "CASH",
             BeneficiaryName = rule.Title,
             Status = "APPROVED",
@@ -431,6 +458,20 @@ public class RecurringExpenseService : IRecurringExpenseService
         };
 
         _context.ExpenseVouchers.Add(voucher);
+
+        _context.TreasuryTransactions.Add(new TreasuryTransaction
+        {
+            TenantId = tenantId,
+            CashBoxId = cashBox.Id,
+            ExpenseVoucherId = voucher.Id,
+            TransactionType = "PAYMENT",
+            Amount = roundedAmount,
+            BalanceAfter = cashBox.CurrentBalance,
+            ReferenceNumber = voucher.VoucherNumber,
+            Notes = voucher.Notes,
+            CreatedBy = actor,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
 
         _context.AuditLogs.Add(new AuditLog
         {
@@ -446,19 +487,21 @@ public class RecurringExpenseService : IRecurringExpenseService
                 VoucherId = voucher.Id,
                 VoucherNumber = voucher.VoucherNumber,
                 Amount = voucher.Amount,
+                CashBoxId = cashBox.Id,
+                CashBoxBalanceAfter = cashBox.CurrentBalance,
                 CycleDate = cycleDate.Date
             }),
             Timestamp = DateTimeOffset.UtcNow
         });
 
-        return new ExpenseVoucherDto(
+        var dto = new ExpenseVoucherDto(
             voucher.Id,
             voucher.VoucherNumber,
             voucher.VoucherDate,
             voucher.ExpenseCategoryId,
             category?.Name ?? normCategory,
             voucher.CashBoxId,
-            cashBox?.Name,
+            cashBox.Name,
             voucher.Amount,
             voucher.Currency,
             voucher.ExchangeRate,
@@ -473,6 +516,7 @@ public class RecurringExpenseService : IRecurringExpenseService
             voucher.CreatedBy,
             voucher.CreatedAt
         );
+        return (dto, null);
     }
 
     private async Task<(bool Acquired, Func<Task> Release)> AcquireRuleLockAsync(Guid ruleId, CancellationToken ct)
@@ -655,8 +699,47 @@ public class RecurringExpenseService : IRecurringExpenseService
         }
     }
 
-    private static RecurringExpenseDto MapDto(RecurringExpense entity, DateTime todayUtc)
+    private async Task<Dictionary<string, decimal>> LoadCategoryCapsAsync(CancellationToken ct)
     {
+        var cats = await _context.ExpenseCategories
+            .AsNoTracking()
+            .Where(c => c.IsActive && c.MonthlyBudgetCap > 0)
+            .Select(c => new { c.Code, c.Name, c.MonthlyBudgetCap })
+            .ToListAsync(ct);
+
+        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in cats)
+        {
+            if (!string.IsNullOrWhiteSpace(c.Name)) dict[c.Name.Trim()] = c.MonthlyBudgetCap;
+            if (!string.IsNullOrWhiteSpace(c.Code)) dict[c.Code.Trim()] = c.MonthlyBudgetCap;
+        }
+        return dict;
+    }
+
+    public static decimal ComputeProjectedMonthlyAmount(decimal amount, string frequency, int? intervalDays)
+    {
+        return frequency switch
+        {
+            RecurringExpenseFrequency.Weekly => Math.Round(amount * 4m, 4, MidpointRounding.AwayFromZero),
+            RecurringExpenseFrequency.Yearly => Math.Round(amount / 12m, 4, MidpointRounding.AwayFromZero),
+            RecurringExpenseFrequency.CustomDays => Math.Round(amount * (30m / Math.Max(1, intervalDays ?? 30)), 4, MidpointRounding.AwayFromZero),
+            _ => Math.Round(amount, 4, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static RecurringExpenseDto MapDto(
+        RecurringExpense entity,
+        DateTime todayUtc,
+        Dictionary<string, decimal>? categoryCaps = null)
+    {
+        var projected = ComputeProjectedMonthlyAmount(entity.Amount, entity.Frequency, entity.IntervalDays);
+        decimal? cap = null;
+        if (categoryCaps != null && !string.IsNullOrWhiteSpace(entity.Category) &&
+            categoryCaps.TryGetValue(entity.Category.Trim(), out var foundCap) && foundCap > 0)
+        {
+            cap = foundCap;
+        }
+
         return new RecurringExpenseDto
         {
             Id = entity.Id,
@@ -672,6 +755,9 @@ public class RecurringExpenseService : IRecurringExpenseService
             ExecutionMode = entity.ExecutionMode,
             IsActive = entity.IsActive,
             IsDue = entity.IsActive && !entity.IsDeleted && entity.NextDueDate.Date <= todayUtc,
+            ProjectedMonthlyAmount = projected,
+            CategoryMonthlyBudgetCap = cap,
+            ExceedsMonthlyCap = cap.HasValue && cap.Value > 0 && projected > cap.Value,
             Notes = entity.Notes,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

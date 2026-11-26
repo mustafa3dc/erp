@@ -1022,6 +1022,51 @@ public class CashBox : ITenantEntity
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
+[Table("treasury_transactions")]
+public class TreasuryTransaction : ITenantEntity
+{
+    [Key]
+    [Column("id")]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Column("tenant_id")]
+    public Guid? TenantId { get; set; }
+
+    [Column("cash_box_id")]
+    public Guid CashBoxId { get; set; }
+    public CashBox? CashBox { get; set; }
+
+    [Column("expense_voucher_id")]
+    public Guid? ExpenseVoucherId { get; set; }
+    public ExpenseVoucher? ExpenseVoucher { get; set; }
+
+    [Required]
+    [MaxLength(30)]
+    [Column("transaction_type")]
+    public string TransactionType { get; set; } = "PAYMENT"; // PAYMENT, RECEIPT, REFUND
+
+    [Column("amount", TypeName = "numeric(18, 4)")]
+    public decimal Amount { get; set; }
+
+    [Column("balance_after", TypeName = "numeric(18, 4)")]
+    public decimal BalanceAfter { get; set; }
+
+    [MaxLength(100)]
+    [Column("reference_number")]
+    public string? ReferenceNumber { get; set; }
+
+    [MaxLength(500)]
+    [Column("notes")]
+    public string? Notes { get; set; }
+
+    [MaxLength(150)]
+    [Column("created_by")]
+    public string? CreatedBy { get; set; }
+
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 [Table("cash_expenses")]
 public class CashExpense : ITenantEntity
 {

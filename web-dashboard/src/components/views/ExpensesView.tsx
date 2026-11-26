@@ -16,7 +16,8 @@ import {
   X,
   CalendarClock,
   Edit3,
-  Trash2
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
@@ -26,8 +27,11 @@ import {
   saveStoredExpenseCategories, 
   getStoredExpenseVouchers, 
   saveStoredExpenseVouchers,
-  getStoredTreasuryAccounts
+  getStoredTreasuryAccounts,
+  getStoredAuthSession
 } from '../../services/storageService';
+import { checkUserHasPermission } from '../../config/navigationSchema';
+import { voidExpenseVoucher, formatRecurringErrorMessage } from '../../services/recurringExpensesService';
 import { 
   ExpenseCategory, 
   ExpenseVoucher, 
@@ -85,6 +89,18 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [voucherToApprove, setVoucherToApprove] = useState<ExpenseVoucher | null>(null);
+  const [voucherToVoid, setVoucherToVoid] = useState<ExpenseVoucher | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [isVoiding, setIsVoiding] = useState(false);
+
+  const currentUser = getStoredAuthSession();
+  const canVoidVoucher = Boolean(
+    currentUser && (
+      ['SuperAdmin', 'BranchManager', 'PlatformSuperAdmin', 'Accountant'].includes(currentUser.role) ||
+      checkUserHasPermission(currentUser.permissions ?? [], 'expenses.manage') ||
+      checkUserHasPermission(currentUser.permissions ?? [], 'finance.ledger')
+    )
+  );
 
   // Form state - Voucher
   const [vCategory, setVCategory] = useState('');
@@ -314,6 +330,23 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
     setVouchers(updated);
     saveStoredExpenseVouchers(updated);
     showToast(getTranslation(lang, 'expenses.rejectSuccess'));
+  };
+
+  // Handle Void Voucher (Admin/Owner-only: marks Voided, excludes from Totals, refunds CashBox if deducted)
+  const handleConfirmVoid = async () => {
+    if (!voucherToVoid) return;
+    setIsVoiding(true);
+    try {
+      await voidExpenseVoucher(voucherToVoid.id, voidReason.trim() || undefined);
+      setVouchers(getStoredExpenseVouchers());
+      setVoucherToVoid(null);
+      setVoidReason('');
+      showToast(getTranslation(lang, 'expenses.voidSuccess'));
+    } catch (err: any) {
+      showToast(formatRecurringErrorMessage(err, lang));
+    } finally {
+      setIsVoiding(false);
+    }
   };
 
   // Handle Create / Update Category (auto-generated sequential Code, single unified Name)
@@ -675,19 +708,27 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                         </td>
                         <td>
                           <StatusBadge
-                            tone={v.status === 'Approved' ? 'emerald' : v.status === 'Rejected' ? 'rose' : 'amber'}
+                            tone={
+                              v.status === 'Approved'
+                                ? 'emerald'
+                                : v.status === 'Rejected' || v.status === 'Voided'
+                                  ? 'rose'
+                                  : 'amber'
+                            }
                             dot
                             label={
                               v.status === 'Approved'
                                 ? getTranslation(lang, 'expenses.approved')
-                                : v.status === 'Rejected'
-                                  ? getTranslation(lang, 'expenses.rejected')
-                                  : getTranslation(lang, 'expenses.draft')
+                                : v.status === 'Voided'
+                                  ? getTranslation(lang, 'expenses.voided')
+                                  : v.status === 'Rejected'
+                                    ? getTranslation(lang, 'expenses.rejected')
+                                    : getTranslation(lang, 'expenses.draft')
                             }
                           />
                         </td>
                         <td className="text-center">
-                          {v.status !== 'Approved' && v.status !== 'Rejected' ? (
+                          {v.status !== 'Approved' && v.status !== 'Rejected' && v.status !== 'Voided' ? (
                             <div className="inline-flex gap-1.5">
                               <button
                                 type="button"
@@ -706,6 +747,18 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                                 <span>{getTranslation(lang, 'expenses.reject')}</span>
                               </button>
                             </div>
+                          ) : v.status === 'Approved' && canVoidVoucher ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVoucherToVoid(v);
+                                setVoidReason('');
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors"
+                            >
+                              <RotateCcw size={12} />
+                              <span>{getTranslation(lang, 'expenses.voidVoucher')}</span>
+                            </button>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
@@ -1157,6 +1210,79 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
               >
                 {getTranslation(lang, 'expenses.approve')}
               </button>
+            </div>
+          </div>
+        </ModalBackdropPortal>
+      )}
+
+      {/* Confirmation Dialog: Admin Void Voucher */}
+      {voucherToVoid && (
+        <ModalBackdropPortal onClose={() => setVoucherToVoid(null)} dir={isAr ? 'rtl' : 'ltr'}>
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            onClick={e => e.stopPropagation()}
+            dir={isAr ? 'rtl' : 'ltr'}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/40">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    {getTranslation(lang, 'expenses.voidConfirmTitle')}
+                  </h3>
+                  <span className="text-xs font-mono text-muted-foreground" dir="ltr">
+                    {voucherToVoid.voucherNo}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoucherToVoid(null)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {getTranslation(lang, 'expenses.voidConfirmMsg')}
+              </p>
+
+              <div className="p-3 rounded-xl bg-muted/50 border border-border flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{getTranslation(lang, 'expenses.amount')}:</span>
+                <span className="text-sm font-bold text-rose-600 dark:text-rose-400 font-mono tabular-nums" dir="ltr">
+                  {formatMoney(voucherToVoid.amount)}
+                </span>
+              </div>
+
+              <textarea
+                rows={2}
+                value={voidReason}
+                onChange={e => setVoidReason(e.target.value)}
+                placeholder={getTranslation(lang, 'expenses.voidReasonPlaceholder')}
+                className="w-full px-3.5 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+              />
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setVoucherToVoid(null)}
+                  className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-sm font-medium text-foreground transition-colors"
+                >
+                  {getTranslation(lang, 'expenses.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isVoiding}
+                  onClick={handleConfirmVoid}
+                  className="px-5 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+                >
+                  {getTranslation(lang, 'expenses.voidBtn')}
+                </button>
+              </div>
             </div>
           </div>
         </ModalBackdropPortal>

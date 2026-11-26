@@ -44,7 +44,10 @@
       "VOUCHER_ALREADY_APPROVED": "تم اعتماد وصرف هذا السند مسبقاً",
       "CATEGORY_CODE_EXISTS": "رمز تصنيف المصروف مسجل مسبقاً",
       "ERR_CATEGORY_NAME_REQUIRED": "يرجى إدخال اسم التصنيف.",
-      "ERR_INVALID_CATEGORY_BUDGET": "سقف الميزانية الشهرية لا يمكن أن يكون سالباً."
+      "ERR_INVALID_CATEGORY_BUDGET": "سقف الميزانية الشهرية لا يمكن أن يكون سالباً.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الصندوق الرئيسي لا يكفي لتغطية هذا المصروف.",
+      "ERR_VOUCHER_ALREADY_VOIDED": "تم إلغاء هذا السند مسبقاً.",
+      "ERR_VOUCHER_VOID_FAILED": "تعذر إلغاء سند المصروف."
     },
     "LEDGER": {
       "IMMUTABLE": "سجل القيود غير قابل للتعديل أو الحذف إطلاقاً",
@@ -82,7 +85,9 @@
       "ERR_INVALID_EXECUTION_MODE": "وضع التنفيذ المحدد غير صالح.",
       "ERR_RECURRING_NOT_FOUND": "لم يتم العثور على سجل المصروف الدوري المطلوب.",
       "ERR_CONCURRENCY_LOCK_TIMEOUT": "هذا المصروف الدوري قيد المعالجة الآن، يرجى المحاولة بعد لحظات.",
-      "ERR_RECURRING_CONFIRM_FAILED": "تعذر تأكيد دفع المصروف الدوري وتسجيل السند."
+      "ERR_RECURRING_CONFIRM_FAILED": "تعذر تأكيد دفع المصروف الدوري وتسجيل السند.",
+      "ERR_INSUFFICIENT_TREASURY_BALANCE": "رصيد الصندوق المحدد غير كافٍ لتغطية مبلغ هذا المصروف.",
+      "ERR_EXPENSE_ACCOUNT_NOT_FOUND": "لم يتم العثور على حساب خزينة نشط للخصم."
     }
   }
 }

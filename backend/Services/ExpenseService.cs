@@ -17,6 +17,7 @@ public interface IExpenseService
     Task<ApiResponse<ExpenseVoucherDto>> UpdateVoucherAsync(Guid id, UpdateExpenseVoucherRequest request, string? updatedBy);
     Task<ApiResponse<ExpenseVoucherDto>> ApproveVoucherAsync(Guid id, ApproveExpenseVoucherRequest request, string? approvedBy);
     Task<ApiResponse<ExpenseVoucherDto>> RejectVoucherAsync(Guid id, string? rejectedBy, string? reason);
+    Task<ApiResponse<ExpenseVoucherDto>> VoidVoucherAsync(Guid id, string? voidedBy, string? reason);
     Task<ExpensesSummaryDto> GetSummaryAsync(DateTime? startDate, DateTime? endDate);
 }
 
@@ -452,7 +453,7 @@ public class ExpenseService : IExpenseService
                 return ApiResponse<ExpenseVoucherDto>.Fail("ERR_EXPENSE_ACCOUNT_NOT_FOUND", "EXPENSES");
             }
 
-            // Deduct funds from CashBox
+            // Deduct funds from CashBox & record TreasuryTransaction ledger entry
             var previousCashBoxBalance = cashBox.CurrentBalance;
             cashBox.CurrentBalance -= voucher.Amount;
             cashBox.UpdatedAt = DateTime.UtcNow;
@@ -466,6 +467,20 @@ public class ExpenseService : IExpenseService
                 voucher.Notes = $"{voucher.Notes} | {request.Notes}".Trim(' ', '|');
             }
             voucher.UpdatedAt = DateTime.UtcNow;
+
+            _context.TreasuryTransactions.Add(new TreasuryTransaction
+            {
+                TenantId = voucher.TenantId,
+                CashBoxId = cashBox.Id,
+                ExpenseVoucherId = voucher.Id,
+                TransactionType = "PAYMENT",
+                Amount = voucher.Amount,
+                BalanceAfter = cashBox.CurrentBalance,
+                ReferenceNumber = voucher.VoucherNumber,
+                Notes = voucher.BeneficiaryName ?? voucher.Notes,
+                CreatedBy = approvedBy ?? "Manager",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
 
             // Audit Trail
             var auditLog = new AuditLog
@@ -569,6 +584,126 @@ public class ExpenseService : IExpenseService
         );
 
         return ApiResponse<ExpenseVoucherDto>.Ok(dto);
+    }
+
+    public async Task<ApiResponse<ExpenseVoucherDto>> VoidVoucherAsync(Guid id, string? voidedBy, string? reason)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var voucher = await _context.ExpenseVouchers
+                .Include(v => v.ExpenseCategory)
+                .Include(v => v.CashBox)
+                .FirstOrDefaultAsync(v => v.Id == id);
+
+            if (voucher == null)
+            {
+                return ApiResponse<ExpenseVoucherDto>.Fail("ERR_VOUCHER_NOT_FOUND", "EXPENSES");
+            }
+
+            if (string.Equals(voucher.Status, "VOIDED", StringComparison.OrdinalIgnoreCase))
+            {
+                return ApiResponse<ExpenseVoucherDto>.Fail("ERR_VOUCHER_ALREADY_VOIDED", "EXPENSES");
+            }
+
+            var previousStatus = voucher.Status;
+            decimal? refundedAmount = null;
+            decimal? updatedBalance = null;
+
+            // Refund CashBox ONLY when a real treasury deduction was recorded for this voucher
+            var recordedPayment = await _context.TreasuryTransactions
+                .FirstOrDefaultAsync(t => t.ExpenseVoucherId == voucher.Id && t.TransactionType == "PAYMENT");
+
+            var alreadyRefunded = await _context.TreasuryTransactions
+                .AnyAsync(t => t.ExpenseVoucherId == voucher.Id && t.TransactionType == "REFUND");
+
+            if (!alreadyRefunded && previousStatus == "APPROVED" && voucher.CashBoxId.HasValue)
+            {
+                var hasAuditDeduction = recordedPayment != null || await _context.AuditLogs.AnyAsync(a =>
+                    a.EntityId == voucher.Id.ToString() && a.Action == "APPROVE");
+
+                if (hasAuditDeduction)
+                {
+                    var cashBox = await _context.CashBoxes.FirstOrDefaultAsync(cb => cb.Id == voucher.CashBoxId.Value);
+                    if (cashBox != null)
+                    {
+                        var amountToRefund = recordedPayment?.Amount ?? voucher.Amount;
+                        cashBox.CurrentBalance += amountToRefund;
+                        cashBox.UpdatedAt = DateTime.UtcNow;
+                        refundedAmount = amountToRefund;
+                        updatedBalance = cashBox.CurrentBalance;
+
+                        _context.TreasuryTransactions.Add(new TreasuryTransaction
+                        {
+                            TenantId = voucher.TenantId,
+                            CashBoxId = cashBox.Id,
+                            ExpenseVoucherId = voucher.Id,
+                            TransactionType = "REFUND",
+                            Amount = amountToRefund,
+                            BalanceAfter = cashBox.CurrentBalance,
+                            ReferenceNumber = voucher.VoucherNumber,
+                            Notes = string.IsNullOrWhiteSpace(reason) ? $"Void {voucher.VoucherNumber}" : reason.Trim(),
+                            CreatedBy = voidedBy ?? "Admin",
+                            CreatedAt = DateTimeOffset.UtcNow
+                        });
+                    }
+                }
+            }
+
+            voucher.Status = "VOIDED";
+            voucher.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                voucher.Notes = string.IsNullOrWhiteSpace(voucher.Notes) ? reason.Trim() : $"{voucher.Notes} | {reason.Trim()}";
+            }
+
+            _context.AuditLogs.Add(new AuditLog
+            {
+                TenantId = voucher.TenantId,
+                UserId = voidedBy ?? "Admin",
+                Username = voidedBy ?? "Admin",
+                Action = "VOID",
+                EntityName = "expense_vouchers",
+                EntityId = voucher.Id.ToString(),
+                OldValues = System.Text.Json.JsonSerializer.Serialize(new { Status = previousStatus, Amount = voucher.Amount }),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { Status = "VOIDED", RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance }),
+                Timestamp = DateTimeOffset.UtcNow
+            });
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var dto = new ExpenseVoucherDto(
+                voucher.Id,
+                voucher.VoucherNumber,
+                voucher.VoucherDate,
+                voucher.ExpenseCategoryId,
+                voucher.ExpenseCategory?.Name ?? string.Empty,
+                voucher.CashBoxId,
+                voucher.CashBox?.Name,
+                voucher.Amount,
+                voucher.Currency,
+                voucher.ExchangeRate,
+                voucher.BaseCurrencyAmount,
+                voucher.PaymentMethod,
+                voucher.BeneficiaryName,
+                voucher.Status,
+                voucher.ApprovedBy,
+                voucher.ApprovedAt,
+                voucher.Notes,
+                voucher.ReceiptReference,
+                voucher.CreatedBy,
+                voucher.CreatedAt
+            );
+
+            return ApiResponse<ExpenseVoucherDto>.Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to void expense voucher {VoucherId}", id);
+            return ApiResponse<ExpenseVoucherDto>.Fail("ERR_VOUCHER_VOID_FAILED", "EXPENSES");
+        }
     }
 
     public async Task<ExpensesSummaryDto> GetSummaryAsync(DateTime? startDate, DateTime? endDate)

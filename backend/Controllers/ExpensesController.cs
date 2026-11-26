@@ -152,6 +152,23 @@ public class ExpensesController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("/api/expenses/{id:guid}/void")]
+    [HttpPost("vouchers/{id:guid}/void")]
+    [HasPermission(Permissions.Treasury.ExpensesApprove)]
+    public async Task<ActionResult<ApiResponse<ExpenseVoucherDto>>> VoidVoucher(Guid id, [FromQuery] string? reason)
+    {
+        var result = await _expenseService.VoidVoucherAsync(id, CurrentUserName, reason);
+        if (!result.Success && result.ErrorCode == "ERR_VOUCHER_NOT_FOUND")
+        {
+            return NotFound(result);
+        }
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
     [HttpGet("summary")]
     [HasPermission(Permissions.Treasury.ExpensesView)]
     public async Task<ActionResult<ApiResponse<ExpensesSummaryDto>>> GetSummary(

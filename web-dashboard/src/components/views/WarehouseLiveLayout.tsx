@@ -54,11 +54,13 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
   const resolveShelfError = useCallback(
     (code: string) => {
+      const invMsg = getTranslation(lang, `errors.ERR.INVENTORY.${code}`, '');
+      if (invMsg) return invMsg;
       const treasuryMsg = getTranslation(lang, `errors.ERR.TREASURY.${code}`, '');
       if (treasuryMsg) return treasuryMsg;
       const directMsg = getTranslation(lang, `errors.${code}`, '');
       if (directMsg) return directMsg;
-      return getTranslation(lang, 'errors.ERR.TREASURY.ERR_SHELF_ASSIGN_FAILED', code);
+      return getTranslation(lang, 'errors.ERR.TREASURY.ERR_SHELF_SAVE_FAILED', code);
     },
     [lang]
   );
@@ -289,7 +291,11 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        const code = err?.errorCode || 'ERR_SHELF_ASSIGN_FAILED';
+        const code =
+          err?.errorCode ||
+          (res.status === 404
+            ? 'ERR_WAREHOUSE_NOT_FOUND'
+            : 'ERR_SHELF_SAVE_FAILED');
         setShelfFormError(resolveShelfError(code));
         return;
       }
@@ -297,7 +303,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
       setIsShelfModalOpen(false);
       await fetchShelves(true);
     } catch {
-      setShelfFormError(resolveShelfError('ERR_SHELF_ASSIGN_FAILED'));
+      setShelfFormError(resolveShelfError('ERR_SHELF_SAVE_FAILED'));
     } finally {
       setIsSavingShelf(false);
     }

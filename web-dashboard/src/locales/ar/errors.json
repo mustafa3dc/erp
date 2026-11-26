@@ -136,6 +136,7 @@
       "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "تعذر حفظ بيانات الحساب المالي.",
       "ERR_SHELF_NAME_REQUIRED": "اسم الرف أو القاطع مطلوب.",
       "ERR_SHELF_NOT_FOUND": "الرف المحدد غير موجود في هذا المستودع.",
+      "ERR_SHELF_SAVE_FAILED": "تعذر حفظ بيانات الرف.",
       "ERR_SHELF_ASSIGN_FAILED": "تعذر تسكين الأصناف في الرف المحدد."
     }
   }

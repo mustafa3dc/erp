@@ -136,6 +136,7 @@
       "ERR_TREASURY_ACCOUNT_SAVE_FAILED": "Failed to save Treasury account.",
       "ERR_SHELF_NAME_REQUIRED": "Shelf name is required.",
       "ERR_SHELF_NOT_FOUND": "Selected shelf was not found in this warehouse.",
+      "ERR_SHELF_SAVE_FAILED": "Failed to save shelf details.",
       "ERR_SHELF_ASSIGN_FAILED": "Failed to assign items to the selected shelf."
     }
   }

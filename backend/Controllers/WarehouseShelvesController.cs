@@ -4,9 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Data;
-using ERP.Warehouse.Api.Domain.Constants;
 using ERP.Warehouse.Api.Models;
 
 namespace ERP.Warehouse.Api.Controllers;
@@ -25,24 +23,98 @@ public class AssignShelfItemsRequest
 }
 
 [ApiController]
-[Route("api/warehouses/{warehouseId:guid}/shelves")]
-[Route("api/v1/warehouses/{warehouseId:guid}/shelves")]
+[Route("api/warehouses/{warehouseId}/shelves")]
+[Route("api/v1/warehouses/{warehouseId}/shelves")]
 public class WarehouseShelvesController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private static volatile bool _schemaEnsured = false;
 
     public WarehouseShelvesController(AppDbContext context)
     {
         _context = context;
     }
 
-    [HttpGet]
-    public async Task<ActionResult> GetShelves(Guid warehouseId)
+    private async Task EnsureShelvesSchemaAsync()
     {
-        var tenantId = _context.CurrentTenantId;
-        var warehouse = await _context.Warehouses
-            .AsNoTracking()
-            .FirstOrDefaultAsync(w => w.Id == warehouseId && (!tenantId.HasValue || w.TenantId == tenantId.Value));
+        if (_schemaEnsured) return;
+        try
+        {
+            await _context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS warehouse_shelves (
+                    id UUID PRIMARY KEY,
+                    tenant_id UUID NULL,
+                    warehouse_id UUID NOT NULL,
+                    name VARCHAR(150) NOT NULL,
+                    code VARCHAR(50) NULL,
+                    notes VARCHAR(500) NULL,
+                    max_capacity INT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+                ALTER TABLE IF EXISTS warehouse_stock ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;
+            ");
+            _schemaEnsured = true;
+        }
+        catch
+        {
+            // Will retry on next call if transient
+        }
+    }
+
+    private async Task<Guid?> ResolveTenantIdAsync()
+    {
+        if (_context.CurrentTenantId.HasValue && _context.CurrentTenantId.Value != Guid.Empty)
+        {
+            return _context.CurrentTenantId.Value;
+        }
+
+        var tenantIdClaim = User.FindFirst("tenant_id")?.Value
+                         ?? User.FindFirst("TenantId")?.Value
+                         ?? Request.Headers["X-Tenant-Id"].FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(tenantIdClaim))
+        {
+            if (Guid.TryParse(tenantIdClaim, out var parsed))
+            {
+                return parsed;
+            }
+            var matched = await _context.Tenants
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Slug == tenantIdClaim.Trim().ToLower());
+            if (matched != null)
+            {
+                return matched.Id;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<ERP.Warehouse.Api.Models.Warehouse?> ResolveWarehouseAsync(string warehouseId, Guid? tenantId)
+    {
+        var query = _context.Warehouses.AsNoTracking().AsQueryable();
+        if (tenantId.HasValue)
+        {
+            query = query.Where(w => w.TenantId == tenantId.Value);
+        }
+
+        if (Guid.TryParse(warehouseId, out var whGuid))
+        {
+            return await query.FirstOrDefaultAsync(w => w.Id == whGuid);
+        }
+
+        return await query.FirstOrDefaultAsync(w => w.Code == warehouseId);
+    }
+
+    [HttpGet]
+    public async Task<ActionResult> GetShelves(string warehouseId)
+    {
+        await EnsureShelvesSchemaAsync();
+        var tenantId = await ResolveTenantIdAsync();
+        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
 
         if (warehouse == null)
         {
@@ -51,7 +123,7 @@ public class WarehouseShelvesController : ControllerBase
 
         var shelves = await _context.WarehouseShelves
             .AsNoTracking()
-            .Where(s => s.WarehouseId == warehouseId && s.IsActive && (!tenantId.HasValue || s.TenantId == tenantId.Value))
+            .Where(s => s.WarehouseId == warehouse.Id && s.IsActive && (!tenantId.HasValue || s.TenantId == tenantId.Value))
             .OrderBy(s => s.Name)
             .ThenBy(s => s.Id)
             .ToListAsync();
@@ -59,7 +131,7 @@ public class WarehouseShelvesController : ControllerBase
         var stocks = await _context.WarehouseStocks
             .AsNoTracking()
             .Include(ws => ws.Product)
-            .Where(ws => ws.WarehouseId == warehouseId && (!tenantId.HasValue || ws.TenantId == tenantId.Value))
+            .Where(ws => ws.WarehouseId == warehouse.Id && (!tenantId.HasValue || ws.TenantId == tenantId.Value))
             .ToListAsync();
 
         var result = shelves.Select(shelf =>
@@ -106,69 +178,82 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult> CreateShelf(Guid warehouseId, [FromBody] UpsertWarehouseShelfRequest? request)
+    public async Task<ActionResult> CreateShelf(string warehouseId, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
             return BadRequest(new { errorCode = "ERR_SHELF_NAME_REQUIRED" });
         }
 
-        var tenantId = _context.CurrentTenantId;
-        var warehouse = await _context.Warehouses
-            .AsNoTracking()
-            .FirstOrDefaultAsync(w => w.Id == warehouseId && (!tenantId.HasValue || w.TenantId == tenantId.Value));
+        await EnsureShelvesSchemaAsync();
+        var tenantId = await ResolveTenantIdAsync();
+        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
 
         if (warehouse == null)
         {
             return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
         }
 
-        var shelf = new WarehouseShelf
+        try
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId ?? warehouse.TenantId,
-            WarehouseId = warehouseId,
-            Name = request.Name.Trim(),
-            Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim(),
-            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
-            MaxCapacity = request.MaxCapacity,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var shelf = new WarehouseShelf
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId ?? warehouse.TenantId,
+                WarehouseId = warehouse.Id,
+                Name = request.Name.Trim(),
+                Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim(),
+                Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+                MaxCapacity = request.MaxCapacity,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
 
-        _context.WarehouseShelves.Add(shelf);
-        await _context.SaveChangesAsync();
+            _context.WarehouseShelves.Add(shelf);
+            await _context.SaveChangesAsync();
 
-        return Ok(new
+            return Ok(new
+            {
+                id = shelf.Id,
+                warehouseId = shelf.WarehouseId,
+                name = shelf.Name,
+                code = shelf.Code,
+                notes = shelf.Notes,
+                maxCapacity = shelf.MaxCapacity,
+                isActive = shelf.IsActive,
+                itemCount = 0,
+                totalQuantity = 0,
+                topItems = Array.Empty<string>(),
+                items = Array.Empty<object>()
+            });
+        }
+        catch (Exception)
         {
-            id = shelf.Id,
-            warehouseId = shelf.WarehouseId,
-            name = shelf.Name,
-            code = shelf.Code,
-            notes = shelf.Notes,
-            maxCapacity = shelf.MaxCapacity,
-            isActive = shelf.IsActive,
-            itemCount = 0,
-            totalQuantity = 0,
-            topItems = Array.Empty<string>(),
-            items = Array.Empty<object>()
-        });
+            return StatusCode(500, new { errorCode = "ERR_SHELF_SAVE_FAILED" });
+        }
     }
 
     [HttpPut("{shelfId:guid}")]
-    public async Task<ActionResult> UpdateShelf(Guid warehouseId, Guid shelfId, [FromBody] UpsertWarehouseShelfRequest? request)
+    public async Task<ActionResult> UpdateShelf(string warehouseId, Guid shelfId, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
             return BadRequest(new { errorCode = "ERR_SHELF_NAME_REQUIRED" });
         }
 
-        var tenantId = _context.CurrentTenantId;
+        await EnsureShelvesSchemaAsync();
+        var tenantId = await ResolveTenantIdAsync();
+        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        if (warehouse == null)
+        {
+            return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
+        }
+
         var shelf = await _context.WarehouseShelves
             .FirstOrDefaultAsync(s =>
                 s.Id == shelfId &&
-                s.WarehouseId == warehouseId &&
+                s.WarehouseId == warehouse.Id &&
                 s.IsActive &&
                 (!tenantId.HasValue || s.TenantId == tenantId.Value));
 
@@ -177,28 +262,35 @@ public class WarehouseShelvesController : ControllerBase
             return NotFound(new { errorCode = "ERR_SHELF_NOT_FOUND" });
         }
 
-        shelf.Name = request.Name.Trim();
-        shelf.Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
-        shelf.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
-        shelf.MaxCapacity = request.MaxCapacity;
-        shelf.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new
+        try
         {
-            id = shelf.Id,
-            warehouseId = shelf.WarehouseId,
-            name = shelf.Name,
-            code = shelf.Code,
-            notes = shelf.Notes,
-            maxCapacity = shelf.MaxCapacity,
-            isActive = shelf.IsActive
-        });
+            shelf.Name = request.Name.Trim();
+            shelf.Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
+            shelf.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+            shelf.MaxCapacity = request.MaxCapacity;
+            shelf.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                id = shelf.Id,
+                warehouseId = shelf.WarehouseId,
+                name = shelf.Name,
+                code = shelf.Code,
+                notes = shelf.Notes,
+                maxCapacity = shelf.MaxCapacity,
+                isActive = shelf.IsActive
+            });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { errorCode = "ERR_SHELF_SAVE_FAILED" });
+        }
     }
 
     [HttpPost("{shelfId:guid}/assign-items")]
-    public async Task<ActionResult> AssignItemsToShelf(Guid warehouseId, Guid shelfId, [FromBody] AssignShelfItemsRequest? request)
+    public async Task<ActionResult> AssignItemsToShelf(string warehouseId, Guid shelfId, [FromBody] AssignShelfItemsRequest? request)
     {
         var distinctProductIds = (request?.ProductIds ?? new List<Guid>())
             .Where(id => id != Guid.Empty)
@@ -210,11 +302,18 @@ public class WarehouseShelvesController : ControllerBase
             return BadRequest(new { errorCode = "ERR_INVALID_PAYLOAD" });
         }
 
-        var tenantId = _context.CurrentTenantId;
+        await EnsureShelvesSchemaAsync();
+        var tenantId = await ResolveTenantIdAsync();
+        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        if (warehouse == null)
+        {
+            return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
+        }
+
         var shelf = await _context.WarehouseShelves
             .FirstOrDefaultAsync(s =>
                 s.Id == shelfId &&
-                s.WarehouseId == warehouseId &&
+                s.WarehouseId == warehouse.Id &&
                 s.IsActive &&
                 (!tenantId.HasValue || s.TenantId == tenantId.Value));
 
@@ -230,7 +329,7 @@ public class WarehouseShelvesController : ControllerBase
         {
             var existingStocks = await _context.WarehouseStocks
                 .Where(ws =>
-                    ws.WarehouseId == warehouseId &&
+                    ws.WarehouseId == warehouse.Id &&
                     distinctProductIds.Contains(ws.ProductId) &&
                     (!tenantId.HasValue || ws.TenantId == tenantId.Value))
                 .ToListAsync();
@@ -257,7 +356,7 @@ public class WarehouseShelvesController : ControllerBase
                     _context.WarehouseStocks.Add(new WarehouseStock
                     {
                         TenantId = tenantId ?? shelf.TenantId,
-                        WarehouseId = warehouseId,
+                        WarehouseId = warehouse.Id,
                         ProductId = productId,
                         Quantity = 0,
                         ReservedQuantity = 0,

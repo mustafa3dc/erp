@@ -154,7 +154,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         {/* Hierarchical Nav Groups */}
         {permittedNav.groups.map(group => {
           const isGroupActive = group.items.some(i => i.id === activeNav);
-          const isExpanded = expandedGroups[group.key] ?? true;
+          const isExpanded = expandedGroups[group.key] ?? false;
           const groupTitle = isAr ? group.titleAr : group.titleEn;
 
           return (

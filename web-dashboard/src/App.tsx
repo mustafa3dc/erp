@@ -523,10 +523,10 @@ function DashboardApp() {
     });
   };
 
-  // Collapsible Sidebar Groups State
+  // Collapsible Sidebar Groups State (Only POS & Inventory expanded by default)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     pos: true,
-    sales: true,
+    sales: false,
     purchases: false,
     warehouse: true,
     finance: false,

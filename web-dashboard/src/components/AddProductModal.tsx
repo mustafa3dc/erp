@@ -8,6 +8,7 @@ import { Product, Warehouse as WarehouseType } from '../types/warehouse';
 import BarcodeSvg from './BarcodeSvg';
 import { localizeCategory, localizeWarehouse, localizeUnit } from '../lib/localeHelpers';
 import { useSettings } from '../context/settings-context';
+import { useTenantFeatures } from '../hooks/useAuth';
 import { validateProductPricing } from '../schemas/ProductValidationSchema';
 import {
   getStoredCategories,
@@ -46,7 +47,10 @@ export default function AddProductModal({
   if (!isOpen) return null;
 
   const isAr = lang === 'ar';
+  const localeKey: 'ar' | 'en' = lang === 'en' ? 'en' : 'ar';
   const { currencySymbol } = useSettings();
+  const { isFeatureEnabled } = useTenantFeatures();
+  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
   const [activeTab, setActiveTab] = useState<'new_product' | 'restock'>(initialMode);
 
   // Sync mode if initialMode changes
@@ -119,6 +123,8 @@ export default function AddProductModal({
   const [unit, setUnit] = useState('قطعة');
   const [currentStock, setCurrentStock] = useState(30);
   const [minStockAlert, setMinStockAlert] = useState(10);
+  const [requiresSerialNumber, setRequiresSerialNumber] = useState(false);
+  const [warrantyMonths, setWarrantyMonths] = useState(0);
   const [newProdError, setNewProdError] = useState('');
   const [isTiersOpen, setIsTiersOpen] = useState(false);
   const [tierDrafts, setTierDrafts] = useState<Array<{ minQty: string; maxQty: string; unitPrice: string }>>([]);
@@ -253,6 +259,8 @@ export default function AddProductModal({
       warehouseNameEn: resolvedWhNameEn,
       status: Number(currentStock) > Number(minStockAlert) ? 'available' : Number(currentStock) > 0 ? 'low' : 'out_of_stock',
       shelf: shelf.trim() || 'A-01-01',
+      requiresSerialNumber: isSerialModuleEnabled ? requiresSerialNumber : false,
+      warrantyMonths: isSerialModuleEnabled && requiresSerialNumber ? Math.max(0, Number(warrantyMonths) || 0) : (isSerialModuleEnabled ? Math.max(0, Number(warrantyMonths) || 0) : 0),
       updatedAt: new Date().toISOString().slice(0, 10),
       quantityTiers: parsedTiers.map((t, idx) => ({
         id: `TIER-${Date.now()}-${idx}`,
@@ -767,6 +775,66 @@ export default function AddProductModal({
                     />
                   </div>
                 </div>
+
+                {/* Conditional Serial & Warranty Fields (Shown ONLY when EnableSerialTrackingModule is active) */}
+                {isSerialModuleEnabled && (
+                  <div className="rounded-xl border border-border bg-muted/30 p-3.5 mt-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className="block text-xs font-bold text-foreground">
+                          {getTranslation(localeKey, 'serialTracking.requiresSerialTracking')}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          {getTranslation(localeKey, 'serialTracking.warrantyStartsOnSaleHint')}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={requiresSerialNumber}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setRequiresSerialNumber(checked);
+                          if (checked && warrantyMonths === 0) {
+                            setWarrantyMonths(12);
+                          }
+                        }}
+                        className="h-4 w-4 accent-primary cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                      <div className="goods-input-group">
+                        <label>{getTranslation(localeKey, 'serialTracking.warrantyMonthsLabel')}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={warrantyMonths}
+                          onChange={(e) => setWarrantyMonths(Math.max(0, Number(e.target.value) || 0))}
+                          className="goods-text-input font-mono font-bold"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap pb-1">
+                        {[0, 6, 12, 24].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setWarrantyMonths(m)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold border cursor-pointer transition-colors ${
+                              warrantyMonths === m
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-card text-muted-foreground border-border hover:bg-muted'
+                            }`}
+                          >
+                            {m === 0
+                              ? getTranslation(localeKey, 'serialTracking.noWarranty')
+                              : `${m} ${getTranslation(localeKey, 'serialTracking.monthUnit')}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Collapsible Quantity Pricing Tiers */}
                 <div className="rounded-xl border border-border bg-muted/25 overflow-hidden">

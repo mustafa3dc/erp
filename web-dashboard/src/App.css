@@ -8270,9 +8270,7 @@ table.items-table tr:nth-child(even) td {
   font-weight: 600;
   color: var(--muted-foreground);
   letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .module-kpi-value {

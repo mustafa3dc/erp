@@ -25,7 +25,11 @@ public record ProductSerialDto(
     DateTime? WarrantyEndDate,
     bool IsWarrantyActive,
     string? Notes,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    string WarrantyStatus = "NotStarted",
+    int? RemainingWarrantyDays = null,
+    string? PurchaseBillNumber = null,
+    string? SalesInvoiceNumber = null
 );
 
 public record SerialLookupResultDto(
@@ -45,7 +49,7 @@ public record ProductSerialDetailDto(
     Guid WarehouseId,
     string WarehouseName,
     string Status, // InStock, Sold, Returned, Defective, Transferred
-    
+
     // Purchase Inbound Details
     Guid? PurchaseBillId,
     string? PurchaseBillNumber,
@@ -53,7 +57,7 @@ public record ProductSerialDetailDto(
     string? SupplierName,
     DateTime? PurchaseDate,
     decimal? UnitCost,
-    
+
     // Sales Outbound Details
     Guid? SalesInvoiceId,
     string? SalesInvoiceNumber,
@@ -62,14 +66,15 @@ public record ProductSerialDetailDto(
     string? CustomerPhone,
     DateTime? SoldDate,
     decimal? SellingPrice,
-    
+
     // Warranty Details
     int WarrantyMonths,
     DateTime? WarrantyStartDate,
     DateTime? WarrantyEndDate,
     bool IsWarrantyActive,
     int? RemainingWarrantyDays,
-    string? Notes
+    string? Notes,
+    string WarrantyStatus = "NotStarted"
 );
 
 public record RegisterSerialsRequest(
@@ -80,8 +85,9 @@ public record RegisterSerialsRequest(
     Guid? SupplierId,
     string? SupplierName,
     decimal? UnitCost,
-    int WarrantyMonths = 12,
-    [Required] List<string> SerialNumbers = null!
+    int? WarrantyMonths = null,
+    [Required] List<string> SerialNumbers = null!,
+    string? Notes = null
 );
 
 public record BindSerialToSaleRequest(
@@ -101,4 +107,18 @@ public record UpdateSerialWarrantyRequest(
     DateTime? WarrantyEndDate,
     string? Status,
     string? Notes
+);
+
+public record UpdateSerialStatusRequest(
+    [Required] string Status,
+    string? Notes = null
+);
+
+public record PosSerialScanResponseDto(
+    bool Found,
+    bool Available,
+    string SerialNumber,
+    string? ErrorCode,
+    ProductSerialDto? Serial,
+    PosProductDto? Product
 );

@@ -88,6 +88,8 @@ public class DiscountEngineService : IDiscountEngineService
                 MaxCashierDiscountPercent = p.MaxCashierDiscountPercent > 0 ? p.MaxCashierDiscountPercent : 5.0m,
                 IsActive = p.IsActive,
                 IsBundle = p.IsBundle,
+                RequiresSerialNumber = p.RequiresSerialNumber,
+                WarrantyMonths = p.WarrantyMonths,
                 QuantityTiers = p.QuantityTiers
                     .OrderBy(t => t.MinQty)
                     .Select(t => new PosQuantityTierDto(t.Id, t.MinQty, t.MaxQty, t.UnitPrice))
@@ -410,6 +412,9 @@ public class DiscountEngineService : IDiscountEngineService
 
             var invoiceItems = new List<SalesInvoiceItem>();
             var invoiceTierFlags = new List<bool>();
+            var invoiceSerialLists = new List<List<string>>();
+            var soldSerialsToUpdate = new List<(ProductSerial Serial, SalesInvoiceItem Item, Product Product, decimal FinalUnitPrice)>();
+            var seenInvoiceSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var auditLogs = new List<DiscountAuditLog>();
             var dispatchItemsSnapshot = new List<object>();
 
@@ -420,6 +425,21 @@ public class DiscountEngineService : IDiscountEngineService
                     .Include(p => p.BundleComponents)
                     .ThenInclude(bc => bc.ComponentProduct)
                     .FirstAsync(p => p.Id == itemReq.ProductId);
+
+                var itemSerials = (itemReq.SerialNumbers ?? new List<string>())
+                    .Concat(string.IsNullOrWhiteSpace(itemReq.SerialNumber) ? Array.Empty<string>() : new[] { itemReq.SerialNumber! })
+                    .Where(sn => !string.IsNullOrWhiteSpace(sn))
+                    .Select(sn => sn.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var sn in itemSerials)
+                {
+                    if (!seenInvoiceSerials.Add(sn))
+                    {
+                        throw new ApplicationException($"ERR_SERIAL_NOT_AVAILABLE_FOR_SALE: الرقم التسلسلي ({sn}) مكرر ضمن الفاتورة.");
+                    }
+                }
 
                 string primaryShelfLocation = "A-01";
 
@@ -547,7 +567,8 @@ public class DiscountEngineService : IDiscountEngineService
                 calculatedLineProfits += (finalUnitPrice - unitCostPrice) * itemReq.Quantity;
 
                 invoiceTierFlags.Add(matchedTier != null);
-                invoiceItems.Add(new SalesInvoiceItem
+                invoiceSerialLists.Add(itemSerials);
+                var invItem = new SalesInvoiceItem
                 {
                     ProductId = product.Id,
                     SourceWarehouseId = fulfillmentWarehouseId,
@@ -560,8 +581,37 @@ public class DiscountEngineService : IDiscountEngineService
                     TotalPrice = lineTotal,
                     UnitCostPrice = unitCostPrice,
                     WasManagerOverride = wasOverride,
-                    ApprovedByManagerId = approvedManagerId
-                });
+                    ApprovedByManagerId = approvedManagerId,
+                    SerialNumbersJson = System.Text.Json.JsonSerializer.Serialize(itemSerials)
+                };
+                invoiceItems.Add(invItem);
+
+                if (itemSerials.Count > 0)
+                {
+                    var lowerSerials = itemSerials.Select(sn => sn.ToLowerInvariant()).ToList();
+                    var dbSerials = await _context.ProductSerials
+                        .Where(ps => lowerSerials.Contains(ps.SerialNumber.ToLower()))
+                        .ToListAsync();
+
+                    foreach (var sn in itemSerials)
+                    {
+                        var matched = dbSerials.FirstOrDefault(ps => string.Equals(ps.SerialNumber, sn, StringComparison.OrdinalIgnoreCase));
+                        if (matched == null || matched.ProductId != product.Id)
+                        {
+                            throw new ApplicationException($"ERR_SERIAL_NOT_FOUND: الرقم التسلسلي ({sn}) غير موجود لهذا الصنف.");
+                        }
+                        if (string.Equals(matched.Status, "Sold", StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new ApplicationException($"ERR_SERIAL_ALREADY_SOLD: الرقم التسلسلي ({sn}) مباع مسبقاً.");
+                        }
+                        if (!string.Equals(matched.Status, "InStock", StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new ApplicationException($"ERR_SERIAL_NOT_AVAILABLE_FOR_SALE: الرقم التسلسلي ({sn}) غير متاح للبيع حالياً ({matched.Status}).");
+                        }
+
+                        soldSerialsToUpdate.Add((matched, invItem, product, finalUnitPrice));
+                    }
+                }
 
                 if (!(product.IsBundle && product.BundleComponents.Count > 0))
                 {
@@ -621,6 +671,26 @@ public class DiscountEngineService : IDiscountEngineService
             }
 
             _context.SalesInvoices.Add(salesInvoice);
+
+            foreach (var entry in soldSerialsToUpdate)
+            {
+                var warrantyMonths = entry.Product.WarrantyMonths > 0
+                    ? entry.Product.WarrantyMonths
+                    : Math.Max(0, entry.Serial.WarrantyMonths);
+
+                entry.Serial.Status = "Sold";
+                entry.Serial.SalesInvoiceId = salesInvoice.Id;
+                entry.Serial.SalesInvoiceItemId = entry.Item.Id;
+                entry.Serial.CustomerId = resolvedCustomer.Id;
+                entry.Serial.CustomerName = resolvedCustomer.Name;
+                entry.Serial.CustomerPhone = resolvedCustomer.Phone;
+                entry.Serial.SoldDate = salesInvoice.CreatedAt;
+                entry.Serial.SellingPrice = entry.FinalUnitPrice;
+                entry.Serial.WarrantyMonths = warrantyMonths;
+                entry.Serial.WarrantyStartDate = warrantyMonths > 0 ? salesInvoice.CreatedAt : null;
+                entry.Serial.WarrantyEndDate = warrantyMonths > 0 ? salesInvoice.CreatedAt.AddMonths(warrantyMonths) : null;
+                entry.Serial.UpdatedAt = DateTime.UtcNow;
+            }
 
             WarehouseDispatchOrder? dispatchOrder = null;
             if (isWarehouseDispatch)
@@ -693,7 +763,8 @@ public class DiscountEngineService : IDiscountEngineService
                     TotalPrice = i.TotalPrice,
                     IsQuantityTierApplied = idx < invoiceTierFlags.Count && invoiceTierFlags[idx],
                     WasManagerOverride = i.WasManagerOverride,
-                    ApprovedByManagerId = i.ApprovedByManagerId
+                    ApprovedByManagerId = i.ApprovedByManagerId,
+                    SerialNumbers = idx < invoiceSerialLists.Count ? invoiceSerialLists[idx] : new List<string>()
                 }).ToList()
             };
         }

@@ -36,6 +36,7 @@ import {
   validateQuantityTierRanges
 } from '../../services/storageService';
 import { useSettings } from '../../context/settings-context';
+import { useTenantFeatures } from '../../hooks/useAuth';
 import { localizeWarehouse, localizeUnit } from '../../lib/localeHelpers';
 import { validateProductPricing } from '../../schemas/ProductValidationSchema';
 import { getTranslation } from '../../lib/i18n';
@@ -60,7 +61,10 @@ export default function EditProductModal({
 }: EditProductModalProps) {
   // 1. Mandatory Unconditional Hooks (Must run in identical order on EVERY render)
   const isAr = lang === 'ar';
+  const localeKey: 'ar' | 'en' = lang === 'en' ? 'en' : 'ar';
   const { financialSettings } = useSettings();
+  const { isFeatureEnabled } = useTenantFeatures();
+  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
   const effectiveCurrencySymbol = financialSettings.baseCurrency.symbol;
 
   const warehouses = getStoredWarehouses();
@@ -78,6 +82,8 @@ export default function EditProductModal({
   const [shelf, setShelf] = useState('A-01');
   const [warehouseId, setWarehouseId] = useState('');
   const [unit, setUnit] = useState('قطعة');
+  const [requiresSerialNumber, setRequiresSerialNumber] = useState(false);
+  const [warrantyMonths, setWarrantyMonths] = useState(0);
   const [isTiersOpen, setIsTiersOpen] = useState(false);
   const [tierDrafts, setTierDrafts] = useState<Array<{ id?: string; minQty: string; maxQty: string; unitPrice: string }>>([]);
   const [tierError, setTierError] = useState('');
@@ -100,6 +106,8 @@ export default function EditProductModal({
       setMinStockAlert(Number(product.minStockAlert) || 5);
       setShelf(product.shelf || 'A-01');
       setWarehouseId(product.warehouseId || '');
+      setRequiresSerialNumber(Boolean(product.requiresSerialNumber));
+      setWarrantyMonths(Math.max(0, Number(product.warrantyMonths) || 0));
       
       const loadedCats = getStoredCategories();
       setCategoriesList(loadedCats);
@@ -242,6 +250,8 @@ export default function EditProductModal({
       warehouseId,
       warehouseName: localizedWhName,
       warehouseNameEn: localizedWhNameEn,
+      requiresSerialNumber: isSerialModuleEnabled ? requiresSerialNumber : product.requiresSerialNumber,
+      warrantyMonths: isSerialModuleEnabled ? Math.max(0, Number(warrantyMonths) || 0) : product.warrantyMonths,
       quantityTiers: updatedTiers.map(nt => ({
         id: nt.id,
         productId: nt.productId,
@@ -609,6 +619,68 @@ export default function EditProductModal({
                       </div>
                     </div>
                   </div>
+
+                  {/* Conditional Serial & Warranty Fields (Shown ONLY when EnableSerialTrackingModule is active) */}
+                  {isSerialModuleEnabled && (
+                    <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-2.5 mt-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-foreground block">
+                            {getTranslation(localeKey, 'serialTracking.requiresSerialTracking')}
+                          </span>
+                          <span className="text-[10.5px] text-muted-foreground block">
+                            {getTranslation(localeKey, 'serialTracking.warrantyStartsOnSaleHint')}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={requiresSerialNumber}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setRequiresSerialNumber(checked);
+                            if (checked && warrantyMonths === 0) {
+                              setWarrantyMonths(12);
+                            }
+                          }}
+                          className="h-4 w-4 accent-primary cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex-1 min-w-[120px] space-y-1">
+                          <span className="text-[11px] font-semibold text-foreground/80 block">
+                            {getTranslation(localeKey, 'serialTracking.warrantyMonthsLabel')}
+                          </span>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="120"
+                            value={warrantyMonths}
+                            onChange={(e) => setWarrantyMonths(Math.max(0, Number(e.target.value) || 0))}
+                            className="font-mono font-bold text-xs h-8 bg-background border-border/80 px-2.5"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 pt-4">
+                          {[0, 6, 12, 24].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setWarrantyMonths(m)}
+                              className={`px-2 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-colors ${
+                                warrantyMonths === m
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                              }`}
+                            >
+                              {m === 0
+                                ? getTranslation(localeKey, 'serialTracking.noWarranty')
+                                : `${m} ${getTranslation(localeKey, 'serialTracking.monthUnit')}`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

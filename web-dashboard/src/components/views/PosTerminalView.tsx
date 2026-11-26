@@ -78,7 +78,9 @@ import {
   getStoredLoyaltySettings,
   calculateLoyaltyCurrencyEquivalent,
   calculateProfitBasedEarnedPoints,
-  resolveProductUnitCost
+  resolveProductUnitCost,
+  getStoredProductSerials,
+  markLocalSerialsAsSold
 } from '../../services/storageService';
 import LoyaltyCheckoutWidget from '../LoyaltyCheckoutWidget';
 import SmartCustomerCombobox from '../SmartCustomerCombobox';
@@ -105,6 +107,7 @@ interface PosTerminalViewProps {
 interface CartItem {
   product: Product;
   quantity: number;
+  serialNumbers?: string[];
   customPrice?: number; // Negotiated price directly (سعر تفاوضي)
   discountType?: 'PERCENT' | 'FIXED';
   discountValue?: number;
@@ -315,6 +318,12 @@ export default function PosTerminalView({
     (currentUser?.role === 'PlatformSuperAdmin' || features?.enableBarcodeScales === true) &&
     settings?.scaleSettings?.enabled !== false
   );
+  const isSerialModuleEnabled = Boolean(
+    currentUser?.role === 'PlatformSuperAdmin' ||
+    features?.enableSerialNumbers === true ||
+    features?.enableSerialTrackingModule === true
+  );
+  const [cartSerialInputs, setCartSerialInputs] = useState<Record<string, string>>({});
 
   // Auto-reset active category filter if scale is disabled while active
   useEffect(() => {
@@ -508,7 +517,17 @@ export default function PosTerminalView({
     return matchesSearch;
   });
 
-  const addToCart = (product: Product, quantityToAdd: number = 1) => {
+  const addToCart = (product: Product, quantityToAdd: number = 1, serialToAttach?: string) => {
+    const cleanSerial = serialToAttach?.trim();
+    if (cleanSerial) {
+      const alreadyInCart = cart.some(item =>
+        (item.serialNumbers || []).some(sn => sn.toLowerCase() === cleanSerial.toLowerCase())
+      );
+      if (alreadyInCart) {
+        return;
+      }
+    }
+
     // 1. Strict Stock Check against current available inventory (dynamic for bundles + shared cart components)
     const { maxQty: maxAllowedForCart, limitingComponentName } = getMaxAllowedCartQuantity(
       product,
@@ -539,6 +558,9 @@ export default function PosTerminalView({
       const existing = prev.find(item => item.product.id === product.id);
       const { maxQty: currentMax } = getMaxAllowedCartQuantity(product, prev, products, storedBundles, selectedWarehouseId);
       if (existing) {
+        if (cleanSerial && (existing.serialNumbers || []).some(sn => sn.toLowerCase() === cleanSerial.toLowerCase())) {
+          return prev;
+        }
         const nextQty = Math.round((existing.quantity + quantityToAdd) * 1000) / 1000;
         if (nextQty > currentMax) {
           const itemLabel = limitingComponentName && product.isBundle
@@ -552,9 +574,15 @@ export default function PosTerminalView({
           return prev;
         }
         setStockError(null);
-        return prev.map(item => 
-          item.product.id === product.id 
-            ? { ...item, quantity: nextQty }
+        return prev.map(item =>
+          item.product.id === product.id
+            ? {
+                ...item,
+                quantity: nextQty,
+                serialNumbers: cleanSerial
+                  ? [...(item.serialNumbers || []), cleanSerial]
+                  : item.serialNumbers
+              }
             : item
         );
       }
@@ -568,7 +596,16 @@ export default function PosTerminalView({
         return prev;
       }
       setStockError(null);
-      return [...prev, { product, quantity: initialQty, discountType: 'PERCENT', discountValue: 0 }];
+      return [
+        ...prev,
+        {
+          product,
+          quantity: initialQty,
+          serialNumbers: cleanSerial ? [cleanSerial] : undefined,
+          discountType: 'PERCENT',
+          discountValue: 0
+        }
+      ];
     });
   };
 
@@ -945,6 +982,21 @@ export default function PosTerminalView({
       // Record Shift Sale into storage and update activeShift state
       setActiveShift(getStoredActiveShift());
 
+      // Atomically mark scanned Serials / IMEIs as Sold locally & compute warranty countdown
+      const checkoutCustomerLabel = resolvedInputCustomerName || selectedCustomerObj?.nameAr || t('posMessages.defaultCustomer', isAr ? 'عميل نقدي (POS)' : 'Walk-in Customer');
+      cart.forEach(it => {
+        if (it.serialNumbers && it.serialNumbers.length > 0) {
+          markLocalSerialsAsSold({
+            serialNumbers: it.serialNumbers,
+            invoiceId: result.invoice.id,
+            invoiceNumber: result.invoice.invoiceNo,
+            customerId: selectedCustomerId,
+            customerName: checkoutCustomerLabel,
+            warrantyMonthsOverride: it.product.warrantyMonths,
+          });
+        }
+      });
+
       let createdInstallmentDetails: CompletedOrderReceipt['installmentDetails'] = undefined;
       if (method === 'INSTALLMENT' && installmentData) {
         const rem = Math.max(0, grandTotal - installmentData.downPayment);
@@ -1073,7 +1125,8 @@ export default function PosTerminalView({
               productId: it.product.id,
               quantity: it.quantity,
               discountType: it.discountType || 'NONE',
-              discountValue: it.discountValue || 0
+              discountValue: it.discountValue || 0,
+              serialNumbers: it.serialNumbers || []
             }))
           })
         }).then(async res => {
@@ -1474,6 +1527,97 @@ export default function PosTerminalView({
                         );
                       }
                       return;
+                    }
+
+                    // 0C. Serial / IMEI Barcode Scan Resolution (When Serial Module is active)
+                    if (isSerialModuleEnabled) {
+                      const localSerials = getStoredProductSerials();
+                      const localMatch = localSerials.find(s => s.serialNumber.trim().toLowerCase() === raw.toLowerCase());
+                      if (localMatch) {
+                        if (localMatch.status === 'Sold') {
+                          const msg = getTranslation(lang, 'errors.ERR_SERIAL_ALREADY_SOLD');
+                          setStockError(msg);
+                          showPaymentToast(msg, 4000);
+                          setSearchQuery('');
+                          return;
+                        }
+                        if (localMatch.status !== 'InStock') {
+                          const msg = getTranslation(lang, 'errors.ERR_SERIAL_NOT_AVAILABLE_FOR_SALE');
+                          setStockError(msg);
+                          showPaymentToast(msg, 4000);
+                          setSearchQuery('');
+                          return;
+                        }
+                        const linkedProd = products.find(p => p.id === localMatch.productId || p.sku === localMatch.productSku);
+                        if (linkedProd) {
+                          addToCart(linkedProd, 1, localMatch.serialNumber);
+                          setSearchQuery('');
+                          showPaymentToast(
+                            getTranslation(lang, 'serialTracking.posSerialAddedToast')
+                              .replace('{sn}', localMatch.serialNumber)
+                              .replace('{product}', getProductName(linkedProd))
+                          );
+                          return;
+                        }
+                      }
+
+                      // Check Backend POS Serial Lookup if token is active
+                      try {
+                        const token = localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
+                        if (token) {
+                          const serialRes = await fetch(`/api/pos/serials/lookup?code=${encodeURIComponent(raw)}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          if (serialRes.ok) {
+                            const scanData = await serialRes.json();
+                            if (scanData?.found) {
+                              if (!scanData.available) {
+                                const errKey = scanData.errorCode === 'ERR_SERIAL_ALREADY_SOLD'
+                                  ? 'errors.ERR_SERIAL_ALREADY_SOLD'
+                                  : 'errors.ERR_SERIAL_NOT_AVAILABLE_FOR_SALE';
+                                const msg = getTranslation(lang, errKey);
+                                setStockError(msg);
+                                showPaymentToast(msg, 4000);
+                                setSearchQuery('');
+                                return;
+                              }
+                              const backendProd = scanData.product;
+                              const linkedProd = products.find(p => p.id === backendProd?.id || p.sku === backendProd?.sku) || (backendProd ? {
+                                id: backendProd.id,
+                                sku: backendProd.sku,
+                                barcode: backendProd.barcode || '',
+                                nameAr: backendProd.name,
+                                nameEn: backendProd.name,
+                                category: backendProd.categoryName || '',
+                                costPrice: 0,
+                                sellingPrice: Number(backendProd.retailPrice) || 0,
+                                unit: backendProd.unitOfMeasure || 'قطعة',
+                                currentStock: Number(backendProd.availableStock) || 1,
+                                minStockAlert: 1,
+                                warehouseId: selectedWarehouseId,
+                                warehouseName: selectedWarehouse?.nameAr || '',
+                                requiresSerialNumber: true,
+                                warrantyMonths: Number(backendProd.warrantyMonths) || 0,
+                                status: 'available' as const,
+                                shelf: 'A-01',
+                                updatedAt: new Date().toISOString().slice(0, 10)
+                              } : undefined);
+                              if (linkedProd) {
+                                addToCart(linkedProd, 1, scanData.serialNumber || raw);
+                                setSearchQuery('');
+                                showPaymentToast(
+                                  getTranslation(lang, 'serialTracking.posSerialAddedToast')
+                                    .replace('{sn}', scanData.serialNumber || raw)
+                                    .replace('{product}', getProductName(linkedProd))
+                                );
+                                return;
+                              }
+                            }
+                          }
+                        }
+                      } catch {
+                        // continue cleanly to barcode/SKU lookup
+                      }
                     }
 
                     // 1. Check if input matches an Electronic Scale Barcode (only if scale feature is active)
@@ -1918,6 +2062,74 @@ export default function PosTerminalView({
                         )}
                       </div>
                     </div>
+
+                    {/* Bound Serial / IMEI Chips & Inline Cart Scanner for Serialized Products */}
+                    {isSerialModuleEnabled && (item.product.requiresSerialNumber || (item.serialNumbers && item.serialNumbers.length > 0)) && (
+                      <div className="mt-1 pt-1.5 border-t border-border/50 space-y-1.5">
+                        {item.serialNumbers && item.serialNumbers.length > 0 && (
+                          <div className="flex flex-wrap gap-1" dir="ltr">
+                            {item.serialNumbers.map(sn => (
+                              <span
+                                key={sn}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 text-[10px] font-mono font-bold"
+                              >
+                                <Barcode size={10} />
+                                <span>{sn}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCart(prev => prev.map(ci =>
+                                      ci.product.id === item.product.id
+                                        ? { ...ci, serialNumbers: (ci.serialNumbers || []).filter(x => x !== sn) }
+                                        : ci
+                                    ))
+                                  }
+                                  className="bg-transparent border-0 p-0 text-primary/70 hover:text-destructive cursor-pointer"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {item.product.requiresSerialNumber && (item.serialNumbers?.length || 0) < item.quantity && (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={cartSerialInputs[item.product.id] || ''}
+                              onChange={(e) => setCartSerialInputs(prev => ({ ...prev, [item.product.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const snVal = (cartSerialInputs[item.product.id] || '').trim();
+                                  if (!snVal) return;
+                                  const storedMatch = getStoredProductSerials().find(
+                                    s => s.serialNumber.trim().toLowerCase() === snVal.toLowerCase()
+                                  );
+                                  if (storedMatch && storedMatch.status === 'Sold') {
+                                    showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_ALREADY_SOLD'), 4000);
+                                    return;
+                                  }
+                                  if (storedMatch && storedMatch.status !== 'InStock') {
+                                    showPaymentToast(getTranslation(lang, 'errors.ERR_SERIAL_NOT_AVAILABLE_FOR_SALE'), 4000);
+                                    return;
+                                  }
+                                  setCart(prev => prev.map(ci =>
+                                    ci.product.id === item.product.id && !(ci.serialNumbers || []).some(x => x.toLowerCase() === snVal.toLowerCase())
+                                      ? { ...ci, serialNumbers: [...(ci.serialNumbers || []), snVal] }
+                                      : ci
+                                  ));
+                                  setCartSerialInputs(prev => ({ ...prev, [item.product.id]: '' }));
+                                }
+                              }}
+                              placeholder={getTranslation(lang, 'serialTracking.serialRequiredForPos')}
+                              dir="ltr"
+                              className="h-7 flex-1 px-2 rounded border border-border bg-background text-foreground font-mono text-[11px] outline-none focus:border-primary"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Stock Deficit Warning (dynamically validates bundles & shared cart component demand) */}
                     {lineIssue && (

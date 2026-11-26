@@ -127,7 +127,8 @@ public class SuperAdminTenantsController : ControllerBase
             if (request.MultiWarehouse.HasValue) fallbackFeatures.MultiWarehouse = request.MultiWarehouse.Value;
             if (request.MaxWarehouses.HasValue) fallbackFeatures.MaxWarehouses = request.MaxWarehouses.Value;
             if (request.EnableInstallments.HasValue) fallbackFeatures.EnableInstallments = request.EnableInstallments.Value;
-            if (request.EnableSerialNumbers.HasValue) fallbackFeatures.EnableSerialNumbers = request.EnableSerialNumbers.Value;
+            var serialToggle = request.EnableSerialTrackingModule ?? request.EnableSerialNumbers;
+            if (serialToggle.HasValue) fallbackFeatures.EnableSerialNumbers = serialToggle.Value;
             if (request.EnableVariants.HasValue) fallbackFeatures.EnableVariants = request.EnableVariants.Value;
             if (request.EnableMultiCurrency.HasValue) fallbackFeatures.EnableMultiCurrency = request.EnableMultiCurrency.Value;
             if (request.EnableCreditLimits.HasValue) fallbackFeatures.EnableCreditLimits = request.EnableCreditLimits.Value;

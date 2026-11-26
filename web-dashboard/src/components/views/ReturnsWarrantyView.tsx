@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import {
   getStoredRMA,
   saveStoredRMA,
-  executeSalesReturnRestock
+  executeSalesReturnRestock,
+  updateLocalSerialStatus
 } from '../../services/storageService';
 import NewReturnModal, { ReturnRequestData } from '../modals/NewReturnModal';
 import { useSettings } from '../../context/settings-context';
@@ -255,6 +256,10 @@ export default function ReturnsWarrantyView({
         }
       } else if (res.status === 400 || res.status === 409) {
         const errBody = await res.json().catch(() => null);
+        if (errBody?.errorCode === 'ERR_SERIAL_NOT_FOUND_FOR_RETURN') {
+          showErrorToast(getTranslation(lang, 'errors.ERR_SERIAL_NOT_FOUND_FOR_RETURN'));
+          return;
+        }
         if (errBody?.errorCode === 'ERR_RETURN_QTY_EXCEEDS_SOLD') {
           showErrorToast(errBody.message);
           return;
@@ -271,6 +276,11 @@ export default function ReturnsWarrantyView({
       const resInfo = applyLocalRestock(newReturn);
       resolvedWhName = resInfo.restockedWarehouseName;
       reversedLoyaltyPoints = resInfo.reversedLoyaltyPoints;
+    } else if (newReturn.serialNumber && newReturn.serialNumber !== 'N/A') {
+      updateLocalSerialStatus(
+        newReturn.serialNumber,
+        newReturn.decision === 'SENT_TO_MAINTENANCE' ? 'Defective' : 'Returned'
+      );
     }
 
     const savedRecord: ReturnRequest = {

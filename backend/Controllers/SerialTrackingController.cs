@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ERP.Warehouse.Api.Authorization;
@@ -10,6 +11,7 @@ namespace ERP.Warehouse.Api.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
+[Route("api/serial-tracking")]
 public class SerialTrackingController : ControllerBase
 {
     private readonly ISerialTrackingService _serialService;
@@ -35,9 +37,9 @@ public class SerialTrackingController : ControllerBase
     }
 
     /// <summary>
-    /// Fast Lookup UI endpoint:
+    /// Fast Lookup UI endpoint (query or route param):
     /// Barcode / Serial Scanner hits this to immediately retrieve:
-    /// Supplier, Purchase Date, Customer, Sales Invoice, and Remaining Active Warranty.
+    /// Supplier, Purchase Date, Customer, Sales Invoice, and Lifecycle Warranty Status.
     /// </summary>
     [HttpGet("lookup")]
     [HasPermission(Permissions.Inventory.SerialsView)]
@@ -49,6 +51,26 @@ public class SerialTrackingController : ControllerBase
             return NotFound(ApiResponse<SerialLookupResultDto>.Fail(result.ErrorCode ?? "ERR_SERIAL_NOT_FOUND", "INVENTORY"));
         }
         return Ok(ApiResponse<SerialLookupResultDto>.Ok(result));
+    }
+
+    [HttpGet("lookup/{serialNumber}")]
+    [HasPermission(Permissions.Inventory.SerialsView)]
+    public async Task<ActionResult<ApiResponse<SerialLookupResultDto>>> LookupByPath([FromRoute] string serialNumber)
+    {
+        var result = await _serialService.LookupSerialAsync(serialNumber);
+        if (!result.Found)
+        {
+            return NotFound(ApiResponse<SerialLookupResultDto>.Fail(result.ErrorCode ?? "ERR_SERIAL_NOT_FOUND", "INVENTORY"));
+        }
+        return Ok(ApiResponse<SerialLookupResultDto>.Ok(result));
+    }
+
+    [HttpGet("pos-scan")]
+    [HasPermission(Permissions.Pos.TerminalAccess)]
+    public async Task<ActionResult<PosSerialScanResponseDto>> PosScan([FromQuery] string code)
+    {
+        var result = await _serialService.LookupForPosScanAsync(code);
+        return Ok(result);
     }
 
     [HttpPost("register")]
@@ -82,6 +104,25 @@ public class SerialTrackingController : ControllerBase
         var result = await _serialService.UpdateSerialWarrantyAsync(id, request);
         if (!result.Success)
         {
+            return BadRequest(result);
+        }
+        return Ok(result);
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    [HttpPut("{id:guid}/status")]
+    [HasPermission(Permissions.Inventory.SerialsManage)]
+    public async Task<ActionResult<ApiResponse<ProductSerialDto>>> UpdateStatus(Guid id, [FromBody] UpdateSerialStatusRequest request)
+    {
+        var actor = User.FindFirst(ClaimTypes.Name)?.Value
+            ?? User.FindFirst("username")?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? "System";
+
+        var result = await _serialService.UpdateSerialStatusAsync(id, request, actor);
+        if (!result.Success)
+        {
+            if (result.ErrorCode == "ERR_SERIAL_NOT_FOUND") return NotFound(result);
             return BadRequest(result);
         }
         return Ok(result);

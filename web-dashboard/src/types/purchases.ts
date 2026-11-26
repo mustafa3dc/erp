@@ -32,6 +32,9 @@ export interface PurchaseInvoiceItem {
   newSellingPrice?: number; // سعر البيع المقترح / المحدث
   lineTotal: number; // الكمية × سعر الشراء
   isNewProduct?: boolean;
+  serialNumbers?: string[];
+  requiresSerialNumber?: boolean;
+  warrantyMonths?: number;
 }
 
 export type PurchasePaymentTerm = 'cash' | 'credit' | 'partial';

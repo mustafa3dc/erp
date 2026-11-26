@@ -15,6 +15,8 @@ import {
 import PurchaseInvoiceItemsGrid, { formatIQD } from './PurchaseInvoiceItemsGrid';
 import { localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
+import { useTenantFeatures } from '../../hooks/useAuth';
+import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
 
 export interface InitialPurchaseInvoicePrefill {
@@ -53,6 +55,8 @@ export default function CreatePurchaseInvoiceForm({
   onCancel
 }: CreatePurchaseInvoiceFormProps) {
   const { tenantCountryCode, settings, currencySymbol, formatMoney } = useSettings();
+  const { isFeatureEnabled } = useTenantFeatures();
+  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
   const isIraqTenant = (tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ');
   const isIqd = (settings?.baseCurrency === 'IQD');
   const effectiveSymbol = currencySymbol || (isIqd ? (isAr ? 'د.ع' : 'IQD') : '$');
@@ -233,7 +237,10 @@ export default function CreatePurchaseInvoiceForm({
       unitCost: product.costPrice || 0,
       currentSellingPrice: product.sellingPrice || 0,
       newSellingPrice: product.sellingPrice || 0,
-      isNewProduct: false
+      isNewProduct: false,
+      requiresSerialNumber: Boolean(product.requiresSerialNumber),
+      warrantyMonths: Math.max(0, Number(product.warrantyMonths) || 0),
+      serialNumbers: []
     });
   };
 
@@ -322,6 +329,14 @@ export default function CreatePurchaseInvoiceForm({
       barcode: item.barcode.trim() || `${Math.floor(1000000000000 + Math.random() * 9000000000000)}`
     }));
 
+    const mismatchedSerialRow = completeItems.find(
+      it => it.serialNumbers && it.serialNumbers.length > 0 && it.serialNumbers.length !== Math.max(1, Math.round(Number(it.quantity) || 1))
+    );
+    if (mismatchedSerialRow) {
+      setErrorMessage(getTranslation(isAr ? 'ar' : 'en', 'errors.ERR_SERIAL_COUNT_MISMATCH'));
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -401,6 +416,53 @@ export default function CreatePurchaseInvoiceForm({
       const result = executePurchaseInvoiceTransaction(invoice);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('erp_purchases_updated'));
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const token =
+          localStorage.getItem('zilox_auth_token') ||
+          localStorage.getItem('logistock_erp_jwt_token') ||
+          localStorage.getItem('token') ||
+          localStorage.getItem('zilox_token');
+        if (token && uuidRegex.test(destinationWarehouseId)) {
+          fetch('/api/purchases', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              supplierId: uuidRegex.test(selectedSupplierId) ? selectedSupplierId : null,
+              newSupplierName: !uuidRegex.test(selectedSupplierId) ? selectedSupplier.company : null,
+              supplierRefNo: supplierRefNo.trim(),
+              invoiceDate,
+              targetWarehouseId: destinationWarehouseId,
+              paymentTerms: paymentTerms.toUpperCase(),
+              subtotal,
+              discountAmount: calculatedDiscount,
+              shippingCost: shippingCost || 0,
+              netTotal,
+              paidAmount: amountPaidNow || 0,
+              balanceDue,
+              treasuryAccountId: amountPaidNow > 0 ? treasuryAccount : null,
+              notes: invoiceNotes.trim() || null,
+              items: completeItems.map(it => ({
+                productId: it.productId && uuidRegex.test(it.productId) ? it.productId : null,
+                sku: it.sku,
+                barcode: it.barcode,
+                name: it.nameAr || it.nameEn,
+                unitOfMeasure: it.uom,
+                quantity: it.quantity,
+                unitCost: it.unitCost,
+                sellingPrice: it.newSellingPrice || it.currentSellingPrice || 0,
+                lineTotal: it.lineTotal,
+                isNewProduct: Boolean(it.isNewProduct),
+                serialNumbers: it.serialNumbers && it.serialNumbers.length > 0 ? it.serialNumbers : null,
+                requiresSerialTracking: it.requiresSerialNumber ?? null,
+                warrantyMonths: it.warrantyMonths ?? null,
+              })),
+            }),
+          }).catch(() => {});
+        }
       }
       onInvoiceCreated(result, initialData?.sourcePoId);
     } catch (err: any) {
@@ -678,6 +740,7 @@ export default function CreatePurchaseInvoiceForm({
         products={products}
         isAr={isAr}
         currencySymbol={effectiveSymbol}
+        isSerialModuleEnabled={isSerialModuleEnabled}
         onUpdateLineItem={updateLineItem}
         onAddNewLine={handleAddNewLine}
         onRemoveLine={handleRemoveLine}

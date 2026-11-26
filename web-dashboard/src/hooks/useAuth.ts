@@ -104,6 +104,9 @@ export function useTenantFeatures(userOverride?: UserProfile | null) {
     if (activeProfile?.role === 'PlatformSuperAdmin') return true;
     // Barcode scales are enabled/available for all subscription packages and plans
     if (key === 'enableBarcodeScales') return true;
+    if (key === 'enableSerialNumbers' || key === 'enableSerialTrackingModule') {
+      return Boolean(features?.enableSerialNumbers ?? features?.enableSerialTrackingModule);
+    }
     if (!features) {
       return true;
     }

@@ -288,6 +288,8 @@ public class PurchaseBillsController : ControllerBase
                         UnitOfMeasure = itemDto.UnitOfMeasure,
                         CostPrice = roundedUnitCost,
                         SellingPrice = resolvedSellingPrice,
+                        RequiresSerialNumber = itemDto.RequiresSerialTracking ?? itemDto.RequiresSerialNumber ?? false,
+                        WarrantyMonths = Math.Max(0, itemDto.WarrantyMonths ?? 0),
                         MinStockLevel = 5,
                         MaxStockLevel = 1000,
                         IsActive = true,
@@ -301,6 +303,18 @@ public class PurchaseBillsController : ControllerBase
                 {
                     // Update latest cost and manual selling price if provided and changed
                     targetProduct.CostPrice = roundedUnitCost;
+                    if (itemDto.RequiresSerialTracking.HasValue)
+                    {
+                        targetProduct.RequiresSerialNumber = itemDto.RequiresSerialTracking.Value;
+                    }
+                    else if (itemDto.RequiresSerialNumber.HasValue)
+                    {
+                        targetProduct.RequiresSerialNumber = itemDto.RequiresSerialNumber.Value;
+                    }
+                    if (itemDto.WarrantyMonths.HasValue && itemDto.WarrantyMonths.Value >= 0)
+                    {
+                        targetProduct.WarrantyMonths = itemDto.WarrantyMonths.Value;
+                    }
                     if (itemDto.SellingPrice.HasValue && itemDto.SellingPrice.Value > 0m)
                     {
                         var manualSelling = Math.Round(itemDto.SellingPrice.Value, 4);
@@ -397,6 +411,70 @@ public class PurchaseBillsController : ControllerBase
                     CreatedAt = DateTime.UtcNow
                 };
                 _context.FifoCostBatches.Add(fifoBatch);
+
+                // 5. Serial / IMEI Lifecycle Registration for Serialized Products
+                var rawSerials = (itemDto.SerialNumbers ?? new List<string>())
+                    .Where(sn => !string.IsNullOrWhiteSpace(sn))
+                    .Select(sn => sn.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (rawSerials.Count > 0)
+                {
+                    if (rawSerials.Count != effectiveQty)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new
+                        {
+                            errorCode = "ERR_SERIAL_COUNT_MISMATCH",
+                            expected = effectiveQty,
+                            provided = rawSerials.Count
+                        });
+                    }
+
+                    var lowerSerials = rawSerials.Select(s => s.ToLowerInvariant()).ToList();
+                    var duplicates = await _context.ProductSerials
+                        .Where(ps => lowerSerials.Contains(ps.SerialNumber.ToLower()))
+                        .Select(ps => ps.SerialNumber)
+                        .ToListAsync();
+
+                    if (duplicates.Count > 0)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new
+                        {
+                            errorCode = "ERR_SERIAL_ALREADY_EXISTS",
+                            conflictingSerials = duplicates
+                        });
+                    }
+
+                    var effectiveWarrantyMonths = Math.Max(0, itemDto.WarrantyMonths ?? targetProduct.WarrantyMonths);
+                    var receivedUtc = dto.InvoiceDate.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(dto.InvoiceDate, DateTimeKind.Utc)
+                        : dto.InvoiceDate.ToUniversalTime();
+
+                    foreach (var sn in rawSerials)
+                    {
+                        _context.ProductSerials.Add(new ProductSerial
+                        {
+                            SerialNumber = sn,
+                            ProductId = targetProduct.Id,
+                            WarehouseId = dto.TargetWarehouseId,
+                            Status = "InStock",
+                            PurchaseBillId = purchaseBill.Id,
+                            PurchaseBillItemId = billItem.Id,
+                            SupplierId = supplier.Id,
+                            SupplierName = supplier.CompanyName,
+                            PurchaseDate = receivedUtc,
+                            UnitCost = roundedUnitCost,
+                            WarrantyMonths = effectiveWarrantyMonths,
+                            WarrantyStartDate = null,
+                            WarrantyEndDate = null,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
             }
 
             // 5. Supplier Ledger Posting & Accounts Payable

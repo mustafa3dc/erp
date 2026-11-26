@@ -37,6 +37,9 @@ public class PosProductDto
     
     public bool IsActive { get; set; }
     public bool IsBundle { get; set; }
+    public bool RequiresSerialNumber { get; set; }
+    public bool RequiresSerialTracking => RequiresSerialNumber;
+    public int WarrantyMonths { get; set; }
     public List<PosQuantityTierDto> QuantityTiers { get; set; } = new();
 }
 
@@ -129,6 +132,8 @@ public class PosInvoiceItemRequest
     public decimal DiscountValue { get; set; } = 0.00m;
     public string? ManagerOverridePin { get; set; }
     public string? OverrideReason { get; set; }
+    public string? SerialNumber { get; set; }
+    public List<string>? SerialNumbers { get; set; }
 }
 
 public class PosInvoiceResponse
@@ -174,6 +179,7 @@ public class PosInvoiceItemResponse
     public bool IsQuantityTierApplied { get; set; }
     public bool WasManagerOverride { get; set; }
     public string? ApprovedByManagerId { get; set; }
+    public List<string> SerialNumbers { get; set; } = new();
 }
 
 public class DiscountAuditLogDto

@@ -163,6 +163,13 @@ public class Product : ITenantEntity
     [Column("requires_serial_number")]
     public bool RequiresSerialNumber { get; set; } = false;
 
+    [NotMapped]
+    public bool RequiresSerialTracking
+    {
+        get => RequiresSerialNumber;
+        set => RequiresSerialNumber = value;
+    }
+
     [Column("warranty_months")]
     public int WarrantyMonths { get; set; } = 0;
 
@@ -465,6 +472,9 @@ public class SalesInvoiceItem : ITenantEntity
 
     [Column("approved_by_manager_id")]
     public string? ApprovedByManagerId { get; set; }
+
+    [Column("serial_numbers", TypeName = "jsonb")]
+    public string SerialNumbersJson { get; set; } = "[]";
 }
 
 public enum StaffRole
@@ -893,7 +903,11 @@ public record PurchaseBillItemInputDto(
     decimal UnitCost,
     decimal? SellingPrice,
     decimal LineTotal,
-    bool IsNewProduct
+    bool IsNewProduct,
+    List<string>? SerialNumbers = null,
+    bool? RequiresSerialNumber = null,
+    bool? RequiresSerialTracking = null,
+    int? WarrantyMonths = null
 );
 
 // ============================================================================
@@ -2134,7 +2148,22 @@ public class ProductSerial : ITenantEntity
     public DateTime? WarrantyEndDate { get; set; }
 
     [NotMapped]
-    public bool IsWarrantyActive => WarrantyEndDate.HasValue && WarrantyEndDate.Value >= DateTime.UtcNow;
+    public bool IsWarrantyActive =>
+        Status == "Sold"
+        && WarrantyMonths > 0
+        && WarrantyEndDate.HasValue
+        && WarrantyEndDate.Value >= DateTime.UtcNow;
+
+    [NotMapped]
+    public string WarrantyStatus
+    {
+        get
+        {
+            if (Status != "Sold") return "NotStarted";
+            if (WarrantyMonths <= 0 || !WarrantyEndDate.HasValue) return "NoWarranty";
+            return WarrantyEndDate.Value >= DateTime.UtcNow ? "Active" : "Expired";
+        }
+    }
 
     [Column("notes")]
     public string? Notes { get; set; }

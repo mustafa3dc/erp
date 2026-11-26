@@ -126,6 +126,12 @@ public class InvoicesController : ControllerBase
                 ? "ERR_CUSTOMER_NOT_FOUND"
                 : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
                 ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : ex.Message.Contains("ERR_SERIAL_ALREADY_SOLD")
+                ? "ERR_SERIAL_ALREADY_SOLD"
+                : ex.Message.Contains("ERR_SERIAL_NOT_AVAILABLE_FOR_SALE")
+                ? "ERR_SERIAL_NOT_AVAILABLE_FOR_SALE"
+                : ex.Message.Contains("ERR_SERIAL_NOT_FOUND")
+                ? "ERR_SERIAL_NOT_FOUND"
                 : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
                 ? "ERR_INSUFFICIENT_STOCK"
                 : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))
@@ -183,11 +189,13 @@ public class InvoicesController : ControllerBase
                 .AsNoTracking()
                 .ToListAsync();
 
-            var now = DateTime.UtcNow;
-            var warrantyMonths = 12; // Standard statutory warranty duration
-            var warrantyExpiresAt = invoice.CreatedAt.AddMonths(warrantyMonths);
-            var isUnderWarranty = now <= warrantyExpiresAt;
+            // Fetch sold serials bound to this invoice
+            var soldSerials = await _context.ProductSerials
+                .Where(ps => ps.SalesInvoiceId == invoice.Id && ps.Status == "Sold")
+                .AsNoTracking()
+                .ToListAsync();
 
+            var now = DateTime.UtcNow;
             var returnableItems = new List<ReturnableInvoiceItemDto>();
             var warehousesMap = await _context.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
 
@@ -201,13 +209,27 @@ public class InvoicesController : ControllerBase
                 var itemWarehouseId = item.SourceWarehouseId ?? invoice.WarehouseId;
                 warehousesMap.TryGetValue(itemWarehouseId, out var itemWarehouseName);
 
+                var itemSerials = soldSerials
+                    .Where(ps => ps.ProductId == item.ProductId || ps.SalesInvoiceItemId == item.Id)
+                    .ToList();
+                var itemSerialStrings = itemSerials.Select(ps => ps.SerialNumber).Distinct().ToList();
+                var effectiveMonths = item.Product?.WarrantyMonths ?? 0;
+                var firstWithEnd = itemSerials.FirstOrDefault(ps => ps.WarrantyEndDate.HasValue);
+                var warrantyExpiresAt = firstWithEnd?.WarrantyEndDate
+                    ?? (effectiveMonths > 0 ? invoice.CreatedAt.AddMonths(effectiveMonths) : invoice.CreatedAt);
+                var isUnderWarranty = firstWithEnd != null
+                    ? (now <= firstWithEnd.WarrantyEndDate!.Value)
+                    : (effectiveMonths > 0 && now <= warrantyExpiresAt);
+
                 returnableItems.Add(new ReturnableInvoiceItemDto
                 {
                     ItemId = item.Id,
                     ProductId = item.ProductId,
                     ProductName = item.Product?.Name ?? "صنف مبيعات",
                     Sku = item.Product?.Sku ?? "SKU-GEN",
-                    SerialNumber = item.Product?.Barcode ?? string.Empty,
+                    SerialNumber = itemSerialStrings.FirstOrDefault() ?? (item.Product?.Barcode ?? string.Empty),
+                    RequiresSerialNumber = item.Product?.RequiresSerialNumber ?? false,
+                    SoldSerialNumbers = itemSerialStrings,
                     WarehouseId = itemWarehouseId,
                     WarehouseName = itemWarehouseName ?? string.Empty,
                     SoldQty = item.Quantity,
@@ -309,6 +331,8 @@ public class ReturnableInvoiceItemDto
     public string ProductName { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string SerialNumber { get; set; } = string.Empty;
+    public bool RequiresSerialNumber { get; set; }
+    public List<string> SoldSerialNumbers { get; set; } = new();
     public Guid WarehouseId { get; set; }
     public string WarehouseName { get; set; } = string.Empty;
     public int SoldQty { get; set; }

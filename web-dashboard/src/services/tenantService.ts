@@ -77,15 +77,15 @@ export const BUSINESS_PRESETS_CONFIG: Record<BusinessPreset, { nameAr: string; n
     }
   },
   Hardware: {
-    nameAr: 'مواد بناء وإنشائية',
-    nameEn: 'Hardware & Construction',
-    descriptionAr: 'تعدد مستودعات، حدود ائتمانية وحسابات ذمم، عملات صرف متقلبة',
+    nameAr: 'مواد بناء وتجهيزات وأدوات',
+    nameEn: 'Hardware & Tools',
+    descriptionAr: 'تعدد مستودعات، تتبع الأرقام التسلسلية والضمان، حدود ائتمانية وعملات متعددة',
     features: {
       enablePOS: false,
       multiWarehouse: true,
       maxWarehouses: 10,
       enableInstallments: false,
-      enableSerialNumbers: false,
+      enableSerialNumbers: true,
       enableVariants: false,
       enableMultiCurrency: true,
       enableCreditLimits: true,

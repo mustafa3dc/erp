@@ -1149,11 +1149,50 @@ export function executePurchaseInvoiceTransaction(
         minStockAlert: 5,
         warehouseId: invoice.warehouseId,
         warehouseName: invoice.warehouseName,
+        requiresSerialNumber: Boolean(item.requiresSerialNumber),
+        warrantyMonths: Math.max(0, Number(item.warrantyMonths) || 0),
         status: 'available',
         shelf: 'A-01',
         updatedAt: nowStr
       };
       updatedProducts.unshift(newProduct);
+    }
+
+    // Create InStock serial records if serialNumbers were entered on purchase item
+    if (Array.isArray(item.serialNumbers) && item.serialNumbers.length > 0) {
+      const targetProd = updatedProducts.find(
+        p => (item.productId && p.id === item.productId) ||
+             (item.sku && p.sku.toLowerCase() === item.sku.toLowerCase())
+      );
+      const existingSerials = getStoredProductSerials();
+      const existingSet = new Set(existingSerials.map(s => s.serialNumber.trim().toLowerCase()));
+      const warrantyMonths = Math.max(0, Number(item.warrantyMonths ?? targetProd?.warrantyMonths) || 0);
+      const addedSerials: ProductSerial[] = item.serialNumbers
+        .map(sn => sn.trim())
+        .filter(sn => sn.length > 0 && !existingSet.has(sn.toLowerCase()))
+        .map((sn, sIdx) => ({
+          id: `SN-${Date.now()}-${idx}-${sIdx}`,
+          tenantId: 'default',
+          productId: targetProd?.id || item.productId || item.sku,
+          productName: targetProd?.nameAr || item.nameAr,
+          productSku: targetProd?.sku || item.sku,
+          serialNumber: sn,
+          warehouseId: invoice.warehouseId,
+          warehouseName: invoice.warehouseName,
+          supplierId: invoice.supplierId,
+          supplierName: invoice.supplierName,
+          purchaseBillId: invoice.id,
+          purchaseBillNo: invoice.billNumber,
+          purchaseDate: invoice.invoiceDate || nowStr,
+          warrantyMonths,
+          warrantyStatus: 'NotStarted',
+          isWarrantyActive: false,
+          status: 'InStock',
+          createdAt: new Date().toISOString()
+        }));
+      if (addedSerials.length > 0) {
+        saveStoredProductSerials([...addedSerials, ...existingSerials]);
+      }
     }
 
     // 3. Generate Inbound Stock Transaction
@@ -3016,6 +3055,8 @@ export interface ReturnableInvoiceItem {
   productName: string;
   sku: string;
   serialNumber: string;
+  requiresSerialNumber?: boolean;
+  soldSerialNumbers?: string[];
   warehouseId?: string;
   warehouseName?: string;
   soldQty: number;
@@ -3062,6 +3103,8 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
   const currency = isIqd ? 'IQD' : 'USD';
 
   // If invoice has line items, compute eligibility per item
+  const allProducts = getStoredProducts();
+  const allSerials = getStoredProductSerials();
   if (invoice.items && invoice.items.length > 0) {
     return invoice.items.map((item, idx) => {
       const returnedQty = existingRmas
@@ -3072,13 +3115,26 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
 
       const soldQty = Number(item.quantity) || 1;
       const remaining = Math.max(0, soldQty - returnedQty);
+      const matchedProduct = allProducts.find(p => p.id === item.productId || p.sku === item.sku);
+      const soldSerialsForLine = allSerials
+        .filter(s => s.status === 'Sold'
+          && (s.salesInvoiceNo === invoice.invoiceNo || s.salesInvoiceNumber === invoice.invoiceNo || s.salesInvoiceId === invoice.id)
+          && (s.productId === item.productId || s.productSku === item.sku))
+        .map(s => s.serialNumber);
+
+      const prodMonths = Number(matchedProduct?.warrantyMonths) || 0;
+      const itemWarrantyExp = new Date(invoiceDate);
+      if (prodMonths > 0) itemWarrantyExp.setMonth(itemWarrantyExp.getMonth() + prodMonths);
+      const itemUnderWarranty = prodMonths > 0 && now <= itemWarrantyExp;
 
       return {
         itemId: item.id || `ITEM-${idx}`,
         productId: item.productId || item.sku,
         productName: item.nameAr || item.nameEn || 'صنف مباع',
         sku: item.sku,
-        serialNumber: (item as any).serialNumber || '',
+        serialNumber: soldSerialsForLine[0] || (item as any).serialNumber || '',
+        requiresSerialNumber: Boolean(matchedProduct?.requiresSerialNumber),
+        soldSerialNumbers: soldSerialsForLine,
         warehouseId: matchedWarehouse?.id,
         warehouseName: invoice.warehouseName || matchedWarehouse?.nameAr || matchedWarehouse?.nameEn || '',
         soldQty,
@@ -3086,8 +3142,8 @@ export function getInvoiceReturnableItems(invoiceNoOrId: string): ReturnableInvo
         remainingReturnableQty: remaining,
         unitPrice: Number(item.unitPrice) || 0,
         currency,
-        warrantyExpiresAt: warrantyExpires.toISOString().split('T')[0],
-        isUnderWarranty
+        warrantyExpiresAt: itemWarrantyExp.toISOString().split('T')[0],
+        isUnderWarranty: itemUnderWarranty
       };
     });
   }
@@ -3254,7 +3310,7 @@ export function executeSalesReturnRestock(req: SalesReturnRestockRequest): Sales
     });
   }
 
-  // Restore Product Serial / IMEI status from Sold back to InStock
+  // Update Product Serial / IMEI status to Returned upon RMA restock
   if (req.serialNumber && req.serialNumber !== 'N/A') {
     const cleanSerial = req.serialNumber.trim().toLowerCase();
     const serials = getStoredProductSerials();
@@ -3264,9 +3320,13 @@ export function executeSalesReturnRestock(req: SalesReturnRestockRequest): Sales
         changed = true;
         return {
           ...s,
-          status: 'InStock' as const,
+          status: 'Returned' as const,
           warehouseId: resolvedWarehouse?.id || s.warehouseId,
-          warehouseName: effectiveWarehouseName
+          warehouseName: effectiveWarehouseName,
+          warrantyStartDate: undefined,
+          warrantyEndDate: undefined,
+          warrantyStatus: 'NotStarted' as const,
+          isWarrantyActive: false
         };
       }
       return s;
@@ -4605,6 +4665,73 @@ export function getStoredProductSerials(): ProductSerial[] {
 
 export function saveStoredProductSerials(serials: ProductSerial[]): void {
   safeSet(KEYS.PRODUCT_SERIALS, serials);
+}
+
+export function markLocalSerialsAsSold(params: {
+  serialNumbers: string[];
+  invoiceId?: string;
+  invoiceNumber: string;
+  customerId?: string;
+  customerName?: string;
+  warrantyMonthsOverride?: number;
+}): void {
+  if (!params.serialNumbers || params.serialNumbers.length === 0) return;
+  const targets = new Set(params.serialNumbers.map(s => s.trim().toLowerCase()).filter(Boolean));
+  if (targets.size === 0) return;
+
+  const soldDate = new Date();
+  const serials = getStoredProductSerials();
+  let changed = false;
+
+  const updated = serials.map(s => {
+    if (!targets.has(s.serialNumber.trim().toLowerCase())) return s;
+    changed = true;
+    const months = Math.max(0, Number(params.warrantyMonthsOverride ?? s.warrantyMonths) || 0);
+    const endDate = months > 0 ? new Date(soldDate) : null;
+    if (endDate) endDate.setMonth(endDate.getMonth() + months);
+
+    return {
+      ...s,
+      status: 'Sold' as const,
+      salesInvoiceId: params.invoiceId || s.salesInvoiceId,
+      salesInvoiceNo: params.invoiceNumber,
+      customerId: params.customerId || s.customerId,
+      customerName: params.customerName || s.customerName,
+      saleDate: soldDate.toISOString(),
+      soldDate: soldDate.toISOString(),
+      warrantyMonths: months,
+      warrantyStartDate: months > 0 ? soldDate.toISOString() : undefined,
+      warrantyEndDate: endDate ? endDate.toISOString() : undefined,
+      warrantyStatus: months > 0 ? ('Active' as const) : ('NoWarranty' as const),
+      isWarrantyActive: months > 0,
+      updatedAt: soldDate.toISOString(),
+    };
+  });
+
+  if (changed) {
+    saveStoredProductSerials(updated);
+  }
+}
+
+export function updateLocalSerialStatus(serialNumber: string, status: ProductSerial['status']): void {
+  const target = serialNumber.trim().toLowerCase();
+  if (!target) return;
+  const serials = getStoredProductSerials();
+  let changed = false;
+  const updated = serials.map(s => {
+    if (s.serialNumber.trim().toLowerCase() !== target) return s;
+    changed = true;
+    return {
+      ...s,
+      status,
+      warrantyStartDate: status === 'Sold' ? s.warrantyStartDate : undefined,
+      warrantyEndDate: status === 'Sold' ? s.warrantyEndDate : undefined,
+      warrantyStatus: status === 'Sold' ? s.warrantyStatus : ('NotStarted' as const),
+      isWarrantyActive: status === 'Sold' ? s.isWarrantyActive : false,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  if (changed) saveStoredProductSerials(updated);
 }
 
 

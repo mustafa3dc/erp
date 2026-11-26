@@ -31,6 +31,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       .map((section) => {
         const validItems = section.items.filter((item) => {
           if (!item.requiredFeature) return true;
+          if (item.requiredFeature === 'enableSerialNumbers') {
+            return Boolean(features?.enableSerialNumbers ?? features?.enableSerialTrackingModule);
+          }
           if (!features) return true;
           return features[item.requiredFeature] !== false;
         });

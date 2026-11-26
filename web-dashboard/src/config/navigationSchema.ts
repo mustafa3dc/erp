@@ -34,6 +34,9 @@ export function isFeatureAllowed(
   requiredFeature?: keyof CompanyFeatures
 ): boolean {
   if (!requiredFeature) return true;
+  if (requiredFeature === 'enableSerialNumbers') {
+    return Boolean(features?.enableSerialNumbers ?? features?.enableSerialTrackingModule);
+  }
   if (!features) return true;
   return features[requiredFeature] !== false;
 }
@@ -177,7 +180,7 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
       {
         id: 'Serial & Warranty Tracking',
         titleAr: 'الأرقام التسلسلية والضمان',
-        titleEn: 'Serial & Warranty Tracking',
+        titleEn: 'Serials & Warranty',
         path: '/inventory/serials',
         requiredPermission: 'inventory.view',
         requiredFeature: 'enableSerialNumbers'

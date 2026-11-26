@@ -145,7 +145,8 @@ public class TenantFeatureService : ITenantFeatureService
         if (request.MultiWarehouse.HasValue) currentFeatures.MultiWarehouse = request.MultiWarehouse.Value;
         if (request.MaxWarehouses.HasValue) currentFeatures.MaxWarehouses = Math.Max(1, request.MaxWarehouses.Value);
         if (request.EnableInstallments.HasValue) currentFeatures.EnableInstallments = request.EnableInstallments.Value;
-        if (request.EnableSerialNumbers.HasValue) currentFeatures.EnableSerialNumbers = request.EnableSerialNumbers.Value;
+        var serialToggle = request.EnableSerialTrackingModule ?? request.EnableSerialNumbers;
+        if (serialToggle.HasValue) currentFeatures.EnableSerialNumbers = serialToggle.Value;
         if (request.EnableVariants.HasValue) currentFeatures.EnableVariants = request.EnableVariants.Value;
         if (request.EnableMultiCurrency.HasValue) currentFeatures.EnableMultiCurrency = request.EnableMultiCurrency.Value;
         if (request.EnableCreditLimits.HasValue) currentFeatures.EnableCreditLimits = request.EnableCreditLimits.Value;

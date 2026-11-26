@@ -107,7 +107,8 @@ public class CompanySettingsController : ControllerBase
             if (request.EnablePOS.HasValue) features.EnablePOS = request.EnablePOS.Value;
             if (request.MultiWarehouse.HasValue) features.MultiWarehouse = request.MultiWarehouse.Value;
             if (request.EnableInstallments.HasValue) features.EnableInstallments = request.EnableInstallments.Value;
-            if (request.EnableSerialNumbers.HasValue) features.EnableSerialNumbers = request.EnableSerialNumbers.Value;
+            var serialToggle = request.EnableSerialTrackingModule ?? request.EnableSerialNumbers;
+            if (serialToggle.HasValue) features.EnableSerialNumbers = serialToggle.Value;
             if (request.EnableVariants.HasValue) features.EnableVariants = request.EnableVariants.Value;
             if (request.EnableMultiCurrency.HasValue) features.EnableMultiCurrency = request.EnableMultiCurrency.Value;
             if (request.EnableCreditLimits.HasValue) features.EnableCreditLimits = request.EnableCreditLimits.Value;

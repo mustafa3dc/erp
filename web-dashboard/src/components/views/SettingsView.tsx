@@ -471,6 +471,82 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     toast.success(isAr ? 'تم تحديث إعدادات الميزان' : 'Scale settings updated');
   };
 
+  const handleToggleSerialModule = async (nextVal: boolean) => {
+    try {
+      const currentSession = getStoredAuthSession();
+      if (currentSession) {
+        if (!currentSession.features) {
+          currentSession.features = {
+            enablePOS: true,
+            multiWarehouse: true,
+            maxWarehouses: 5,
+            enableInstallments: true,
+            enableSerialNumbers: nextVal,
+            enableSerialTrackingModule: nextVal,
+            enableVariants: false,
+            enableMultiCurrency: true,
+            enableCreditLimits: true,
+            enableBarcodeScales: true,
+            enableExpiryDates: false,
+          };
+        } else {
+          currentSession.features.enableSerialNumbers = nextVal;
+          currentSession.features.enableSerialTrackingModule = nextVal;
+        }
+        saveStoredAuthSession(currentSession);
+        safeSet(KEYS.AUTH_SESSION, currentSession);
+
+        if (currentSession.tenantId) {
+          updateTenantFeatures(currentSession.tenantId, {
+            enableSerialNumbers: nextVal,
+          }).catch(() => {});
+        }
+      }
+
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('zilox_auth_token') ||
+            localStorage.getItem('logistock_erp_jwt_token') ||
+            localStorage.getItem('token') ||
+            localStorage.getItem('zilox_token')
+          : null;
+      if (token) {
+        await fetch('/api/company/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            enableSerialNumbers: nextVal,
+            enableSerialTrackingModule: nextVal,
+          }),
+        }).catch(() => {});
+      }
+
+      window.dispatchEvent(
+        new CustomEvent('zilox_features_updated', {
+          detail: { enableSerialNumbers: nextVal, enableSerialTrackingModule: nextVal },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('zilox_query_invalidate', {
+          detail: { queryKey: ['currentUser', 'auth', 'companySettings', 'tenantFeatures'] },
+        })
+      );
+      window.dispatchEvent(new StorageEvent('storage', { key: KEYS.AUTH_SESSION }));
+
+      toast.success(
+        getTranslation(
+          isAr ? 'ar' : 'en',
+          nextVal ? 'serialTracking.moduleEnabledToast' : 'serialTracking.moduleDisabledToast'
+        )
+      );
+    } catch {
+      // handled gracefully
+    }
+  };
+
   const handleLanguageChange = (newLang: string) => updateSetting('language', newLang);
   const handleThemeChange = (newTheme: SupportedTheme) => updateSetting('theme', newTheme);
 
@@ -595,8 +671,8 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     {
       id: 'active_modules',
       icon: <Puzzle className="w-4 h-4" />,
-      labelAr: 'الميزات المفعلة',
-      labelEn: 'Active Modules',
+      labelAr: getTranslation('ar', 'serialTracking.additionalFeaturesTab'),
+      labelEn: getTranslation('en', 'serialTracking.additionalFeaturesTab'),
     },
   ];
 
@@ -1643,10 +1719,11 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                 {
                   key: 'enableSerialNumbers',
                   icon: <Hash className="w-4 h-4" />,
-                  ar: 'تتبع الأرقام التسلسلية',
-                  en: 'Serial Number Tracking',
-                  descAr: 'تتبع الأرقام التسلسلية لكل وحدة مخزنية',
-                  descEn: 'Track serial numbers for each individual inventory unit',
+                  ar: getTranslation('ar', 'serialTracking.enableModuleTitle'),
+                  en: getTranslation('en', 'serialTracking.enableModuleTitle'),
+                  descAr: getTranslation('ar', 'serialTracking.enableModuleDesc'),
+                  descEn: getTranslation('en', 'serialTracking.enableModuleDesc'),
+                  interactive: true,
                 },
                 {
                   key: 'enableVariants',
@@ -1692,6 +1769,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             ).map((module) => {
               const isEnabled = isFeatureEnabled(module.key as any);
               const isLocked = !isEnabled;
+              const isInteractiveSerial = (module as any).interactive && module.key === 'enableSerialNumbers';
               return (
                 <div
                   key={module.key}
@@ -1710,8 +1788,30 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                       </p>
                     </div>
                   </div>
-                  <div className="ms-3 shrink-0">
-                    <StatusBadge enabled={isEnabled} locked={isLocked} isAr={isAr} />
+                  <div className="ms-3 shrink-0 flex items-center gap-2.5">
+                    {isInteractiveSerial ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isEnabled}
+                        onClick={() => handleToggleSerialModule(!isEnabled)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                          isEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                            isEnabled
+                              ? isAr
+                                ? '-translate-x-5'
+                                : 'translate-x-5'
+                              : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <StatusBadge enabled={isEnabled} locked={isLocked} isAr={isAr} />
+                    )}
                   </div>
                 </div>
               );

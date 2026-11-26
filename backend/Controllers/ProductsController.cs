@@ -89,6 +89,9 @@ public class ProductsController : ControllerBase
                 TotalQuantity = Math.Max(0, effectiveTotalQty),
                 p.IsActive,
                 p.IsBundle,
+                p.RequiresSerialNumber,
+                p.RequiresSerialTracking,
+                p.WarrantyMonths,
                 QuantityTiers = p.QuantityTiers
                     .OrderBy(t => t.MinQty)
                     .Select(t => new
@@ -220,6 +223,8 @@ public class ProductsController : ControllerBase
         product.MinStockLevel = updatedProduct.MinStockLevel;
         product.MaxStockLevel = updatedProduct.MaxStockLevel;
         product.MaxCashierDiscountPercent = updatedProduct.MaxCashierDiscountPercent;
+        product.RequiresSerialNumber = updatedProduct.RequiresSerialNumber;
+        product.WarrantyMonths = Math.Max(0, updatedProduct.WarrantyMonths);
         product.IsActive = updatedProduct.IsActive;
         product.UpdatedAt = DateTime.UtcNow;
 

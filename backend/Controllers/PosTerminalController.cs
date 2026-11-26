@@ -11,17 +11,31 @@ namespace ERP.Warehouse.Api.Controllers;
 public class PosTerminalController : ControllerBase
 {
     private readonly IDiscountEngineService _discountEngine;
+    private readonly ISerialTrackingService _serialTrackingService;
     private readonly AppDbContext _context;
     private readonly ILogger<PosTerminalController> _logger;
 
     public PosTerminalController(
         IDiscountEngineService discountEngine,
+        ISerialTrackingService serialTrackingService,
         AppDbContext context,
         ILogger<PosTerminalController> logger)
     {
         _discountEngine = discountEngine;
+        _serialTrackingService = serialTrackingService;
         _context = context;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// GET /api/pos/serials/lookup?code=...
+    /// Fast POS scanner endpoint for Serial / IMEI barcode lookup.
+    /// </summary>
+    [HttpGet("serials/lookup")]
+    public async Task<ActionResult<PosSerialScanResponseDto>> LookupSerialForPos([FromQuery] string code)
+    {
+        var result = await _serialTrackingService.LookupForPosScanAsync(code);
+        return Ok(result);
     }
 
     /// <summary>
@@ -145,6 +159,12 @@ public class PosTerminalController : ControllerBase
                 ? "ERR_CUSTOMER_NOT_FOUND"
                 : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
                 ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : ex.Message.Contains("ERR_SERIAL_ALREADY_SOLD")
+                ? "ERR_SERIAL_ALREADY_SOLD"
+                : ex.Message.Contains("ERR_SERIAL_NOT_AVAILABLE_FOR_SALE")
+                ? "ERR_SERIAL_NOT_AVAILABLE_FOR_SALE"
+                : ex.Message.Contains("ERR_SERIAL_NOT_FOUND")
+                ? "ERR_SERIAL_NOT_FOUND"
                 : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
                 ? "ERR_INSUFFICIENT_STOCK"
                 : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))

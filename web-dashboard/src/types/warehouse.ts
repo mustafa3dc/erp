@@ -30,6 +30,8 @@ export interface Product {
   shelf: string;
   updatedAt: string;
   isBundle?: boolean;
+  requiresSerialNumber?: boolean;
+  warrantyMonths?: number;
   quantityTiers?: ProductQuantityTierRule[];
 }
 

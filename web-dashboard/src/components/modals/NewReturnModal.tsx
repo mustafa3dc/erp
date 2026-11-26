@@ -191,7 +191,8 @@ export default function NewReturnModal({
   const applySelectedItem = (item: ReturnableInvoiceItem) => {
     setSelectedItem(item);
     setSelectedItemSku(item.sku);
-    setSerialNumber(item.serialNumber || (item.sku ? `SN-${item.sku.replace(/\D/g, '') || '94012'}` : ''));
+    const soldList = item.soldSerialNumbers || [];
+    setSerialNumber(soldList[0] || (!item.requiresSerialNumber ? (item.serialNumber || '') : ''));
     setReturnQuantity(1);
     setRefundAmount(item.unitPrice * 1);
     if (item.warehouseId && availableWarehouses.some(w => w.id === item.warehouseId)) {
@@ -282,6 +283,19 @@ export default function NewReturnModal({
           .replace('{max}', String(selectedItem.remainingReturnableQty))
       );
       return;
+    }
+
+    const soldSerials = selectedItem.soldSerialNumbers || [];
+    const trimmedSerial = serialNumber.trim();
+    if (selectedItem.requiresSerialNumber || soldSerials.length > 0) {
+      if (!trimmedSerial) {
+        setFormError(getTranslation(lang, 'errors.ERR_SERIAL_NOT_FOUND_FOR_RETURN'));
+        return;
+      }
+      if (soldSerials.length > 0 && !soldSerials.some(sn => sn.toLowerCase() === trimmedSerial.toLowerCase())) {
+        setFormError(getTranslation(lang, 'errors.ERR_SERIAL_NOT_FOUND_FOR_RETURN'));
+        return;
+      }
     }
 
     // Call storage validation rule
@@ -661,23 +675,51 @@ export default function NewReturnModal({
                 {/* 4. Serial Number (S/N) */}
                 <div className="space-y-1.5">
                   <Label htmlFor="rma-serial" className="text-xs font-semibold text-foreground/90 flex items-center justify-between">
-                    <span>{tr('serialLabel')} *</span>
+                    <span>{tr('serialLabel')} {selectedItem?.requiresSerialNumber ? '*' : ''}</span>
                     <span className="text-[10px] text-muted-foreground font-mono">
-                      BARCODE
+                      IMEI / SN
                     </span>
                   </Label>
                   <div className="relative">
                     <Input
                       id="rma-serial"
                       value={serialNumber}
-                      onChange={(e) => setSerialNumber(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setSerialNumber(e.target.value);
+                        setFormError('');
+                      }}
+                      required={Boolean(selectedItem?.requiresSerialNumber)}
                       dir="ltr"
-                      placeholder="SN-XXXXXXX"
+                      placeholder={
+                        selectedItem?.requiresSerialNumber
+                          ? getTranslation(lang, 'serialTracking.selectOrScanReturnSerial')
+                          : 'SN-XXXXXXX'
+                      }
                       className="font-mono font-semibold h-10.5 bg-background border-border/80 px-3.5 pe-10 uppercase text-xs sm:text-sm"
                     />
                     <Barcode className="w-4 h-4 absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   </div>
+                  {selectedItem?.soldSerialNumbers && selectedItem.soldSerialNumbers.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1" dir="ltr">
+                      {selectedItem.soldSerialNumbers.map(sn => (
+                        <button
+                          key={sn}
+                          type="button"
+                          onClick={() => {
+                            setSerialNumber(sn);
+                            setFormError('');
+                          }}
+                          className={`px-2 py-0.5 rounded text-[11px] font-mono font-semibold border cursor-pointer transition-colors ${
+                            serialNumber.trim().toLowerCase() === sn.toLowerCase()
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-muted/50 text-foreground border-border hover:bg-muted'
+                          }`}
+                        >
+                          {sn}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* 5. Automated Warranty Validity Status */}

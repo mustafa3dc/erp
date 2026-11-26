@@ -369,11 +369,46 @@ export default function InventoryView({
   };
 
   // Handle saving product edit
-  const handleSaveProductEdit = (updatedProduct: Product) => {
+  const handleSaveProductEdit = async (updatedProduct: Product) => {
     if (onUpdateProducts) {
       const updatedList = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
       saveStoredProducts(updatedList);
       onUpdateProducts(updatedList);
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(updatedProduct.id)) {
+      try {
+        const token =
+          localStorage.getItem('zilox_auth_token') ||
+          localStorage.getItem('logistock_erp_jwt_token') ||
+          localStorage.getItem('token') ||
+          localStorage.getItem('zilox_token');
+        await fetch(`/api/products/${updatedProduct.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            id: updatedProduct.id,
+            name: updatedProduct.nameAr || updatedProduct.nameEn,
+            sku: updatedProduct.sku,
+            barcode: updatedProduct.barcode,
+            sellingPrice: updatedProduct.sellingPrice,
+            minSellingPrice: updatedProduct.minSellingPrice ?? updatedProduct.sellingPrice,
+            unitOfMeasure: updatedProduct.unit,
+            minStockLevel: updatedProduct.minStockAlert,
+            maxStockLevel: 500,
+            maxCashierDiscountPercent: 5,
+            requiresSerialNumber: Boolean(updatedProduct.requiresSerialNumber),
+            warrantyMonths: Math.max(0, Number(updatedProduct.warrantyMonths) || 0),
+            isActive: true,
+          }),
+        });
+      } catch {
+        // offline resilience
+      }
     }
   };
 

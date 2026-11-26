@@ -49,6 +49,7 @@ export interface CompanyFeatures {
   maxWarehouses: number;
   enableInstallments: boolean;
   enableSerialNumbers: boolean;
+  enableSerialTrackingModule?: boolean;
   enableVariants: boolean;
   enableMultiCurrency: boolean;
   enableCreditLimits: boolean;

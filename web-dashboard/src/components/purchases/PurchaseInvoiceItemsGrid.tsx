@@ -1,8 +1,9 @@
-import React from 'react';
-import { Plus, Trash2, Package, Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, Package, Barcode, X } from 'lucide-react';
 import { Product } from '../../types/warehouse';
 import { PurchaseInvoiceItem } from '../../types/purchases';
 import PurchaseItemCombobox from './PurchaseItemCombobox';
+import { getTranslation } from '../../lib/i18n';
 
 export interface PurchaseInvoiceItemsGridProps {
   lineItems: PurchaseInvoiceItem[];
@@ -15,6 +16,7 @@ export interface PurchaseInvoiceItemsGridProps {
   onOpenDefineProduct: (index: number, query: string) => void;
   uomOptions?: string[];
   currencySymbol?: string;
+  isSerialModuleEnabled?: boolean;
 }
 
 const DEFAULT_UOM_OPTIONS_AR = ['قطعة', 'درزن', 'كرتونة', 'كجم', 'طرد', 'بكرة', 'متر'];
@@ -38,8 +40,11 @@ export default function PurchaseInvoiceItemsGrid({
   onSelectProduct,
   onOpenDefineProduct,
   uomOptions,
-  currencySymbol
+  currencySymbol,
+  isSerialModuleEnabled = false
 }: PurchaseInvoiceItemsGridProps) {
+  const langKey: 'ar' | 'en' = isAr ? 'ar' : 'en';
+  const [serialDraftByRow, setSerialDraftByRow] = useState<Record<string, string>>({});
   const effectiveSymbol = currencySymbol || '$';
   const activeUomOptions = uomOptions || (isAr ? DEFAULT_UOM_OPTIONS_AR : DEFAULT_UOM_OPTIONS_EN);
   const subtotal = lineItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
@@ -113,12 +118,39 @@ export default function PurchaseInvoiceItemsGrid({
                 const sell = Number(item.newSellingPrice || item.currentSellingPrice) || 0;
                 const marginPct = cost > 0 && sell > 0 ? (((sell - cost) / cost) * 100).toFixed(1) : null;
                 const isCostHigher = cost > 0 && sell > 0 && cost > sell;
+                const matchedProd = products.find(p => (item.productId && p.id === item.productId) || (item.sku && p.sku === item.sku));
+                const showSerialInput = isSerialModuleEnabled && (Boolean(item.requiresSerialNumber) || Boolean(matchedProd?.requiresSerialNumber) || (item.serialNumbers && item.serialNumbers.length > 0));
+                const rowSerials = item.serialNumbers || [];
+                const rowKey = item.id || `line-${idx}`;
+                const draftVal = serialDraftByRow[rowKey] || '';
+
+                const appendSerialsToRow = (rawText: string) => {
+                  const tokens = rawText
+                    .split(/[\n,;]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean);
+                  if (tokens.length === 0) return;
+                  const existingSet = new Set(rowSerials.map(s => s.toLowerCase()));
+                  const nextSerials = [...rowSerials];
+                  for (const tok of tokens) {
+                    if (!existingSet.has(tok.toLowerCase())) {
+                      existingSet.add(tok.toLowerCase());
+                      nextSerials.push(tok);
+                    }
+                  }
+                  onUpdateLineItem(idx, {
+                    serialNumbers: nextSerials,
+                    requiresSerialNumber: true,
+                    quantity: Math.max(Number(item.quantity) || 1, nextSerials.length),
+                  });
+                  setSerialDraftByRow(prev => ({ ...prev, [rowKey]: '' }));
+                };
 
                 return (
-                  <div
-                    key={item.id || `line-${idx}`}
-                    className="grid grid-cols-[44px_minmax(240px,2fr)_105px_90px_120px_120px_125px_44px] gap-2 items-center px-3.5 py-2 hover:bg-muted/30 transition-colors"
-                  >
+                  <div key={rowKey} className="hover:bg-muted/20 transition-colors">
+                    <div
+                      className="grid grid-cols-[44px_minmax(240px,2fr)_105px_90px_120px_120px_125px_44px] gap-2 items-center px-3.5 py-2"
+                    >
                     {/* 1. Row Index */}
                     <div className="text-center font-mono text-xs text-muted-foreground font-semibold">
                       {idx + 1}
@@ -230,6 +262,78 @@ export default function PurchaseInvoiceItemsGrid({
                       </button>
                     </div>
                   </div>
+
+                  {/* Inline Serial / IMEI Scanner Bar for Serialized Products */}
+                  {showSerialInput && (
+                    <div className="mx-3.5 mb-2.5 px-3 py-2 rounded-lg bg-muted/40 border border-border/70 flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary">
+                          <Barcode className="w-3.5 h-3.5" />
+                          <span>{getTranslation(langKey, 'serialTracking.inlineSerialsTitle')}</span>
+                        </div>
+                        <span
+                          className={`text-[10.5px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                            rowSerials.length === item.quantity
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
+                          }`}
+                        >
+                          {getTranslation(langKey, 'serialTracking.serialCountBadge')
+                            .replace('{entered}', String(rowSerials.length))
+                            .replace('{expected}', String(item.quantity))}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={draftVal}
+                          onChange={(e) => setSerialDraftByRow(prev => ({ ...prev, [rowKey]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                              e.preventDefault();
+                              appendSerialsToRow(draftVal);
+                            }
+                          }}
+                          placeholder={getTranslation(langKey, 'serialTracking.inlineSerialsPlaceholder')}
+                          dir="ltr"
+                          className="h-8 flex-1 px-2.5 rounded-md border border-border bg-background text-foreground font-mono text-xs outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => appendSerialsToRow(draftVal)}
+                          className="h-8 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {rowSerials.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5" dir="ltr">
+                          {rowSerials.map(sn => (
+                            <span
+                              key={sn}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-card border border-border text-[11px] font-mono font-semibold text-foreground"
+                            >
+                              <span>{sn}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateLineItem(idx, {
+                                    serialNumbers: rowSerials.filter(x => x !== sn),
+                                  })
+                                }
+                                className="text-muted-foreground hover:text-destructive cursor-pointer bg-transparent border-0 p-0"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 );
               })}
             </div>

@@ -405,6 +405,20 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryLedgerSqlPath));
                 }
+
+                // Ensure Serial & Warranty Lifecycle Automation schema upgrades are idempotently applied
+                string[] serialLifecycleSqlPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "19_serial_warranty_lifecycle.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "19_serial_warranty_lifecycle.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "19_serial_warranty_lifecycle.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "19_serial_warranty_lifecycle.sql")
+                };
+                var serialLifecycleSqlPath = serialLifecycleSqlPaths.FirstOrDefault(File.Exists);
+                if (serialLifecycleSqlPath != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(serialLifecycleSqlPath));
+                }
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

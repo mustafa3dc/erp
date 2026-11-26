@@ -59,7 +59,7 @@ public static class BusinessPresetFactory
                 MultiWarehouse = true,
                 MaxWarehouses = 10,
                 EnableInstallments = false,
-                EnableSerialNumbers = false,
+                EnableSerialNumbers = true,
                 EnableVariants = false,
                 EnableMultiCurrency = true,
                 EnableCreditLimits = true,

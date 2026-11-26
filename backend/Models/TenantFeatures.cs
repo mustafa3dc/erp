@@ -36,6 +36,10 @@ public class CompanyFeatures
     [JsonPropertyName("enableSerialNumbers")]
     public bool EnableSerialNumbers { get; set; } = false;
 
+    [JsonPropertyName("enableSerialTrackingModule")]
+    [JsonInclude]
+    public bool EnableSerialTrackingModule => EnableSerialNumbers;
+
     [JsonPropertyName("enableVariants")]
     public bool EnableVariants { get; set; } = false;
 
@@ -97,6 +101,7 @@ public class UpdateFeaturesRequestDto
     public int? MaxWarehouses { get; set; }
     public bool? EnableInstallments { get; set; }
     public bool? EnableSerialNumbers { get; set; }
+    public bool? EnableSerialTrackingModule { get; set; }
     public bool? EnableVariants { get; set; }
     public bool? EnableMultiCurrency { get; set; }
     public bool? EnableCreditLimits { get; set; }

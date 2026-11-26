@@ -13,7 +13,8 @@ public sealed record SalesItemRequestDto(
     int Quantity,
     string DiscountType = "NONE",
     decimal DiscountValue = 0.00m,
-    string? OverrideReason = null
+    string? OverrideReason = null,
+    List<string>? SerialNumbers = null
 );
 
 public sealed record CreateSalesInvoiceCommand(
@@ -68,7 +69,8 @@ public sealed class CreateSalesInvoiceCommandHandler
                     Quantity = i.Quantity,
                     DiscountType = i.DiscountType,
                     DiscountValue = i.DiscountValue,
-                    OverrideReason = i.OverrideReason
+                    OverrideReason = i.OverrideReason,
+                    SerialNumbers = i.SerialNumbers
                 })
             };
 
@@ -93,6 +95,12 @@ public sealed class CreateSalesInvoiceCommandHandler
                 ? "ERR_CUSTOMER_NOT_FOUND"
                 : ex.Message.Contains("ERR_CREDIT_LIMIT_EXCEEDED")
                 ? "ERR_CREDIT_LIMIT_EXCEEDED"
+                : ex.Message.Contains("ERR_SERIAL_ALREADY_SOLD")
+                ? "ERR_SERIAL_ALREADY_SOLD"
+                : ex.Message.Contains("ERR_SERIAL_NOT_AVAILABLE_FOR_SALE")
+                ? "ERR_SERIAL_NOT_AVAILABLE_FOR_SALE"
+                : ex.Message.Contains("ERR_SERIAL_NOT_FOUND")
+                ? "ERR_SERIAL_NOT_FOUND"
                 : (ex.Message.Contains("ERR_INSUFFICIENT_STOCK") || ex.Message.Contains("غير كافٍ") || ex.Message.Contains("الرصيد"))
                 ? "ERR_INSUFFICIENT_STOCK"
                 : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))

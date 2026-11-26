@@ -254,7 +254,8 @@ export interface PurchaseReturn {
   items: PurchaseReturnItem[];
 }
 
-export type ProductSerialStatus = 'InStock' | 'Sold' | 'Returned' | 'Defective';
+export type ProductSerialStatus = 'InStock' | 'Sold' | 'Returned' | 'Defective' | 'Transferred';
+export type SerialWarrantyStatus = 'NotStarted' | 'NoWarranty' | 'Active' | 'Expired';
 
 export interface ProductSerial {
   id: string;
@@ -269,14 +270,21 @@ export interface ProductSerial {
   supplierName?: string;
   purchaseBillId?: string;
   purchaseBillNo?: string;
+  purchaseBillNumber?: string;
   purchaseDate?: string;
   customerId?: string;
   customerName?: string;
   salesInvoiceId?: string;
   salesInvoiceNo?: string;
+  salesInvoiceNumber?: string;
   saleDate?: string;
+  soldDate?: string;
   warrantyMonths: number;
+  warrantyStartDate?: string;
   warrantyEndDate?: string;
+  warrantyStatus?: SerialWarrantyStatus;
+  isWarrantyActive?: boolean;
+  remainingWarrantyDays?: number | null;
   status: ProductSerialStatus;
   notes?: string;
   createdAt: string;
@@ -284,6 +292,7 @@ export interface ProductSerial {
 }
 
 export interface SerialLookupResult {
+  id?: string;
   serialNumber: string;
   productId: string;
   productName: string;
@@ -298,6 +307,7 @@ export interface SerialLookupResult {
   saleDate?: string;
   warrantyMonths: number;
   warrantyEndDate?: string;
+  warrantyStatus?: SerialWarrantyStatus;
   isWarrantyActive: boolean;
   warrantyDaysRemaining: number;
 }

@@ -176,10 +176,71 @@ public class SalesReturnService : ISalesReturnService
                 };
             }
 
+            // Strict Serial / IMEI Return Validation for Serialized Products
+            ProductSerial? matchedSoldSerial = null;
+            var requestedSerial = (request.SerialNumber ?? string.Empty).Trim();
+            if (returnedProduct.RequiresSerialNumber)
+            {
+                if (string.IsNullOrWhiteSpace(requestedSerial) || string.Equals(requestedSerial, "N/A", StringComparison.OrdinalIgnoreCase))
+                {
+                    await transaction.RollbackAsync();
+                    return new SalesReturnOperationResult
+                    {
+                        Success = false,
+                        StatusCode = 400,
+                        ErrorCode = "ERR_SERIAL_NOT_FOUND_FOR_RETURN",
+                        Message = "ERR_SERIAL_NOT_FOUND_FOR_RETURN"
+                    };
+                }
+
+                var lowerSerial = requestedSerial.ToLowerInvariant();
+                matchedSoldSerial = await _context.ProductSerials.FirstOrDefaultAsync(ps =>
+                    ps.SerialNumber.ToLower() == lowerSerial &&
+                    ps.ProductId == returnedProduct.Id &&
+                    ps.SalesInvoiceId == invoice.Id &&
+                    ps.Status == "Sold");
+
+                if (matchedSoldSerial == null)
+                {
+                    await transaction.RollbackAsync();
+                    return new SalesReturnOperationResult
+                    {
+                        Success = false,
+                        StatusCode = 400,
+                        ErrorCode = "ERR_SERIAL_NOT_FOUND_FOR_RETURN",
+                        Message = "ERR_SERIAL_NOT_FOUND_FOR_RETURN"
+                    };
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(requestedSerial) && !string.Equals(requestedSerial, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                var lowerSerial = requestedSerial.ToLowerInvariant();
+                var anyExistingSerial = await _context.ProductSerials.FirstOrDefaultAsync(ps => ps.SerialNumber.ToLower() == lowerSerial);
+                if (anyExistingSerial != null)
+                {
+                    if (anyExistingSerial.SalesInvoiceId != invoice.Id || anyExistingSerial.ProductId != returnedProduct.Id || anyExistingSerial.Status != "Sold")
+                    {
+                        await transaction.RollbackAsync();
+                        return new SalesReturnOperationResult
+                        {
+                            Success = false,
+                            StatusCode = 400,
+                            ErrorCode = "ERR_SERIAL_NOT_FOUND_FOR_RETURN",
+                            Message = "ERR_SERIAL_NOT_FOUND_FOR_RETURN"
+                        };
+                    }
+                    matchedSoldSerial = anyExistingSerial;
+                }
+            }
+
             var unitPrice = invoiceItem.UnitPrice;
             var totalRefund = request.ReturnQuantity * unitPrice;
-            var warrantyExpiresAt = invoice.CreatedAt.AddMonths(12);
-            var calculatedWarrantyStatus = DateTime.UtcNow <= warrantyExpiresAt ? "VALID_UNDER_WARRANTY" : "EXPIRED";
+            var warrantyMonths = matchedSoldSerial?.WarrantyMonths ?? returnedProduct.WarrantyMonths;
+            var warrantyExpiresAt = matchedSoldSerial?.WarrantyEndDate
+                ?? (warrantyMonths > 0 ? invoice.CreatedAt.AddMonths(warrantyMonths) : invoice.CreatedAt);
+            var calculatedWarrantyStatus = (warrantyMonths > 0 && DateTime.UtcNow <= warrantyExpiresAt)
+                ? "VALID_UNDER_WARRANTY"
+                : "EXPIRED";
             var effectiveActor = !string.IsNullOrWhiteSpace(actorName) ? actorName.Trim() : (invoice.CashierName ?? "System");
 
             var rmaNumber = string.IsNullOrWhiteSpace(request.RmaNumber)
@@ -219,6 +280,17 @@ public class SalesReturnService : ISalesReturnService
                     reversedPoints = await _loyaltyService.ReversePointsForReturnInTransactionAsync(
                         invoice, invoiceItem, rmaRecord, returnedUnitCost, effectiveActor);
                 }
+            }
+            else if (matchedSoldSerial != null)
+            {
+                matchedSoldSerial.Status = normalizedDecision == "SENT_TO_MAINTENANCE" ? "Defective" : "Returned";
+                matchedSoldSerial.WarehouseId = targetWarehouse.Id;
+                matchedSoldSerial.WarrantyStartDate = null;
+                matchedSoldSerial.WarrantyEndDate = null;
+                matchedSoldSerial.UpdatedAt = DateTime.UtcNow;
+                matchedSoldSerial.Notes = string.IsNullOrWhiteSpace(matchedSoldSerial.Notes)
+                    ? $"RMA {rmaRecord.RmaNumber} ({normalizedDecision})"
+                    : $"{matchedSoldSerial.Notes} | RMA {rmaRecord.RmaNumber} ({normalizedDecision})";
             }
 
             await _context.SaveChangesAsync();
@@ -479,12 +551,14 @@ public class SalesReturnService : ISalesReturnService
 
             if (serialRecord != null)
             {
-                serialRecord.Status = "InStock";
+                serialRecord.Status = "Returned";
                 serialRecord.WarehouseId = targetWarehouse.Id;
+                serialRecord.WarrantyStartDate = null;
+                serialRecord.WarrantyEndDate = null;
                 serialRecord.UpdatedAt = now;
                 serialRecord.Notes = string.IsNullOrWhiteSpace(serialRecord.Notes)
-                    ? $"تمت إعادته للمخزون بموجب مرتجع مبيعات {rmaRecord.RmaNumber}"
-                    : $"{serialRecord.Notes} | تمت إعادته للمخزون بموجب مرتجع مبيعات {rmaRecord.RmaNumber}";
+                    ? $"RMA {rmaRecord.RmaNumber}"
+                    : $"{serialRecord.Notes} | RMA {rmaRecord.RmaNumber}";
             }
         }
 

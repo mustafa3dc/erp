@@ -52,10 +52,19 @@ public class WarehouseShelvesController : ControllerBase
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NULL
-                );
-                CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
-                ALTER TABLE IF EXISTS warehouse_stock ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;
-            ");
+                );");
+            try
+            {
+                await _context.Database.ExecuteSqlRawAsync(
+                    "CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);");
+            }
+            catch { }
+            try
+            {
+                await _context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE IF EXISTS warehouse_stock ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;");
+            }
+            catch { }
             _schemaEnsured = true;
         }
         catch

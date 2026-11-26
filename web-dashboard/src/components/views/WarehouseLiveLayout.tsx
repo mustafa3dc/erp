@@ -54,13 +54,16 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   const tr = useCallback((k: string) => getTranslation(lang, `ui.warehouseRacks.${k}`), [lang]);
   const resolveShelfError = useCallback(
     (code: string) => {
-      const invMsg = getTranslation(lang, `errors.ERR.INVENTORY.${code}`, '');
-      if (invMsg) return invMsg;
-      const treasuryMsg = getTranslation(lang, `errors.ERR.TREASURY.${code}`, '');
-      if (treasuryMsg) return treasuryMsg;
-      const directMsg = getTranslation(lang, `errors.${code}`, '');
-      if (directMsg) return directMsg;
-      return getTranslation(lang, 'errors.ERR.TREASURY.ERR_SHELF_SAVE_FAILED', code);
+      const invKey = `errors.ERR.INVENTORY.${code}`;
+      const invMsg = getTranslation(lang, invKey);
+      if (invMsg && invMsg !== invKey) return invMsg;
+      const trKey = `errors.ERR.TREASURY.${code}`;
+      const trMsg = getTranslation(lang, trKey);
+      if (trMsg && trMsg !== trKey) return trMsg;
+      const directKey = `errors.${code}`;
+      const directMsg = getTranslation(lang, directKey);
+      if (directMsg && directMsg !== directKey) return directMsg;
+      return getTranslation(lang, 'errors.ERR.TREASURY.ERR_SHELF_SAVE_FAILED');
     },
     [lang]
   );

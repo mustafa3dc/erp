@@ -22,7 +22,9 @@ import {
   PackagePlus,
   Check,
   Search,
-  Unlink
+  Unlink,
+  Eye,
+  X
 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
 import { PurchaseInvoice, PurchaseInvoiceItem } from '../../types/purchases';
@@ -84,12 +86,13 @@ export default function PurchaseOcrReviewWorkspace({
   const tr = (k: string) => getTranslation(lang, `ui.purchaseOcr.${k}`);
   const { extracted, fileUrl, mimeType, fileName } = session;
 
-  // Panel 1 Viewer controls
+  // Collapsible Original Document Drawer state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
 
-  // Panel 2 Editable Form State
+  // Form State
   const suppliers = useMemo(() => getStoredSuppliers(), []);
   const treasuryAccounts = useMemo(() => getStoredTreasuryAccounts(), []);
   const nonBundleProducts = useMemo(() => products.filter(p => !p.isBundle), [products]);
@@ -147,7 +150,6 @@ export default function PurchaseOcrReviewWorkspace({
         uom: matched?.unit || it.unitOfMeasure || (isAr ? 'قطعة' : 'Piece'),
         quantity: qty,
         unitCostPrice: cost,
-        // 100% manual selling price: empty "" for new products, catalog SalePrice for matched items
         sellingPriceInput: isMatchedItem && catalogSelling > 0 ? String(catalogSelling) : '',
         lineTotal: it.lineTotal > 0 ? Number(it.lineTotal) : Number((qty * cost).toFixed(4)),
         matchConfidence: isMatchedItem ? (it.matchConfidence || 'High') : 'None',
@@ -226,7 +228,7 @@ export default function PurchaseOcrReviewWorkspace({
     });
   };
 
-  const handleUnlinkProduct = (rowIdx: number) => {
+  const handleUnlinkToSearch = (rowIdx: number) => {
     setItems(prev =>
       prev.map((row, i) => {
         if (i !== rowIdx) return row;
@@ -241,27 +243,27 @@ export default function PurchaseOcrReviewWorkspace({
           matchConfidence: 'None',
           warehouseStock: 0,
           searchQuery: '',
-          isSearchOpen: false
+          isSearchOpen: true
         };
       })
     );
   };
 
-  const handleToggleCreateNewProduct = (rowIdx: number) => {
+  const handleSwitchRowMode = (rowIdx: number, toNewItem: boolean) => {
     setItems(prev =>
       prev.map((row, i) => {
         if (i !== rowIdx) return row;
-        const nextIsNew = !row.isNewProduct;
         return {
           ...row,
-          isNewProduct: nextIsNew,
+          isNewProduct: toNewItem,
           matchedProductId: null,
-          name: nextIsNew ? (row.name.trim() || row.rawItemName) : row.rawItemName,
-          sku: nextIsNew
+          name: toNewItem ? (row.name.trim() || row.rawItemName) : row.rawItemName,
+          sku: toNewItem
             ? (row.sku.trim() || row.rawBarcodeOrSku || `SKU-${Date.now().toString().slice(-4)}-${i + 1}`)
             : row.sku,
-          sellingPriceInput: nextIsNew ? '' : row.sellingPriceInput,
-          isSearchOpen: false
+          sellingPriceInput: '',
+          searchQuery: '',
+          isSearchOpen: !toNewItem
         };
       })
     );
@@ -487,7 +489,7 @@ export default function PurchaseOcrReviewWorkspace({
   };
 
   return (
-    <div className="w-full px-4 sm:px-6 py-4 space-y-4 fade-in" dir={isAr ? 'rtl' : 'ltr'}>
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-4 space-y-4 fade-in" dir={isAr ? 'rtl' : 'ltr'}>
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
         <div className="flex items-center gap-3">
@@ -512,6 +514,20 @@ export default function PurchaseOcrReviewWorkspace({
             </div>
           </div>
         </div>
+
+        {/* Collapsible Original Bill Preview Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsPreviewOpen(prev => !prev)}
+          className={`h-9 px-3.5 rounded-xl border text-xs font-bold inline-flex items-center gap-2 transition-colors cursor-pointer ${
+            isPreviewOpen
+              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+              : 'border-primary/30 bg-primary/10 hover:bg-primary/15 text-primary'
+          }`}
+        >
+          <Eye className="w-4 h-4" />
+          <span>{isPreviewOpen ? tr('hideOriginalBillBtn') : tr('previewOriginalBillBtn')}</span>
+        </button>
       </div>
 
       {errorMessage && (
@@ -521,271 +537,498 @@ export default function PurchaseOcrReviewWorkspace({
         </div>
       )}
 
-      {/* Side-by-Side Split Screen */}
-      <form onSubmit={handleConfirmAndPost} className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-        {/* PANEL 1: Original Invoice Viewer (5 cols on XL) */}
-        <div className="xl:col-span-5 bg-card border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col xl:sticky xl:top-4">
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-              <FileText className="w-4 h-4 text-primary" />
-              <span className="truncate max-w-[190px]">{tr('originalViewerTitle')}</span>
+      {/* Full-Width Form & Spacious Table */}
+      <form onSubmit={handleConfirmAndPost} className="space-y-4">
+        {/* Header & Supplier Card */}
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+            <span className="text-xs font-bold text-foreground">{tr('editableFormTitle')}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+              extracted.matchedSupplierId && !createNewSupplier
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+            }`}>
+              {extracted.matchedSupplierId && !createNewSupplier ? tr('supplierMatchedBadge') : tr('supplierNewBadge')}
+            </span>
+          </div>
+
+          {/* Supplier Mode Switch */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-primary" />
+                <span>{tr('supplierSectionLabel')}</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setCreateNewSupplier(prev => !prev)}
+                className="text-xs font-bold text-primary hover:underline cursor-pointer"
+              >
+                {createNewSupplier ? tr('selectExistingSupplierOption') : tr('createNewSupplierToggle')}
+              </button>
             </div>
 
-            {!isPdf && (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
-                  title={tr('zoomOutBtn')}
-                  className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <span className="px-1.5 text-[11px] font-mono tabular-nums text-muted-foreground">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setZoom(z => Math.min(3, Number((z + 0.25).toFixed(2))))}
-                  title={tr('zoomInBtn')}
-                  className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRotation(r => (r + 90) % 360)}
-                  title={tr('rotateBtn')}
-                  className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setZoom(1);
-                    setRotation(0);
-                  }}
-                  title={tr('resetViewBtn')}
-                  className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
+            {createNewSupplier ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <input
+                  type="text"
+                  value={newSupplierName}
+                  onChange={(e) => setNewSupplierName(e.target.value)}
+                  placeholder={tr('newSupplierNamePlaceholder')}
+                  dir="auto"
+                  className="h-9 px-3 rounded-lg border border-amber-500/40 bg-background text-xs font-semibold text-foreground"
+                />
+                <input
+                  type="text"
+                  value={newSupplierPhone}
+                  onChange={(e) => setNewSupplierPhone(e.target.value)}
+                  placeholder={tr('newSupplierPhonePlaceholder')}
+                  dir="ltr"
+                  className="h-9 px-3 rounded-lg border border-border bg-background text-xs font-mono text-foreground"
+                />
               </div>
+            ) : (
+              <select
+                value={selectedSupplierId}
+                onChange={(e) => setSelectedSupplierId(e.target.value)}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
+              >
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.company}</option>
+                ))}
+              </select>
             )}
           </div>
 
-          <div className="h-[540px] bg-slate-950/5 dark:bg-slate-950/60 overflow-auto flex items-center justify-center p-4">
-            {isPdf ? (
-              <iframe src={fileUrl} title={fileName} className="w-full h-full rounded-lg border border-border" />
-            ) : (
-              <img
-                src={fileUrl}
-                alt={fileName}
-                style={{
-                  transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                  transformOrigin: 'center center',
-                  transition: 'transform 0.18s ease'
-                }}
-                className="max-w-full max-h-full object-contain rounded-lg shadow-md select-none"
+          {/* Purchase Header Metadata Grid (Clean, Discount moved to bottom summary) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {tr('supplierInvoiceNoLabel')} *
+              </label>
+              <input
+                type="text"
+                required
+                value={supplierInvoiceNumber}
+                onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                dir="ltr"
+                className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-foreground"
               />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                <span>{tr('invoiceDateLabel')}</span>
+              </label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                dir="ltr"
+                className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono text-foreground"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <WarehouseIcon className="w-3 h-3" />
+                <span>{tr('targetWarehouseLabel')}</span>
+              </label>
+              <select
+                value={targetWarehouseId}
+                onChange={(e) => setTargetWarehouseId(e.target.value)}
+                className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
+              >
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{isAr ? w.nameAr : (w.nameEn || w.nameAr)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <Coins className="w-3 h-3" />
+                <span>{tr('currencyLabel')}</span>
+              </label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value === 'USD' ? 'USD' : 'IQD')}
+                className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-bold font-mono text-foreground"
+              >
+                <option value="IQD">IQD</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {tr('paymentMethodLabel')}
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handlePaymentMethodChange('cash')}
+                  className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
+                    paymentMethod === 'cash'
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                      : 'border-border bg-background text-muted-foreground'
+                  }`}
+                >
+                  <Banknote className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{tr('paymentCashSafe')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePaymentMethodChange('credit')}
+                  className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
+                    paymentMethod === 'credit'
+                      ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                      : 'border-border bg-background text-muted-foreground'
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{tr('paymentCreditSupplier')}</span>
+                </button>
+              </div>
+            </div>
+
+            {paymentMethod === 'cash' && (
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                  {tr('treasurySafeLabel')}
+                </label>
+                <select
+                  value={treasuryAccountId}
+                  onChange={(e) => setTreasuryAccountId(e.target.value)}
+                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
+                >
+                  {treasuryAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {isAr ? (acc.nameAr || acc.name) : (acc.nameEn || acc.name)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
         </div>
 
-        {/* PANEL 2: Editable Pre-Filled Purchase Form (7 cols on XL) */}
-        <div className="xl:col-span-7 space-y-4">
-          {/* Header & Supplier Card */}
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-              <span className="text-xs font-bold text-foreground">{tr('editableFormTitle')}</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                extracted.matchedSupplierId && !createNewSupplier
-                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                  : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-              }`}>
-                {extracted.matchedSupplierId && !createNewSupplier ? tr('supplierMatchedBadge') : tr('supplierNewBadge')}
-              </span>
-            </div>
+        {/* Full-Width Spacious Line Items Table (5 Clean Columns) */}
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold text-foreground m-0">{tr('itemsTableTitle')}</h3>
+            <button
+              type="button"
+              onClick={handleAddEmptyRow}
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted text-[11px] font-bold text-foreground cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{tr('addLineBtn')}</span>
+            </button>
+          </div>
 
-            {/* Supplier Mode Switch */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-primary" />
-                  <span>{tr('supplierSectionLabel')}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setCreateNewSupplier(prev => !prev)}
-                  className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                >
-                  {createNewSupplier ? tr('selectExistingSupplierOption') : tr('createNewSupplierToggle')}
-                </button>
-              </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="py-2.5 px-3 text-start font-bold">{tr('colItem')}</th>
+                  <th className="py-2.5 px-2 text-center font-bold w-24">{tr('colQuantity')}</th>
+                  <th className="py-2.5 px-2 text-center font-bold w-32">{tr('colUnitCost')}</th>
+                  <th className="py-2.5 px-2 text-center font-bold w-48">{tr('sellingPriceLabel')}</th>
+                  <th className="py-2.5 px-3 text-end font-bold w-36">{tr('colLineTotal')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {items.map((row, idx) => {
+                  const isMatched = Boolean(row.matchedProductId && !row.isNewProduct);
+                  const parsedSelling = parsePositiveSellingPrice(row.sellingPriceInput);
+                  const sellingInvalid = (row.isNewProduct || isMatched) && (
+                    parsedSelling === null && (hasAttemptedSubmit || (row.isNewProduct && row.sellingPriceInput.trim() !== ''))
+                  );
+                  const hasLiveMargin = parsedSelling !== null && row.unitCostPrice > 0;
+                  const marginPct = hasLiveMargin
+                    ? ((parsedSelling! - row.unitCostPrice) / row.unitCostPrice) * 100
+                    : 0;
+                  const isLowOrNegativeMargin = parsedSelling !== null && parsedSelling <= row.unitCostPrice;
 
-              {createNewSupplier ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <input
-                    type="text"
-                    value={newSupplierName}
-                    onChange={(e) => setNewSupplierName(e.target.value)}
-                    placeholder={tr('newSupplierNamePlaceholder')}
-                    dir="auto"
-                    className="h-9 px-3 rounded-lg border border-amber-500/40 bg-background text-xs font-semibold text-foreground"
-                  />
-                  <input
-                    type="text"
-                    value={newSupplierPhone}
-                    onChange={(e) => setNewSupplierPhone(e.target.value)}
-                    placeholder={tr('newSupplierPhonePlaceholder')}
-                    dir="ltr"
-                    className="h-9 px-3 rounded-lg border border-border bg-background text-xs font-mono text-foreground"
-                  />
+                  const q = row.searchQuery.trim().toLowerCase();
+                  const filteredCatalog = q
+                    ? nonBundleProducts.filter(p =>
+                        p.nameAr.toLowerCase().includes(q) ||
+                        (p.nameEn && p.nameEn.toLowerCase().includes(q)) ||
+                        p.sku.toLowerCase().includes(q) ||
+                        (p.barcode && p.barcode.toLowerCase().includes(q))
+                      ).slice(0, 25)
+                    : nonBundleProducts.slice(0, 25);
+
+                  return (
+                    <tr key={row.id} className="align-middle hover:bg-muted/20">
+                      {/* Column 1: Item */}
+                      <td className="py-3 px-3 min-w-[340px]">
+                        {isMatched ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                                <Check className="w-3 h-3" />
+                                <span>{tr('badgeMatched')}</span>
+                              </span>
+                              <span className="text-xs font-bold text-foreground">
+                                <bdi dir="auto">{row.name}</bdi>
+                              </span>
+                              <span className="text-[11px] font-mono text-muted-foreground" dir="ltr">
+                                ({row.sku})
+                              </span>
+                              <span className="text-[10.5px] text-muted-foreground font-mono tabular-nums">
+                                • {tr('currentStockHint').replace('{qty}', row.warehouseStock.toLocaleString('en-US'))}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUnlinkToSearch(idx)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-card hover:bg-muted text-[10.5px] font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+                              >
+                                <Unlink className="w-3 h-3" />
+                                <span>{tr('changeItemBtn')}</span>
+                              </button>
+                            </div>
+                            {row.rawItemName.trim() && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold">{tr('inBillPrefix')}</span>
+                                <bdi dir="auto">{row.rawItemName}</bdi>
+                                {row.rawBarcodeOrSku && (
+                                  <span dir="ltr" className="font-mono text-[10px]">({row.rawBarcodeOrSku})</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : row.isNewProduct ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                                <PackagePlus className="w-3 h-3" />
+                                <span>{tr('badgeNewItem')}</span>
+                              </span>
+                              <input
+                                type="text"
+                                value={row.name}
+                                onChange={(e) => updateItem(idx, { name: e.target.value })}
+                                placeholder={tr('newProductNamePlaceholder')}
+                                dir="auto"
+                                className={`flex-1 min-w-[160px] h-8 px-2.5 rounded-lg border bg-background text-xs font-semibold text-foreground ${
+                                  hasAttemptedSubmit && !row.name.trim() ? 'border-destructive' : 'border-border'
+                                }`}
+                              />
+                              <input
+                                type="text"
+                                value={row.sku}
+                                onChange={(e) => updateItem(idx, { sku: e.target.value })}
+                                placeholder={tr('barcodeSkuPlaceholder')}
+                                dir="ltr"
+                                className={`w-28 h-8 px-2 rounded-lg border bg-background text-[11px] font-mono text-foreground shrink-0 ${
+                                  hasAttemptedSubmit && !row.sku.trim() ? 'border-destructive' : 'border-border'
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSwitchRowMode(idx, false)}
+                                className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap cursor-pointer shrink-0"
+                              >
+                                {tr('orLinkExistingLink')}
+                              </button>
+                            </div>
+                            {row.rawItemName.trim() && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold">{tr('inBillPrefix')}</span>
+                                <bdi dir="auto">{row.rawItemName}</bdi>
+                                {row.rawBarcodeOrSku && (
+                                  <span dir="ltr" className="font-mono text-[10px]">({row.rawBarcodeOrSku})</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Linking Mode: Inline Searchable Product Picker */
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 shrink-0">
+                                <Search className="w-3 h-3" />
+                                <span>{tr('badgeUnmatched')}</span>
+                              </span>
+                              <div className="relative flex-1 min-w-[190px]">
+                                <Search className="w-3.5 h-3.5 text-muted-foreground absolute top-1/2 -translate-y-1/2 start-2.5 pointer-events-none" />
+                                <input
+                                  type="text"
+                                  value={row.searchQuery}
+                                  onFocus={() => updateItem(idx, { isSearchOpen: true })}
+                                  onBlur={() => setTimeout(() => updateItem(idx, { isSearchOpen: false }), 150)}
+                                  onChange={(e) => updateItem(idx, { searchQuery: e.target.value, isSearchOpen: true })}
+                                  placeholder={tr('searchProductPlaceholder')}
+                                  dir="auto"
+                                  className="w-full h-8 ps-7 pe-2.5 rounded-lg border border-primary/50 bg-background text-xs font-medium text-foreground"
+                                />
+                                {row.isSearchOpen && (
+                                  <div className="absolute z-30 top-full mt-1 inset-x-0 max-h-48 overflow-y-auto rounded-xl border border-border bg-card shadow-xl divide-y divide-border/40">
+                                    {filteredCatalog.length > 0 ? (
+                                      filteredCatalog.map(prod => (
+                                        <button
+                                          key={prod.id}
+                                          type="button"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            handleSelectCatalogProduct(idx, prod);
+                                          }}
+                                          className="w-full px-3 py-2 text-start hover:bg-muted/70 flex items-center justify-between gap-2 cursor-pointer"
+                                        >
+                                          <span className="text-xs font-semibold text-foreground truncate">
+                                            <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
+                                          </span>
+                                          <span className="text-[11px] font-mono text-muted-foreground shrink-0" dir="ltr">
+                                            {prod.sku}
+                                          </span>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <div className="px-3 py-2.5 text-xs text-muted-foreground text-center">
+                                        {tr('noMatchingProducts')}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleSwitchRowMode(idx, true)}
+                                className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap cursor-pointer shrink-0"
+                              >
+                                {tr('orCreateNewLink')}
+                              </button>
+                            </div>
+                            {row.rawItemName.trim() && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold">{tr('inBillPrefix')}</span>
+                                <bdi dir="auto">{row.rawItemName}</bdi>
+                                {row.rawBarcodeOrSku && (
+                                  <span dir="ltr" className="font-mono text-[10px]">({row.rawBarcodeOrSku})</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Column 2: Quantity */}
+                      <td className="py-3 px-2">
+                        <input
+                          type="number"
+                          min={0.0001}
+                          step="0.0001"
+                          value={row.quantity}
+                          onChange={(e) => updateItem(idx, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })}
+                          dir="ltr"
+                          className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-center text-foreground"
+                        />
+                      </td>
+
+                      {/* Column 3: Unit Cost Price */}
+                      <td className="py-3 px-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.0001"
+                          value={row.unitCostPrice}
+                          onChange={(e) => updateItem(idx, { unitCostPrice: Math.max(0, parseFloat(e.target.value) || 0) })}
+                          dir="ltr"
+                          className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-center text-foreground"
+                        />
+                      </td>
+
+                      {/* Column 4: Always-Active Manual Selling Price + Live Margin Badge */}
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.0001"
+                            value={row.sellingPriceInput}
+                            onChange={(e) => updateItem(idx, { sellingPriceInput: e.target.value })}
+                            placeholder={tr('sellingPriceLabel')}
+                            dir="ltr"
+                            className={`w-full min-w-[90px] h-8 px-2 rounded-lg border bg-background text-xs font-mono tabular-nums text-center text-foreground ${
+                              sellingInvalid
+                                ? 'border-destructive ring-1 ring-destructive/30'
+                                : isLowOrNegativeMargin
+                                ? 'border-amber-500'
+                                : 'border-border'
+                            }`}
+                          />
+                          {parsedSelling !== null && (
+                            <span
+                              title={isLowOrNegativeMargin ? tr('lowMarginWarning') : tr('marginLabel')}
+                              className={`shrink-0 text-[10.5px] font-mono tabular-nums font-bold px-1.5 py-1 rounded-md border ${
+                                isLowOrNegativeMargin
+                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
+                              }`}
+                              dir="ltr"
+                            >
+                              {hasLiveMargin
+                                ? `${marginPct > 0 ? '+' : ''}${marginPct.toFixed(0)}%`
+                                : '—'}
+                            </span>
+                          )}
+                        </div>
+                        {sellingInvalid && (
+                          <div className="text-[10px] font-semibold text-destructive mt-0.5 leading-tight">
+                            {tr('sellingPriceRequiredHint')}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Column 5: Line Total + Subtle Delete Icon */}
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.0001"
+                            value={row.lineTotal}
+                            onChange={(e) => updateItem(idx, { lineTotal: Math.max(0, parseFloat(e.target.value) || 0) })}
+                            dir="ltr"
+                            className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono font-bold tabular-nums text-end text-foreground"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
+                            disabled={items.length <= 1}
+                            className="p-1.5 rounded-lg text-destructive/70 hover:text-destructive hover:bg-destructive/10 disabled:opacity-30 cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Sticky Bottom Totals Summary (with Invoice Discount inside) & Action Bar */}
+        <div className="sticky bottom-3 z-20 bg-card/95 backdrop-blur-md border border-border rounded-2xl p-4 shadow-lg">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            {/* Totals: Subtotal -> Invoice Discount -> Grand Total */}
+            <div className="flex flex-wrap items-end gap-5 text-xs">
+              <div>
+                <span className="text-muted-foreground block text-[11px] mb-1">{tr('subtotalLabel')}</span>
+                <div className="h-9 flex items-center">
+                  <strong className="font-mono tabular-nums text-foreground text-sm" dir="ltr">
+                    {formatAmount(subtotal)}
+                  </strong>
                 </div>
-              ) : (
-                <select
-                  value={selectedSupplierId}
-                  onChange={(e) => setSelectedSupplierId(e.target.value)}
-                  className="w-full h-9 px-3 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
-                >
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.company}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Purchase Header Metadata Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                  {tr('supplierInvoiceNoLabel')} *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={supplierInvoiceNumber}
-                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                  dir="ltr"
-                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-foreground"
-                />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  <span>{tr('invoiceDateLabel')}</span>
-                </label>
-                <input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  dir="ltr"
-                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono text-foreground"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <WarehouseIcon className="w-3 h-3" />
-                  <span>{tr('targetWarehouseLabel')}</span>
-                </label>
-                <select
-                  value={targetWarehouseId}
-                  onChange={(e) => setTargetWarehouseId(e.target.value)}
-                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
-                >
-                  {warehouses.map(w => (
-                    <option key={w.id} value={w.id}>{isAr ? w.nameAr : (w.nameEn || w.nameAr)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                  <Coins className="w-3 h-3" />
-                  <span>{tr('currencyLabel')}</span>
-                </label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value === 'USD' ? 'USD' : 'IQD')}
-                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-bold font-mono text-foreground"
-                >
-                  <option value="IQD">IQD</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                  {tr('paymentMethodLabel')}
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handlePaymentMethodChange('cash')}
-                    className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
-                      paymentMethod === 'cash'
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                        : 'border-border bg-background text-muted-foreground'
-                    }`}
-                  >
-                    <Banknote className="w-3.5 h-3.5" />
-                    <span className="truncate">{tr('paymentCashSafe')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePaymentMethodChange('credit')}
-                    className={`h-9 px-2 rounded-lg border text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer ${
-                      paymentMethod === 'credit'
-                        ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400'
-                        : 'border-border bg-background text-muted-foreground'
-                    }`}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span className="truncate">{tr('paymentCreditSupplier')}</span>
-                  </button>
-                </div>
-              </div>
-
-              {paymentMethod === 'cash' ? (
-                <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                    {tr('treasurySafeLabel')}
-                  </label>
-                  <select
-                    value={treasuryAccountId}
-                    onChange={(e) => setTreasuryAccountId(e.target.value)}
-                    className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold text-foreground"
-                  >
-                    {treasuryAccounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>
-                        {isAr ? (acc.nameAr || acc.name) : (acc.nameEn || acc.name)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                    {tr('invoiceDiscountLabel')} ({currencyDisplay})
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.0001"
-                    value={invoiceDiscount}
-                    onChange={(e) => setInvoiceDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                    dir="ltr"
-                    className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-foreground"
-                  />
-                </div>
-              )}
-            </div>
-
-            {paymentMethod === 'cash' && (
-              <div className="max-w-[210px]">
+              <div className="w-36">
                 <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
                   {tr('invoiceDiscountLabel')} ({currencyDisplay})
                 </label>
@@ -799,361 +1042,35 @@ export default function PurchaseOcrReviewWorkspace({
                   className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-foreground"
                 />
               </div>
-            )}
-          </div>
 
-          {/* Editable Line Items Table */}
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-bold text-foreground m-0">{tr('itemsTableTitle')}</h3>
-              <button
-                type="button"
-                onClick={handleAddEmptyRow}
-                className="inline-flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted text-[11px] font-bold text-foreground cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{tr('addLineBtn')}</span>
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-2 px-2 text-start font-bold">{tr('colItemAndMatch')}</th>
-                    <th className="py-2 px-2 text-center font-bold w-20">{tr('colQuantity')}</th>
-                    <th className="py-2 px-2 text-center font-bold w-24">{tr('colUnitCost')}</th>
-                    <th className="py-2 px-2 text-center font-bold w-32">{tr('sellingPriceLabel')}</th>
-                    <th className="py-2 px-2 text-end font-bold w-24">{tr('colLineTotal')}</th>
-                    <th className="py-2 px-1 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {items.map((row, idx) => {
-                    const isMatched = Boolean(row.matchedProductId && !row.isNewProduct);
-                    const parsedSelling = parsePositiveSellingPrice(row.sellingPriceInput);
-                    const sellingInvalid = (row.isNewProduct || isMatched) && (
-                      parsedSelling === null && (hasAttemptedSubmit || (row.isNewProduct && row.sellingPriceInput.trim() !== ''))
-                    );
-                    const hasLiveMargin = parsedSelling !== null && row.unitCostPrice > 0;
-                    const marginPct = hasLiveMargin
-                      ? ((parsedSelling! - row.unitCostPrice) / row.unitCostPrice) * 100
-                      : 0;
-                    const isLowOrNegativeMargin = parsedSelling !== null && parsedSelling <= row.unitCostPrice;
-
-                    const q = row.searchQuery.trim().toLowerCase();
-                    const filteredCatalog = q
-                      ? nonBundleProducts.filter(p =>
-                          p.nameAr.toLowerCase().includes(q) ||
-                          (p.nameEn && p.nameEn.toLowerCase().includes(q)) ||
-                          p.sku.toLowerCase().includes(q) ||
-                          (p.barcode && p.barcode.toLowerCase().includes(q))
-                        ).slice(0, 25)
-                      : nonBundleProducts.slice(0, 25);
-
-                    return (
-                      <tr key={row.id} className="align-top hover:bg-muted/20">
-                        <td className="py-3 px-2 space-y-2 min-w-[250px]">
-                          {/* Status Badge + Stock or New Hint */}
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              isMatched
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
-                            }`}>
-                              {isMatched ? <Check className="w-3 h-3" /> : <PackagePlus className="w-3 h-3" />}
-                              <span>{isMatched ? tr('badgeMatched') : tr('badgeUnmatched')}</span>
-                            </span>
-
-                            {isMatched ? (
-                              <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-                                {tr('currentStockHint').replace('{qty}', row.warehouseStock.toLocaleString('en-US'))}
-                              </span>
-                            ) : row.isNewProduct ? (
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                                {tr('newProductCreatedHint')}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {/* Always-Preserved Original Scanned Invoice Subtitle */}
-                          {row.rawItemName.trim() && (
-                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap bg-muted/40 px-2 py-1 rounded-md border border-border/40">
-                              <span className="font-semibold shrink-0">{tr('originalInvoicePrefix')}</span>
-                              <bdi dir="auto" className="text-foreground/85 font-medium">{row.rawItemName}</bdi>
-                              {row.rawBarcodeOrSku && (
-                                <span dir="ltr" className="font-mono text-[10px] text-muted-foreground">
-                                  ({row.rawBarcodeOrSku})
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          {isMatched ? (
-                            /* Matched Row: Read-Only Catalog Identity + Change/Unlink Button */
-                            <div className="flex items-center justify-between gap-2 p-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5">
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-foreground truncate">
-                                  <bdi dir="auto">{row.name}</bdi>
-                                </div>
-                                <div className="text-[10.5px] font-mono text-muted-foreground mt-0.5" dir="ltr">
-                                  {row.sku}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleUnlinkProduct(idx)}
-                                className="shrink-0 h-7 px-2 rounded-md border border-border bg-card hover:bg-muted text-[10.5px] font-bold text-muted-foreground hover:text-foreground inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <Unlink className="w-3 h-3" />
-                                <span>{tr('unlinkOrChangeBtn')}</span>
-                              </button>
-                            </div>
-                          ) : (
-                            /* Unmatched Row: Inline Searchable Selector + Create as New Product Toggle */
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-1.5">
-                                <div className="relative flex-1">
-                                  <Search className="w-3.5 h-3.5 text-muted-foreground absolute top-1/2 -translate-y-1/2 start-2.5 pointer-events-none" />
-                                  <input
-                                    type="text"
-                                    value={row.searchQuery}
-                                    onFocus={() => updateItem(idx, { isSearchOpen: true })}
-                                    onBlur={() => setTimeout(() => updateItem(idx, { isSearchOpen: false }), 150)}
-                                    onChange={(e) => updateItem(idx, { searchQuery: e.target.value, isSearchOpen: true })}
-                                    placeholder={tr('searchProductPlaceholder')}
-                                    dir="auto"
-                                    className="w-full h-8 ps-7 pe-2 rounded-lg border border-border bg-background text-[11px] font-medium text-foreground"
-                                  />
-                                  {row.isSearchOpen && (
-                                    <div className="absolute z-30 top-full mt-1 inset-x-0 max-h-44 overflow-y-auto rounded-xl border border-border bg-card shadow-xl divide-y divide-border/40">
-                                      {filteredCatalog.length > 0 ? (
-                                        filteredCatalog.map(prod => (
-                                          <button
-                                            key={prod.id}
-                                            type="button"
-                                            onMouseDown={(e) => {
-                                              e.preventDefault();
-                                              handleSelectCatalogProduct(idx, prod);
-                                            }}
-                                            className="w-full px-2.5 py-1.5 text-start hover:bg-muted/70 flex items-center justify-between gap-2 cursor-pointer"
-                                          >
-                                            <span className="text-[11px] font-semibold text-foreground truncate">
-                                              <bdi dir="auto">{isAr ? prod.nameAr : (prod.nameEn || prod.nameAr)}</bdi>
-                                            </span>
-                                            <span className="text-[10px] font-mono text-muted-foreground shrink-0" dir="ltr">
-                                              {prod.sku}
-                                            </span>
-                                          </button>
-                                        ))
-                                      ) : (
-                                        <div className="px-2.5 py-2 text-[11px] text-muted-foreground text-center">
-                                          {tr('noMatchingProducts')}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleCreateNewProduct(idx)}
-                                  className={`h-8 px-2.5 rounded-lg border text-[10.5px] font-bold whitespace-nowrap cursor-pointer ${
-                                    row.isNewProduct
-                                      ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
-                                  }`}
-                                >
-                                  {tr('createAsNewProductToggle')}
-                                </button>
-                              </div>
-
-                              {row.isNewProduct && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
-                                  <div>
-                                    <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">
-                                      {tr('newProductNameLabel')} *
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={row.name}
-                                      onChange={(e) => updateItem(idx, { name: e.target.value })}
-                                      placeholder={tr('newProductNamePlaceholder')}
-                                      dir="auto"
-                                      className={`w-full h-8 px-2 rounded-lg border bg-background text-xs font-semibold text-foreground ${
-                                        hasAttemptedSubmit && !row.name.trim() ? 'border-destructive' : 'border-border/80'
-                                      }`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">
-                                      {tr('barcodeSkuPlaceholder')} *
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={row.sku}
-                                      onChange={(e) => updateItem(idx, { sku: e.target.value })}
-                                      placeholder={tr('barcodeSkuPlaceholder')}
-                                      dir="ltr"
-                                      className={`w-full h-8 px-2 rounded-lg border bg-background text-[11px] font-mono text-foreground ${
-                                        hasAttemptedSubmit && !row.sku.trim() ? 'border-destructive' : 'border-border/80'
-                                      }`}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Quantity */}
-                        <td className="py-3 px-2">
-                          <input
-                            type="number"
-                            min={0.0001}
-                            step="0.0001"
-                            value={row.quantity}
-                            onChange={(e) => updateItem(idx, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })}
-                            dir="ltr"
-                            className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-center text-foreground"
-                          />
-                        </td>
-
-                        {/* Unit Cost */}
-                        <td className="py-3 px-2">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.0001"
-                            value={row.unitCostPrice}
-                            onChange={(e) => updateItem(idx, { unitCostPrice: Math.max(0, parseFloat(e.target.value) || 0) })}
-                            dir="ltr"
-                            className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono tabular-nums text-center text-foreground"
-                          />
-                        </td>
-
-                        {/* Manual Selling Price + Live Read-Only Margin Badge */}
-                        <td className="py-3 px-2">
-                          <div className="space-y-1">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.0001"
-                              disabled={!isMatched && !row.isNewProduct}
-                              value={row.sellingPriceInput}
-                              onChange={(e) => updateItem(idx, { sellingPriceInput: e.target.value })}
-                              placeholder={row.isNewProduct ? '0' : tr('sellingPriceLabel')}
-                              dir="ltr"
-                              className={`w-full h-8 px-2 rounded-lg border bg-background text-xs font-mono tabular-nums text-center text-foreground disabled:opacity-40 ${
-                                sellingInvalid
-                                  ? 'border-destructive ring-1 ring-destructive/30'
-                                  : isLowOrNegativeMargin
-                                  ? 'border-amber-500'
-                                  : 'border-border'
-                              }`}
-                            />
-
-                            {sellingInvalid ? (
-                              <div className="text-[10px] font-semibold text-destructive text-center leading-tight">
-                                {tr('sellingPriceRequiredHint')}
-                              </div>
-                            ) : parsedSelling !== null ? (
-                              <div
-                                title={isLowOrNegativeMargin ? tr('lowMarginWarning') : tr('marginLabel')}
-                                className={`text-[10px] font-mono tabular-nums font-bold px-1.5 py-0.5 rounded border text-center ${
-                                  isLowOrNegativeMargin
-                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
-                                }`}
-                                dir="ltr"
-                              >
-                                {hasLiveMargin
-                                  ? `${marginPct > 0 ? '+' : ''}${marginPct.toFixed(1)}%`
-                                  : '—'}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-
-                        {/* Line Total */}
-                        <td className="py-3 px-2">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.0001"
-                            value={row.lineTotal}
-                            onChange={(e) => updateItem(idx, { lineTotal: Math.max(0, parseFloat(e.target.value) || 0) })}
-                            dir="ltr"
-                            className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-mono font-bold tabular-nums text-end text-foreground"
-                          />
-                        </td>
-
-                        {/* Delete Row */}
-                        <td className="py-3 px-1">
-                          <button
-                            type="button"
-                            onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}
-                            disabled={items.length <= 1}
-                            className="p-1.5 rounded-lg text-destructive/70 hover:text-destructive disabled:opacity-30 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Sticky Footer Summary & Confirmation Action Bar */}
-          <div className="sticky bottom-3 z-20 bg-card/95 backdrop-blur-md border border-border rounded-2xl p-4 shadow-lg space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              {/* Totals Breakdown */}
-              <div className="flex flex-wrap items-center gap-5 text-xs">
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">{tr('subtotalLabel')}</span>
-                  <strong className="font-mono tabular-nums text-foreground text-sm" dir="ltr">
-                    {formatAmount(subtotal)}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">{tr('invoiceDiscountLabel')}</span>
-                  <strong className="font-mono tabular-nums text-amber-600 dark:text-amber-400 text-sm" dir="ltr">
-                    {invoiceDiscount > 0 ? `-${formatAmount(invoiceDiscount)}` : formatAmount(0)}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">{tr('netTotalLabel')}</span>
+              <div>
+                <span className="text-muted-foreground block text-[11px] mb-1">{tr('netTotalLabel')}</span>
+                <div className="h-9 flex items-center">
                   <strong className="font-mono font-black tabular-nums text-primary text-base" dir="ltr">
                     {formatAmount(netTotal)}
                   </strong>
                 </div>
               </div>
 
-              {/* Paid Amount + Balance Due */}
-              <div className="flex items-end gap-3 flex-wrap">
-                <div className="w-40">
-                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                    {tr('paidAmountLabel')} ({currencyDisplay})
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={netTotal}
-                    step="0.0001"
-                    value={paidAmountInput}
-                    onChange={(e) => setPaidAmountInput(e.target.value)}
-                    dir="ltr"
-                    className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono font-bold tabular-nums text-foreground"
-                  />
-                </div>
+              <div className="w-36">
+                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                  {tr('paidAmountLabel')} ({currencyDisplay})
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={netTotal}
+                  step="0.0001"
+                  value={paidAmountInput}
+                  onChange={(e) => setPaidAmountInput(e.target.value)}
+                  dir="ltr"
+                  className="w-full h-9 px-2.5 rounded-lg border border-border bg-background text-xs font-mono font-bold tabular-nums text-foreground"
+                />
+              </div>
 
-                <div className="pb-1 text-xs">
-                  <span className="text-muted-foreground block text-[10.5px]">{tr('balanceDueLabel')}</span>
+              <div>
+                <span className="text-muted-foreground block text-[11px] mb-1">{tr('balanceDueLabel')}</span>
+                <div className="h-9 flex items-center">
                   <strong
                     className={`font-mono tabular-nums text-xs ${
                       balanceDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
@@ -1166,8 +1083,8 @@ export default function PurchaseOcrReviewWorkspace({
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="pt-2.5 border-t border-border/60 flex items-center justify-end gap-2.5">
+            {/* Primary Actions */}
+            <div className="flex items-center gap-2.5 ms-auto">
               <button
                 type="button"
                 onClick={onCancel}
@@ -1188,6 +1105,97 @@ export default function PurchaseOcrReviewWorkspace({
           </div>
         </div>
       </form>
+
+      {/* Collapsible Side Drawer / Floating Viewer for Original Bill */}
+      {isPreviewOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-[2px] animate-in fade-in duration-150"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl h-full bg-card border-s border-border shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                <FileText className="w-4 h-4 text-primary" />
+                <span className="truncate max-w-[200px]">{tr('originalViewerTitle')}</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {!isPdf && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.25).toFixed(2))))}
+                      title={tr('zoomOutBtn')}
+                      className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="px-1.5 text-[11px] font-mono tabular-nums text-muted-foreground">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setZoom(z => Math.min(3, Number((z + 0.25).toFixed(2))))}
+                      title={tr('zoomInBtn')}
+                      className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRotation(r => (r + 90) % 360)}
+                      title={tr('rotateBtn')}
+                      className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZoom(1);
+                        setRotation(0);
+                      }}
+                      title={tr('resetViewBtn')}
+                      className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  title={tr('hideOriginalBillBtn')}
+                  className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-slate-950/5 dark:bg-slate-950/60 overflow-auto flex items-center justify-center p-4">
+              {isPdf ? (
+                <iframe src={fileUrl} title={fileName} className="w-full h-full rounded-lg border border-border" />
+              ) : (
+                <img
+                  src={fileUrl}
+                  alt={fileName}
+                  style={{
+                    transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.18s ease'
+                  }}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-md select-none"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

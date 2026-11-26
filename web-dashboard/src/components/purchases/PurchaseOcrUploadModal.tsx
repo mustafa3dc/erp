@@ -151,7 +151,13 @@ export default function PurchaseOcrUploadModal({
 
     const enrichedItems: ExtractedPurchaseInvoiceItem[] = (raw.items || []).map(item => {
       if (item.matchedProductId) return item;
-      const code = (item.barcodeOrSku || '').trim().toLowerCase();
+      let code = (item.barcodeOrSku || '').trim().toLowerCase();
+      if (!code && item.rawItemName) {
+        const inlineCode = item.rawItemName.match(/\b([A-Za-z]{2,10}-\d{2,}|\d{8,14})\b/);
+        if (inlineCode) {
+          code = inlineCode[1].trim().toLowerCase();
+        }
+      }
       const nameNorm = normalizeMatchText(item.rawItemName);
       const nonBundles = products.filter(p => !p.isBundle);
 

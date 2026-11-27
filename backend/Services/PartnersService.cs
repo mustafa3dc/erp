@@ -27,7 +27,7 @@ public sealed class PartnerDomainException : Exception
 
 public interface IPartnersService
 {
-    Task<PartnersSummaryResponseDto> GetSummaryAsync(string? period = "month", CancellationToken ct = default);
+    Task<PartnersSummaryResponseDto> GetSummaryAsync(string? period = "month", CancellationToken ct = default, Guid? warehouseId = null);
     Task<PartnerItemSummaryDto> CreatePartnerAsync(UpsertPartnerRequestDto request, CancellationToken ct = default);
     Task<PartnerItemSummaryDto> UpdatePartnerAsync(Guid id, UpsertPartnerRequestDto request, CancellationToken ct = default);
     Task<PartnerTransactionDto> RecordTransactionAsync(Guid partnerId, RecordPartnerTransactionRequestDto request, string actorIdentifier, CancellationToken ct = default);
@@ -45,7 +45,7 @@ public class PartnersService : IPartnersService
         _tenantProvider = tenantProvider;
     }
 
-    public async Task<PartnersSummaryResponseDto> GetSummaryAsync(string? period = "month", CancellationToken ct = default)
+    public async Task<PartnersSummaryResponseDto> GetSummaryAsync(string? period = "month", CancellationToken ct = default, Guid? warehouseId = null)
     {
         var (normalizedPeriod, periodStart, periodEnd) = ResolvePeriodBounds(period);
 
@@ -63,6 +63,11 @@ public class PartnersService : IPartnersService
                         .ThenInclude(bc => bc.ComponentProduct)
             .AsNoTracking()
             .Where(i => i.PaymentStatus == "PAID" && i.CreatedAt <= periodEnd);
+
+        if (warehouseId.HasValue && warehouseId.Value != Guid.Empty)
+        {
+            invoiceQuery = invoiceQuery.Where(i => i.WarehouseId == warehouseId.Value);
+        }
 
         if (periodStart.HasValue)
         {

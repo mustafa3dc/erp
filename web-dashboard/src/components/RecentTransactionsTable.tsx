@@ -222,7 +222,7 @@ export const RecentTransactionsTable: React.FC<RecentTransactionsTableProps> = (
             <tr>
               <th>{isAr ? 'رقم الإذن' : 'Transaction ID'}</th>
               <th>{isAr ? 'التوقيت' : 'Date & Time'}</th>
-              <th>{isAr ? 'كود الصنف (SKU)' : 'SKU'}</th>
+              <th>{isAr ? 'رمز الصنف' : 'Item Code'}</th>
               <th style={{ minWidth: '180px' }}>{isAr ? 'اسم المنتج' : 'Product Name'}</th>
               <th>{isAr ? 'نوع الحركة' : 'Type'}</th>
               <th>{isAr ? 'المسار (من إلى)' : 'Route (From / To)'}</th>

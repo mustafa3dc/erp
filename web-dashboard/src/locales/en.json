@@ -1,5 +1,5 @@
 {
-  "systemTitle": "Bontu Enterprise Suite | Cloud POS & Inventory",
+  "systemTitle": "Fatora Enterprise Suite | Cloud Sales & Inventory",
   "dashboard": "Dashboard & Live KPIs",
   "warehouses": "Warehouses & Racks Layout",
   "inventory": "Item Catalog & Barcodes",
@@ -540,7 +540,7 @@
       "railHint": "Navigation"
     },
     "header": {
-      "commandBarPlaceholder": "Jump to module, invoice, or Serial/IMEI...",
+      "commandBarPlaceholder": "Jump to module, invoice, or serial number...",
       "commandBarShortcut": "⌘K",
       "commandBarShortcutWin": "Ctrl+K",
       "warehouseAll": "All Warehouses & Branches",
@@ -584,15 +584,15 @@
       "newExpense": "New Expense",
       "serialLookup": "Serial Lookup",
       "newItem": "New Item",
-      "posTerminal": "POS Terminal",
+      "posTerminal": "Point of Sale",
       "inboundGoods": "Inbound Goods",
       "interTransfer": "Transfer Stock"
     },
     "dashboard": {
-      "skuVarieties": "Total SKU Varieties",
-      "itemsUnit": "SKUs",
+      "skuVarieties": "Registered Items",
+      "itemsUnit": "items",
       "registeredItemsHint": "Active items across warehouses",
-      "cleanCatalogHint": "Clean catalog — ready for new SKUs",
+      "cleanCatalogHint": "Clean catalog — ready for new items",
       "inventoryValuation": "Inventory Valuation",
       "confidential": "Restricted",
       "accessRestrictedValuation": "Access Restricted: Valuation viewable by Managers & Accountants only",
@@ -612,11 +612,25 @@
       "itemsBelowThreshold": "healthy thresholds",
       "viewItemsIssuePo": "Restock Items",
       "openingLowStockToast": "Opening low stock items requiring replenishment",
-      "stockBalancedMsg": "All SKUs balanced within safe limits",
+      "stockBalancedMsg": "All items balanced within safe limits",
       "trendHealthy": "Healthy",
       "trendAttention": "Action Needed",
       "trendLive": "Live Feed",
-      "trendActive": "Active"
+      "trendActive": "Active",
+      "periodToday": "Today",
+      "periodWeek": "This Week",
+      "periodMonth": "This Month",
+      "periodAll": "All",
+      "periodSales": "Period Sales",
+      "invoiceUnit": "invoices",
+      "netProfit": "Net Profit",
+      "netProfitFormula": "Sales - Cost - Expenses",
+      "treasuryBalance": "Treasury Balance",
+      "cashBreakdown": "Cash",
+      "bankBreakdown": "Bank",
+      "inventoryAndLowStock": "Inventory Value & Low Stock",
+      "lowStockPill": "{count} low stock",
+      "healthyStockPill": "Stock healthy"
     },
     "shiftBreakdown": {
       "sectionTitle": "Shift Invoices & Cash Movements",
@@ -1451,6 +1465,22 @@
       "autoSplitBtn": "Auto-split monthly cap ({amount})",
       "overBudgetWarning": "Warning: Projected monthly total ({projected}) exceeds this category's monthly budget cap ({cap}).",
       "exceedsCapBadge": "Exceeds Cap"
+    },
+    "brand": {
+      "name": "Fatora"
+    },
+    "receivables": {
+      "title": "Receivables & Installments",
+      "subtitle": "Customer credit balances and overdue installments",
+      "customerCreditLabel": "Customer Receivables",
+      "customersCountBadge": "{count} customers",
+      "noReceivables": "No pending customer receivables",
+      "overdueInstallmentsLabel": "Overdue Installments",
+      "overdueCountBadge": "{count} overdue",
+      "noOverdueBadge": "No overdue installments",
+      "remainingInstallmentsLabel": "Remaining Installments:",
+      "manageCustomersBtn": "Customers",
+      "manageInstallmentsBtn": "Installments"
     }
   },
   "finance": {

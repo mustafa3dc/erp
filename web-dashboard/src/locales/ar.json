@@ -1,5 +1,5 @@
 {
-  "systemTitle": "منظومة زيلوكس المتكاملة لإدارة المخازن والمؤسسات",
+  "systemTitle": "منظومة فاتورة المتكاملة للمبيعات والمخزون",
   "dashboard": "لوحة القيادة والمؤشرات",
   "warehouses": "إدارة المستودعات والرفوف",
   "inventory": "دليل الأصناف والباركود",
@@ -540,7 +540,7 @@
       "railHint": "التنقل السريع"
     },
     "header": {
-      "commandBarPlaceholder": "انتقل لأي شاشة، ابحث بفاتورة، أو امسح السيريال/IMEI...",
+      "commandBarPlaceholder": "انتقل لأي شاشة، ابحث بفاتورة، أو امسح الرقم التسلسلي...",
       "commandBarShortcut": "⌘K",
       "commandBarShortcutWin": "Ctrl+K",
       "warehouseAll": "جميع المستودعات والفروع",
@@ -582,14 +582,14 @@
       "subtitle": "اختصارات تنفيذية مباشرة للمبيعات والمصروفات والمستودعات",
       "newSale": "عملية بيع جديدة",
       "newExpense": "مصروف جديد",
-      "serialLookup": "فحص سيريال / IMEI",
+      "serialLookup": "فحص سيريال",
       "newItem": "صنف جديد",
-      "posTerminal": "نقطة البيع (POS)",
+      "posTerminal": "نقطة البيع",
       "inboundGoods": "توريد بضاعة",
       "interTransfer": "تحويل مخزني"
     },
     "dashboard": {
-      "skuVarieties": "أصناف الـ SKU المسجلة",
+      "skuVarieties": "الأصناف المسجلة",
       "itemsUnit": "صنف",
       "registeredItemsHint": "صنف مسجل ونشط في المستودعات",
       "cleanCatalogHint": "الدليل صافٍ — جاهز لإدخال المواد",
@@ -616,7 +616,21 @@
       "trendHealthy": "مستقر",
       "trendAttention": "يتطلب إجراء",
       "trendLive": "تدفق حي",
-      "trendActive": "نشط"
+      "trendActive": "نشط",
+      "periodToday": "اليوم",
+      "periodWeek": "هذا الأسبوع",
+      "periodMonth": "هذا الشهر",
+      "periodAll": "الكل",
+      "periodSales": "مبيعات الفترة",
+      "invoiceUnit": "فاتورة",
+      "netProfit": "صافي الربح",
+      "netProfitFormula": "المبيعات - التكلفة - المصروفات",
+      "treasuryBalance": "رصيد الخزينة",
+      "cashBreakdown": "كاش",
+      "bankBreakdown": "بنك",
+      "inventoryAndLowStock": "قيمة المخزون والنواقص",
+      "lowStockPill": "{count} صنف ناقص",
+      "healthyStockPill": "المخزون متوازن"
     },
     "shiftBreakdown": {
       "sectionTitle": "فواتير وحركات الصندوق في الوردية",
@@ -1451,6 +1465,22 @@
       "autoSplitBtn": "تقسيم السقف الشهري تلقائياً ({amount})",
       "overBudgetWarning": "تنبيه: التكلفة الشهرية المتوقعة ({projected}) تتجاوز سقف الميزانية الشهرية لهذا التصنيف ({cap}).",
       "exceedsCapBadge": "يتجاوز السقف"
+    },
+    "brand": {
+      "name": "فاتورة"
+    },
+    "receivables": {
+      "title": "الديون والأقساط المستحقة",
+      "subtitle": "متابعة ذمم العملاء والأقساط المتأخرة والمستحقة",
+      "customerCreditLabel": "إجمالي ديون العملاء",
+      "customersCountBadge": "{count} عميل",
+      "noReceivables": "لا توجد ذمم آجلة معلقة",
+      "overdueInstallmentsLabel": "الأقساط المتأخرة",
+      "overdueCountBadge": "{count} قسط متأخر",
+      "noOverdueBadge": "لا توجد أقساط متأخرة",
+      "remainingInstallmentsLabel": "إجمالي الأقساط المتبقية:",
+      "manageCustomersBtn": "ذمم العملاء",
+      "manageInstallmentsBtn": "سجل الأقساط"
     }
   },
   "finance": {

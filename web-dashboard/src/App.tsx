@@ -55,13 +55,16 @@ import MiniSparkline from './components/ui/MiniSparkline';
 import { parseDateSafely } from './utils/dateFormatter';
 import { Toaster, toast } from 'sonner';
 import BarcodeSvg from './components/BarcodeSvg';
-import WarehouseCapacityBars from './components/WarehouseCapacityBars';
+import DashboardReceivablesCard from './components/DashboardReceivablesCard';
 import WeeklyStockChart from './components/WeeklyStockChart';
 import { RecentTransactionsTable } from './components/RecentTransactionsTable';
 import DashboardPartnersWidget from './components/DashboardPartnersWidget';
 import DashboardSystemAlertsPanel from './components/DashboardSystemAlertsPanel';
 import { RecurringExpenseRule } from './types/businessModules';
 import { fetchDueRecurringExpenses } from './services/recurringExpensesService';
+import { fetchDashboardSummary, DashboardSummaryResponse } from './services/partnersService';
+import { useTenantFeatures } from './hooks/useAuth';
+import { usePermissions } from './hooks/usePermissions';
 import TransactionModal, { TransactionDetail } from './components/TransactionModal';
 import BarcodeScannerModal from './components/BarcodeScannerModal';
 import { UserNav } from './components/UserNav';
@@ -154,15 +157,20 @@ import {
   recordShiftSale,
   getStoredProductBundles,
   applyLocalCheckoutLoyalty,
-  resolveProductUnitCost
+  resolveProductUnitCost,
+  getStoredTreasuryAccounts,
+  getStoredCustomers,
+  getInstallmentStats,
+  getStoredExpenseVouchers,
+  getStoredQuickExpenses
 } from './services/storageService';
 import './App.css';
 
 const DATE_RANGE_OPTIONS = [
-  { id: 'today', ar: 'اليوم (15 تشرين الأول)', en: 'Today (15 Oct 2026)' },
-  { id: 'week', ar: 'هذا الأسبوع', en: 'This Week' },
-  { id: 'month', ar: 'هذا الشهر', en: 'This Month' },
-  { id: '90days', ar: 'آخر 90 يوماً', en: 'Past 90 Days' }
+  { id: 'today', key: 'ui.dashboard.periodToday' },
+  { id: 'week', key: 'ui.dashboard.periodWeek' },
+  { id: 'month', key: 'ui.dashboard.periodMonth' },
+  { id: 'all', key: 'ui.dashboard.periodAll' }
 ];
 
 const NAV_TITLES: Record<string, { ar: string; en: string }> = {
@@ -269,6 +277,10 @@ function DashboardApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expensesInitialTab, setExpensesInitialTab] = useState<'VOUCHERS' | 'RECURRING'>('VOUCHERS');
   const [dueRecurringExpenses, setDueRecurringExpenses] = useState<RecurringExpenseRule[]>([]);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryResponse | null>(null);
+  const { isFeatureEnabled } = useTenantFeatures();
+  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
+  const isInstallmentsEnabled = isFeatureEnabled('enableInstallments');
 
   // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login, Digital Loyalty Wallet)
   const [publicCardToken, setPublicCardToken] = useState<string | null>(() => getPublicCardTokenFromUrl());
@@ -1312,17 +1324,131 @@ function DashboardApp() {
 
   // Dynamic Valuation calculation from physical products only (bundles derive value from components)
   const totalStockValuation = useMemo(() => {
-    return products.filter(p => !p.isBundle).reduce((acc, p) => acc + (Number(p.costPrice || 0) * Number(p.currentStock || 0)), 0);
-  }, [products]);
-
-  const formattedValuation = useMemo(() => {
-    return formatMoney(totalStockValuation, true);
-  }, [totalStockValuation, formatMoney]);
+    const filtered = selectedWarehouseId === 'ALL'
+      ? products
+      : products.filter(p => p.warehouseId === selectedWarehouseId);
+    return filtered.filter(p => !p.isBundle).reduce((acc, p) => acc + (Number(p.costPrice || 0) * Number(p.currentStock || 0)), 0);
+  }, [products, selectedWarehouseId]);
 
   // Dynamic Low stock alerts count (physical products only)
   const lowStockCount = useMemo(() => {
-    return products.filter(p => !p.isBundle && Number(p.currentStock || 0) <= Number(p.minStockAlert || 0)).length;
-  }, [products]);
+    const filtered = selectedWarehouseId === 'ALL'
+      ? products
+      : products.filter(p => p.warehouseId === selectedWarehouseId);
+    return filtered.filter(p => !p.isBundle && Number(p.currentStock || 0) <= Number(p.minStockAlert || 0)).length;
+  }, [products, selectedWarehouseId]);
+
+  const { hasPermission } = usePermissions(currentUser);
+  const canViewProfits = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'SuperAdmin' || currentUser.role === 'PlatformSuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') {
+      return true;
+    }
+    return (
+      hasPermission('inventory.cost_price.view') ||
+      hasPermission('reports.financial.view') ||
+      hasPermission('finance.partners.manage') ||
+      hasPermission('reports.executive.view')
+    );
+  }, [currentUser, hasPermission]);
+
+  const localDashboardMetrics = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const periodStart = selectedDateRangeId === 'today'
+      ? startOfToday
+      : selectedDateRangeId === 'week'
+      ? new Date(startOfToday.getTime() - 6 * 86400000)
+      : selectedDateRangeId === 'month'
+      ? new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+      : null;
+
+    const inPeriod = (rawDate?: string) => {
+      if (!periodStart) return true;
+      if (!rawDate) return true;
+      const d = parseDateSafely(rawDate);
+      return d && !isNaN(d.getTime()) ? d >= periodStart : true;
+    };
+
+    const selectedWarehouseObj = selectedWarehouseId === 'ALL'
+      ? null
+      : warehouses.find(w => w.id === selectedWarehouseId) || null;
+    const periodInvoices = invoices.filter(inv => {
+      if (inv.status === 'refunded') return false;
+      const whMatch =
+        selectedWarehouseId === 'ALL' ||
+        !selectedWarehouseObj ||
+        !inv.warehouseName ||
+        inv.warehouseName === selectedWarehouseObj.nameEn ||
+        inv.warehouseName === selectedWarehouseObj.nameAr ||
+        inv.warehouseName === selectedWarehouseObj.code;
+      return whMatch && inPeriod(inv.createdAt || inv.date);
+    });
+
+    const periodSales = periodInvoices.reduce((sum, inv) => sum + Number(inv.total ?? 0), 0);
+    const storedBundles = getStoredProductBundles();
+    const periodCogs = periodInvoices.reduce((sum, inv) => {
+      const items = Array.isArray(inv.items) ? inv.items : [];
+      return sum + items.reduce((itemSum, it) => {
+        const prod = products.find(p => p.id === it.productId || p.sku === it.sku);
+        const unitCost = resolveProductUnitCost(prod, products, storedBundles);
+        return itemSum + unitCost * Number(it.quantity || 0);
+      }, 0);
+    }, 0);
+
+    const vouchers = getStoredExpenseVouchers().filter(ev => ev.status === 'Approved' && inPeriod(ev.approvedAt || ev.createdAt));
+    const quickExpenses = getStoredQuickExpenses().filter(qe => inPeriod(qe.createdAt));
+    const periodExpenses =
+      vouchers.reduce((s, v) => s + Number(v.amount ?? 0) * Number(v.exchangeRate || 1), 0) +
+      quickExpenses.reduce((s, q) => s + Number(q.amount ?? 0), 0);
+
+    const accounts = getStoredTreasuryAccounts();
+    let treasuryCash = 0;
+    let treasuryBank = 0;
+    for (const acc of accounts) {
+      if (acc.isActive === false) continue;
+      const bal = Number(acc.currentBalance ?? acc.balance ?? 0);
+      const t = String(acc.accountType ?? acc.type ?? 'CASH').toUpperCase();
+      if (t === 'BANK' || t === 'BANKACCOUNT' || t === 'WALLET' || t === 'DIGITALWALLET') {
+        treasuryBank += bal;
+      } else {
+        treasuryCash += bal;
+      }
+    }
+
+    const customersList = getStoredCustomers().filter(c => !c.isDefaultCashCustomer && Number(c.balance ?? c.currentBalance ?? 0) > 0);
+    const receivablesBalance = customersList.reduce((s, c) => s + Number(c.balance ?? c.currentBalance ?? 0), 0);
+    const instStats = getInstallmentStats();
+
+    return {
+      periodSales,
+      invoicesCount: periodInvoices.length,
+      netProfit: periodSales - periodCogs - periodExpenses,
+      treasuryCash,
+      treasuryBank,
+      treasuryTotal: treasuryCash + treasuryBank,
+      receivablesBalance,
+      receivablesCustomersCount: customersList.length,
+      overdueCount: instStats.overdueCount,
+      overdueAmount: instStats.overdueAmount,
+      installmentsRemaining: instStats.totalRemainingAmount
+    };
+  }, [invoices, products, selectedDateRangeId, selectedWarehouseId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!currentUser || activeNav !== 'Dashboard') return;
+    fetchDashboardSummary(selectedDateRangeId, selectedWarehouseId)
+      .then(data => {
+        if (active) setDashboardSummary(data);
+      })
+      .catch(() => {
+        if (active) setDashboardSummary(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, activeNav, selectedDateRangeId, selectedWarehouseId, invoices.length, transactions.length]);
 
   // Dynamic Shipments & Logistics counters
   const shipmentStats = useMemo(() => {
@@ -1633,7 +1759,7 @@ function DashboardApp() {
             <Boxes size={20} strokeWidth={1.9} className="cube-svg" />
           </div>
           <span className="brand-name">
-            Bontu <span className="brand-badge">Suite</span>
+            {currentUser?.tenantName?.trim() || getTranslation(lang, 'ui.brand.name')}
           </span>
         </div>
 
@@ -1737,10 +1863,10 @@ function DashboardApp() {
                       onClick={() => {
                         setSelectedDateRangeId(opt.id);
                         closeMenu();
-                        showToast(isAr ? opt.ar : opt.en);
+                        showToast(getTranslation(lang, opt.key));
                       }}
                     >
-                      {isAr ? opt.ar : opt.en}
+                      {getTranslation(lang, opt.key)}
                     </div>
                   ))}
                 </div>
@@ -1864,23 +1990,85 @@ function DashboardApp() {
         ) : (
           <>
             {/* View 1: Executive Dashboard */}
-            {activeNav === 'Dashboard' && (
-          <div className="dashboard-tab-content fade-in">
+            {activeNav === 'Dashboard' && (() => {
+              const effectivePeriodSales = dashboardSummary ? dashboardSummary.totalRevenue : localDashboardMetrics.periodSales;
+              const effectiveInvoicesCount = dashboardSummary ? dashboardSummary.invoicesCount : localDashboardMetrics.invoicesCount;
+              const effectiveNetProfit = dashboardSummary ? dashboardSummary.netProfit : localDashboardMetrics.netProfit;
+              const effectiveTreasuryCash = dashboardSummary ? dashboardSummary.treasuryCashBalance : localDashboardMetrics.treasuryCash;
+              const effectiveTreasuryBank = dashboardSummary ? dashboardSummary.treasuryBankBalance : localDashboardMetrics.treasuryBank;
+              const effectiveTreasuryTotal = dashboardSummary ? dashboardSummary.treasuryTotalBalance : localDashboardMetrics.treasuryTotal;
+              const effectiveInventoryValuation = dashboardSummary ? dashboardSummary.inventoryValuation : totalStockValuation;
+              const effectiveLowStockCount = dashboardSummary ? dashboardSummary.lowStockCount : lowStockCount;
+              const effectiveReceivablesBalance = dashboardSummary ? dashboardSummary.receivablesTotalBalance : localDashboardMetrics.receivablesBalance;
+              const effectiveReceivablesCount = dashboardSummary ? dashboardSummary.receivablesCustomersCount : localDashboardMetrics.receivablesCustomersCount;
+              const effectiveOverdueCount = dashboardSummary ? dashboardSummary.overdueInstallmentsCount : localDashboardMetrics.overdueCount;
+              const effectiveOverdueAmount = dashboardSummary ? dashboardSummary.overdueInstallmentsAmount : localDashboardMetrics.overdueAmount;
+              const effectiveInstallmentsRemaining = dashboardSummary ? dashboardSummary.totalInstallmentsRemaining : localDashboardMetrics.installmentsRemaining;
+              const activePeriodOpt = DATE_RANGE_OPTIONS.find(o => o.id === selectedDateRangeId) || DATE_RANGE_OPTIONS[0];
+              const activePeriodLabel = getTranslation(lang, activePeriodOpt.key);
+
+              return (
+          <div className="dashboard-tab-content fade-in space-y-5">
+            {/* Global Dashboard Period & Warehouse Filter Header */}
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border rounded-2xl px-4 py-3"
+              style={{ boxShadow: 'var(--shadow-card)' }}
+            >
+              {/* Segmented Period Filter (Today / Week / Month / All) */}
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-muted border border-border">
+                {DATE_RANGE_OPTIONS.map((opt) => {
+                  const isActive = selectedDateRangeId === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSelectedDateRangeId(opt.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer border-0 ${
+                        isActive
+                          ? 'bg-card text-foreground font-bold shadow-xs'
+                          : 'bg-transparent text-muted-foreground hover:text-foreground font-medium'
+                      }`}
+                    >
+                      {getTranslation(lang, opt.key)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Warehouse Filter */}
+              <div className="flex items-center gap-2">
+                <WarehouseIcon size={15} className="text-muted-foreground shrink-0" />
+                <select
+                  value={selectedWarehouseId}
+                  onChange={(e) => {
+                    setSelectedWarehouseId(e.target.value);
+                    saveStoredSelectedWarehouseId(e.target.value);
+                  }}
+                  className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  {warehouseFilterOptions.map((wh) => (
+                    <option key={wh.id} value={wh.id}>
+                      {wh.id === 'ALL' ? getTranslation(lang, 'ui.header.warehouseAll') : (isAr ? wh.ar : wh.en)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Dashboard Quick Operations Bar */}
             <QuickOperationsBar
-              onNewSale={() => setIsCreateInvoiceOpen(true)}
-              onQuickExpense={() => setIsQuickExpenseOpen(true)}
-              onSerialLookup={() => {
-                setSerialLookupQuery('');
-                setActiveNav('Serial & Warranty Tracking');
-              }}
+              onPos={() => setActiveNav('Cloud POS')}
+              onInboundReceipt={() => setActiveNav('Purchases & POs')}
               onNewProduct={() => {
                 setAddProductModalMode('new_product');
                 setIsAddProductOpen(true);
               }}
-              onPos={() => setActiveNav('Cloud POS')}
-              onInboundReceipt={() => setActiveNav('Purchases & POs')}
+              onQuickExpense={() => setIsQuickExpenseOpen(true)}
               onTransfer={() => setIsTransferModalOpen(true)}
+              onSerialLookup={isSerialModuleEnabled ? () => {
+                setSerialLookupQuery('');
+                setActiveNav('Serial & Warranty Tracking');
+              } : undefined}
               isAr={isAr}
               lang={lang}
             />
@@ -1896,189 +2084,180 @@ function DashboardApp() {
               }}
             />
 
-            {/* Row 1: 4 Executive KPI Cards with Trend Pills & Sparklines */}
-            <div className="kpi-row">
-              {/* KPI 1: SKU Varieties */}
+            {/* Row 1: Executive Business KPI Cards (Full Localized Numbers) */}
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${canViewProfits ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4`}>
+              {/* KPI 1: Period Sales */}
               <div
                 className="kpi-card clickable"
-                onClick={() => setActiveNav('Inventory & Items')}
-                title={getTranslation(lang, 'ui.dashboard.skuVarieties')}
+                onClick={() => setActiveNav('Sales Invoices')}
+                title={getTranslation(lang, 'ui.dashboard.periodSales')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.skuVarieties')}</span>
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.periodSales')}</span>
                   <span className="kpi-trend-pill indigo">
-                    <TrendingUp size={11} />
-                    <span>{getTranslation(lang, 'ui.dashboard.trendActive')}</span>
+                    <ShoppingCart size={12} />
+                    <span>{activePeriodLabel}</span>
                   </span>
                 </div>
-                <div className="kpi-value-spark-row">
-                  <div className="kpi-main-number m-0">
-                    {products.length.toLocaleString()}{' '}
-                    <span className="kpi-unit">{getTranslation(lang, 'ui.dashboard.itemsUnit')}</span>
-                  </div>
-                  <MiniSparkline
-                    data={[Math.max(2, products.length - 8), Math.max(4, products.length - 5), Math.max(3, products.length - 6), Math.max(5, products.length - 2), products.length || 1]}
-                    color="var(--primary)"
-                  />
+                <div className="kpi-main-number tabular-nums m-0">
+                  {formatMoney(effectivePeriodSales)}
                 </div>
-                <div className={`kpi-card-footer ${products.length > 0 ? 'green' : 'text-muted'}`}>
-                  <span>
-                    {products.length > 0
-                      ? getTranslation(lang, 'ui.dashboard.registeredItemsHint')
-                      : getTranslation(lang, 'ui.dashboard.cleanCatalogHint')}
+                <div className="kpi-card-footer text-muted mt-1">
+                  <span className="tabular-nums">
+                    {effectiveInvoicesCount.toLocaleString()} {getTranslation(lang, 'ui.dashboard.invoiceUnit')}
                   </span>
                 </div>
               </div>
 
-              {/* KPI 2: Total Inventory Value with Eye Toggle */}
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.inventoryValuation')}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="kpi-trend-pill neutral font-mono" dir="ltr">
-                      {settings.costValuationMethod || 'FIFO'}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-toggle-eye"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') {
+              {/* KPI 2: Net Profit (Profit/Cost permission only) */}
+              {canViewProfits && (
+                <div
+                  className="kpi-card kpi-card-green clickable"
+                  onClick={() => setActiveNav('Partners & Profit Sharing')}
+                  title={getTranslation(lang, 'ui.dashboard.netProfit')}
+                >
+                  <div className="kpi-card-header">
+                    <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.netProfit')}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`kpi-trend-pill ${effectiveNetProfit >= 0 ? 'positive' : 'warning'}`}>
+                        <TrendingUp size={11} />
+                        <span>{activePeriodLabel}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-toggle-eye"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setShowValuation(!showValuation);
-                        } else {
-                          showToast(getTranslation(lang, 'ui.dashboard.accessRestrictedValuation'));
-                        }
-                      }}
-                      title={showValuation ? getTranslation(lang, 'ui.dashboard.hideValueTitle') : getTranslation(lang, 'ui.dashboard.showValueTitle')}
-                    >
-                      {showValuation ? <Eye size={14} /> : <EyeOff size={14} />}
-                    </button>
+                        }}
+                        title={showValuation ? getTranslation(lang, 'ui.dashboard.hideValueTitle') : getTranslation(lang, 'ui.dashboard.showValueTitle')}
+                      >
+                        {showValuation ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="kpi-value-spark-row">
-                  <div className="kpi-main-number m-0" dir="ltr">
-                    {showValuation && (currentUser.role === 'SuperAdmin' || currentUser.role === 'BranchManager' || currentUser.role === 'Accountant') ? (
-                      formattedValuation
+                  <div className={`kpi-main-number tabular-nums m-0 ${effectiveNetProfit < 0 ? 'text-destructive' : ''}`}>
+                    {showValuation ? (
+                      formatMoney(effectiveNetProfit)
                     ) : (
                       <span className="confidential-masked">
                         •••••••• <span className="confidential-tag">{getTranslation(lang, 'ui.dashboard.confidential')}</span>
                       </span>
                     )}
                   </div>
-                  <MiniSparkline
-                    data={[62, 68, 65, 74, 79, 86]}
-                    color="#10b981"
-                  />
+                  <div className="kpi-card-footer text-muted mt-1">
+                    <span>{getTranslation(lang, 'ui.dashboard.netProfitFormula')}</span>
+                  </div>
                 </div>
-                <div className="kpi-card-footer text-muted">
-                  <span>
-                    {getTranslation(lang, 'ui.dashboard.valuationMethod')}: {settings.costValuationMethod || 'FIFO'}
+              )}
+
+              {/* KPI 3: Treasury Balance */}
+              <div
+                className="kpi-card clickable"
+                onClick={() => setActiveNav('Finance & Treasury')}
+                title={getTranslation(lang, 'ui.dashboard.treasuryBalance')}
+              >
+                <div className="kpi-card-header">
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.treasuryBalance')}</span>
+                  <span className="kpi-trend-pill positive">
+                    <Wallet size={12} />
+                    <span>{getTranslation(lang, 'ui.dashboard.trendLive')}</span>
+                  </span>
+                </div>
+                <div className="kpi-main-number tabular-nums m-0">
+                  {formatMoney(effectiveTreasuryTotal)}
+                </div>
+                <div className="kpi-card-footer text-muted mt-1">
+                  <span className="tabular-nums">
+                    {getTranslation(lang, 'ui.dashboard.cashBreakdown')}: {formatMoney(effectiveTreasuryCash)} • {getTranslation(lang, 'ui.dashboard.bankBreakdown')}: {formatMoney(effectiveTreasuryBank)}
                   </span>
                 </div>
               </div>
 
-              {/* KPI 3: Daily Shipments Flow */}
+              {/* KPI 4: Inventory Value & Low Stock */}
               <div
-                className="kpi-card kpi-card-green clickable"
-                onClick={() => setActiveNav('Inbound (Goods In)')}
-                title={getTranslation(lang, 'ui.dashboard.dailyShipmentsFlow')}
-              >
-                <div className="kpi-card-header">
-                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.dailyShipmentsFlow')}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="kpi-trend-pill positive">
-                      {getTranslation(lang, 'ui.dashboard.trendLive')}
-                    </span>
-                    <div className="kpi-signal-meter">
-                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
-                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
-                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
-                      <span className={`sig-bar ${transactions.length > 0 ? 'active' : ''}`} />
-                    </div>
-                  </div>
-                </div>
-                <div className="kpi-dual-shipments">
-                  <div className="shipment-flow-row">
-                    <span className="shipment-flow-label">
-                      <ArrowDownToLine size={13} style={{ color: 'var(--primary)' }} />
-                      <span>{getTranslation(lang, 'ui.dashboard.inbound')}:</span>
-                    </span>
-                    <span className="shipment-flow-values tabular-nums">
-                      <span className="val-pending">{shipmentStats.inboundPending} {getTranslation(lang, 'ui.dashboard.pending')}</span> / <span className="val-received">{shipmentStats.inboundReceived} {getTranslation(lang, 'ui.dashboard.received')}</span>
-                    </span>
-                  </div>
-                  <div className="shipment-flow-row">
-                    <span className="shipment-flow-label">
-                      <ArrowUpFromLine size={13} style={{ color: '#10b981' }} />
-                      <span>{getTranslation(lang, 'ui.dashboard.outbound')}:</span>
-                    </span>
-                    <span className="shipment-flow-values tabular-nums">
-                      <span className="val-pending">{shipmentStats.outboundPicking} {getTranslation(lang, 'ui.dashboard.picking')}</span> / <span className="val-received">{shipmentStats.outboundShipped} {getTranslation(lang, 'ui.dashboard.shipped')}</span>
-                    </span>
-                  </div>
-                </div>
-                <div className="kpi-card-footer green mt-1">
-                  <span>{getTranslation(lang, 'ui.dashboard.liveFreightHint')}</span>
-                </div>
-              </div>
-
-              {/* KPI 4: Low Stock Alerts */}
-              <div
-                className="kpi-card kpi-card-orange clickable"
+                className={`kpi-card ${effectiveLowStockCount > 0 ? 'kpi-card-orange' : ''} clickable`}
                 onClick={() => setActiveNav('Inventory & Items')}
-                title={getTranslation(lang, 'ui.dashboard.lowStockAlerts')}
+                title={getTranslation(lang, 'ui.dashboard.inventoryAndLowStock')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.lowStockAlerts')}</span>
-                  <span className={`kpi-trend-pill ${lowStockCount > 0 ? 'warning' : 'positive'}`}>
-                    {lowStockCount > 0 ? getTranslation(lang, 'ui.dashboard.trendAttention') : getTranslation(lang, 'ui.dashboard.trendHealthy')}
-                  </span>
-                </div>
-                <div className={`kpi-main-number ${lowStockCount > 0 ? 'orange-text' : ''}`}>
-                  {lowStockCount}{' '}
-                  <span className={lowStockCount > 0 ? 'kpi-unit-orange' : 'kpi-unit'}>
-                    {lowStockCount > 0
-                      ? getTranslation(lang, 'ui.dashboard.itemsNeedReorder')
-                      : getTranslation(lang, 'ui.dashboard.itemsBelowThreshold')}
-                  </span>
-                </div>
-                {lowStockCount > 0 ? (
+                  <span className="kpi-card-title">{getTranslation(lang, 'ui.dashboard.inventoryAndLowStock')}</span>
                   <button
                     type="button"
-                    className="kpi-direct-action-btn"
+                    className="btn-toggle-eye"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (canViewProfits) {
+                        setShowValuation(!showValuation);
+                      } else {
+                        showToast(getTranslation(lang, 'ui.dashboard.accessRestrictedValuation'));
+                      }
+                    }}
+                    title={showValuation ? getTranslation(lang, 'ui.dashboard.hideValueTitle') : getTranslation(lang, 'ui.dashboard.showValueTitle')}
+                  >
+                    {showValuation && canViewProfits ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
+                </div>
+                <div className="kpi-main-number tabular-nums m-0">
+                  {showValuation && canViewProfits ? (
+                    formatMoney(effectiveInventoryValuation)
+                  ) : (
+                    <span className="confidential-masked">
+                      •••••••• <span className="confidential-tag">{getTranslation(lang, 'ui.dashboard.confidential')}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveNav('Inventory & Items');
-                      showToast(getTranslation(lang, 'ui.dashboard.openingLowStockToast'));
+                      if (effectiveLowStockCount > 0) {
+                        showToast(getTranslation(lang, 'ui.dashboard.openingLowStockToast'));
+                      }
                     }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tabular-nums border cursor-pointer transition-colors ${
+                      effectiveLowStockCount > 0
+                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20'
+                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                    }`}
                   >
-                    <ShoppingCart size={13} />
-                    <span>{getTranslation(lang, 'ui.dashboard.viewItemsIssuePo')}</span>
+                    {effectiveLowStockCount > 0 ? (
+                      <>
+                        <AlertTriangle size={12} />
+                        <span>
+                          {getTranslation(lang, 'ui.dashboard.lowStockPill').replace('{count}', String(effectiveLowStockCount))}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={12} />
+                        <span>{getTranslation(lang, 'ui.dashboard.healthyStockPill')}</span>
+                      </>
+                    )}
                   </button>
-                ) : (
-                  <div className="kpi-card-footer green mt-1.5">
-                    <span className="inline-flex items-center gap-1.5">
-                      <CheckCircle2 size={13} />
-                      <span>{getTranslation(lang, 'ui.dashboard.stockBalancedMsg')}</span>
-                    </span>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
 
-            {/* Row 2: Charts */}
+            {/* Row 2: Weekly Movement Chart + Receivables & Installments Summary */}
             <div className="charts-row">
               <div className="chart-box left-chart">
                 <WeeklyStockChart lang={lang} transactions={transactions} />
               </div>
 
               <div className="chart-box right-chart">
-                <WarehouseCapacityBars 
-                  lang={lang} 
-                  warehouses={computedWarehouses}
-                  inTransitShipmentsCount={0}
-                  inTransitQty={0}
-                  onNavigateWarehouses={() => setActiveNav('Warehouses & Racks')} 
+                <DashboardReceivablesCard
+                  lang={lang}
+                  customerCreditTotal={effectiveReceivablesBalance}
+                  creditCustomersCount={effectiveReceivablesCount}
+                  overdueInstallmentsCount={effectiveOverdueCount}
+                  overdueInstallmentsAmount={effectiveOverdueAmount}
+                  totalInstallmentsRemaining={effectiveInstallmentsRemaining}
+                  showInstallments={isInstallmentsEnabled}
+                  onNavigateCustomers={() => setActiveNav('Customers & Loyalty')}
+                  onNavigateInstallments={() => setActiveNav('Installments')}
                 />
               </div>
             </div>
@@ -2088,6 +2267,7 @@ function DashboardApp() {
               lang={lang}
               currentUser={currentUser}
               selectedDateRangeId={selectedDateRangeId}
+              selectedWarehouseId={selectedWarehouseId}
               onNavigatePartners={() => setActiveNav('Partners & Profit Sharing')}
             />
 
@@ -2100,7 +2280,8 @@ function DashboardApp() {
               showToast={showToast}
             />
           </div>
-        )}
+              );
+            })()}
 
         {/* View 2: Inventory & Items */}
         {activeNav === 'Inventory & Items' && (

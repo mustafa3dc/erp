@@ -13,6 +13,7 @@ interface DashboardPartnersWidgetProps {
   lang: 'en' | 'ar';
   currentUser: UserProfile | null;
   selectedDateRangeId: string;
+  selectedWarehouseId?: string;
   onNavigatePartners: () => void;
 }
 
@@ -20,6 +21,7 @@ export default function DashboardPartnersWidget({
   lang,
   currentUser,
   selectedDateRangeId,
+  selectedWarehouseId,
   onNavigatePartners
 }: DashboardPartnersWidgetProps) {
   const isAr = lang === 'ar';
@@ -37,7 +39,7 @@ export default function DashboardPartnersWidget({
       return;
     }
 
-    fetchDashboardPartnersSummary(selectedDateRangeId)
+    fetchDashboardPartnersSummary(selectedDateRangeId, selectedWarehouseId)
       .then(data => {
         if (active) {
           setSummary(data);
@@ -54,7 +56,7 @@ export default function DashboardPartnersWidget({
     return () => {
       active = false;
     };
-  }, [hasPartnerPermission, selectedDateRangeId]);
+  }, [hasPartnerPermission, selectedDateRangeId, selectedWarehouseId]);
 
   if (!hasPartnerPermission || (loaded && summary === null)) {
     return null;

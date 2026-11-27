@@ -549,22 +549,77 @@ export async function fetchPartnerStatement(
   };
 }
 
+export interface DashboardSummaryResponse {
+  period: string;
+  canViewProfits: boolean;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  invoicesCount: number;
+  treasuryCashBalance: number;
+  treasuryBankBalance: number;
+  treasuryTotalBalance: number;
+  inventoryValuation: number;
+  lowStockCount: number;
+  receivablesTotalBalance: number;
+  receivablesCustomersCount: number;
+  overdueInstallmentsCount: number;
+  overdueInstallmentsAmount: number;
+  totalInstallmentsRemaining: number;
+  partnersSummary: PartnersSummaryResponse | null;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function mapDashboardPeriod(dateRangeId: string): PartnerPeriod {
+  if (dateRangeId === 'today') return 'today';
+  if (dateRangeId === 'week') return 'week';
+  if (dateRangeId === 'month') return 'month';
+  return 'all';
+}
+
+export async function fetchDashboardSummary(
+  dateRangeId: string,
+  warehouseId?: string
+): Promise<DashboardSummaryResponse | null> {
+  const mappedPeriod = mapDashboardPeriod(dateRangeId);
+  const token = getAuthToken();
+  if (!token) return null;
+
+  try {
+    const params = new URLSearchParams({ period: mappedPeriod });
+    if (warehouseId && warehouseId !== 'ALL' && UUID_REGEX.test(warehouseId)) {
+      params.set('warehouseId', warehouseId);
+    }
+    const res = await fetch(`/api/dashboard/summary?${params.toString()}`, {
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      if (json?.success && json.data) {
+        return json.data as DashboardSummaryResponse;
+      }
+    }
+  } catch {
+    // Fallback handled by caller
+  }
+  return null;
+}
+
 export async function fetchDashboardPartnersSummary(
-  dateRangeId: string
+  dateRangeId: string,
+  warehouseId?: string
 ): Promise<PartnersSummaryResponse | null> {
-  const mappedPeriod: PartnerPeriod =
-    dateRangeId === 'today'
-      ? 'today'
-      : dateRangeId === 'week'
-      ? 'week'
-      : dateRangeId === 'month'
-      ? 'month'
-      : 'all';
+  const mappedPeriod = mapDashboardPeriod(dateRangeId);
 
   const token = getAuthToken();
   if (token) {
     try {
-      const res = await fetch(`/api/dashboard/summary?period=${encodeURIComponent(mappedPeriod)}`, {
+      const params = new URLSearchParams({ period: mappedPeriod });
+      if (warehouseId && warehouseId !== 'ALL' && UUID_REGEX.test(warehouseId)) {
+        params.set('warehouseId', warehouseId);
+      }
+      const res = await fetch(`/api/dashboard/summary?${params.toString()}`, {
         headers: authHeaders()
       });
       if (res.ok) {

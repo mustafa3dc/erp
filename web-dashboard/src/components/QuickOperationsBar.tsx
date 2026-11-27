@@ -1,10 +1,9 @@
 import React from 'react';
-import { Plus, Store, ArrowDownToLine, Wallet, ArrowLeftRight, Zap, Scan, Receipt } from 'lucide-react';
+import { Plus, Store, ArrowDownToLine, Wallet, ArrowLeftRight, Zap, Scan } from 'lucide-react';
 import { Button } from './ui/button';
 import { getTranslation } from '../lib/i18n';
 
 export interface QuickOperationsBarProps {
-  onNewSale?: () => void;
   onNewProduct?: () => void;
   onPos?: () => void;
   onInboundReceipt?: () => void;
@@ -16,7 +15,6 @@ export interface QuickOperationsBarProps {
 }
 
 export const QuickOperationsBar: React.FC<QuickOperationsBarProps> = ({
-  onNewSale,
   onNewProduct,
   onPos,
   onInboundReceipt,
@@ -56,64 +54,16 @@ export const QuickOperationsBar: React.FC<QuickOperationsBarProps> = ({
           </div>
         </div>
 
-        {/* Executive Quick-Action Buttons */}
+        {/* Deduplicated Executive Quick-Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap dqa-buttons-flex">
-          {onNewSale && (
-            <Button
-              type="button"
-              onClick={onNewSale}
-              className="h-9 px-3.5 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs transition-all text-xs cursor-pointer"
-            >
-              <Receipt size={15} />
-              <span>{getTranslation(effectiveLang, 'ui.quickOps.newSale')}</span>
-            </Button>
-          )}
-
-          {onQuickExpense && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onQuickExpense}
-              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-            >
-              <Wallet size={15} className="text-amber-500" />
-              <span>{getTranslation(effectiveLang, 'ui.quickOps.newExpense')}</span>
-            </Button>
-          )}
-
-          {onSerialLookup && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onSerialLookup}
-              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-            >
-              <Scan size={15} className="text-indigo-500" />
-              <span>{getTranslation(effectiveLang, 'ui.quickOps.serialLookup')}</span>
-            </Button>
-          )}
-
           {onPos && (
             <Button
               type="button"
-              variant="outline"
               onClick={onPos}
-              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+              className="h-9 px-3.5 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs transition-all text-xs cursor-pointer"
             >
-              <Store size={15} className="text-primary" />
+              <Store size={15} />
               <span>{getTranslation(effectiveLang, 'ui.quickOps.posTerminal')}</span>
-            </Button>
-          )}
-
-          {onNewProduct && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onNewProduct}
-              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
-            >
-              <Plus size={15} className="text-emerald-500" />
-              <span>{getTranslation(effectiveLang, 'ui.quickOps.newItem')}</span>
             </Button>
           )}
 
@@ -129,6 +79,30 @@ export const QuickOperationsBar: React.FC<QuickOperationsBarProps> = ({
             </Button>
           )}
 
+          {onNewProduct && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onNewProduct}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Plus size={15} className="text-emerald-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.newItem')}</span>
+            </Button>
+          )}
+
+          {onQuickExpense && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onQuickExpense}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Wallet size={15} className="text-amber-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.newExpense')}</span>
+            </Button>
+          )}
+
           {onTransfer && (
             <Button
               type="button"
@@ -138,6 +112,18 @@ export const QuickOperationsBar: React.FC<QuickOperationsBarProps> = ({
             >
               <ArrowLeftRight size={15} className="text-muted-foreground" />
               <span>{getTranslation(effectiveLang, 'ui.quickOps.interTransfer')}</span>
+            </Button>
+          )}
+
+          {onSerialLookup && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onSerialLookup}
+              className="h-9 px-3 gap-1.5 bg-card border-border hover:bg-muted text-foreground font-medium shadow-none transition-colors text-xs cursor-pointer"
+            >
+              <Scan size={15} className="text-indigo-500" />
+              <span>{getTranslation(effectiveLang, 'ui.quickOps.serialLookup')}</span>
             </Button>
           )}
         </div>

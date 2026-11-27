@@ -72,10 +72,21 @@ public class PaginatedPartnerTransactionsDto
 public class DashboardSummaryDto
 {
     public string Period { get; set; } = "today";
+    public bool CanViewProfits { get; set; }
     public decimal TotalRevenue { get; set; }
     public decimal TotalExpenses { get; set; }
     public decimal NetProfit { get; set; }
     public int InvoicesCount { get; set; }
+    public decimal TreasuryCashBalance { get; set; }
+    public decimal TreasuryBankBalance { get; set; }
+    public decimal TreasuryTotalBalance { get; set; }
+    public decimal InventoryValuation { get; set; }
+    public int LowStockCount { get; set; }
+    public decimal ReceivablesTotalBalance { get; set; }
+    public int ReceivablesCustomersCount { get; set; }
+    public int OverdueInstallmentsCount { get; set; }
+    public decimal OverdueInstallmentsAmount { get; set; }
+    public decimal TotalInstallmentsRemaining { get; set; }
     public PartnersSummaryResponseDto? PartnersSummary { get; set; }
     public int DueRecurringExpensesCount { get; set; }
     public List<RecurringExpenseDto> DueRecurringExpenses { get; set; } = new();

@@ -35,6 +35,7 @@ public class DashboardController : ControllerBase
     [HttpGet("summary")]
     public async Task<ActionResult<ApiResponse<DashboardSummaryDto>>> GetSummary(
         [FromQuery] string? period = "today",
+        [FromQuery] Guid? warehouseId = null,
         CancellationToken ct = default)
     {
         try
@@ -58,6 +59,10 @@ public class DashboardController : ControllerBase
             var invQuery = _context.SalesInvoices
                 .AsNoTracking()
                 .Where(i => i.PaymentStatus == "PAID");
+            if (warehouseId.HasValue && warehouseId.Value != Guid.Empty)
+            {
+                invQuery = invQuery.Where(i => i.WarehouseId == warehouseId.Value);
+            }
             if (start.HasValue)
             {
                 invQuery = invQuery.Where(i => i.CreatedAt >= start.Value);
@@ -66,7 +71,7 @@ public class DashboardController : ControllerBase
 
             if (canViewProfitsOrPartners)
             {
-                partnersSummary = await _partnersService.GetSummaryAsync(normPeriod, ct);
+                partnersSummary = await _partnersService.GetSummaryAsync(normPeriod, ct, warehouseId);
                 totalRevenue = partnersSummary.TotalRevenue;
                 totalExpenses = partnersSummary.TotalExpenses;
                 netProfit = partnersSummary.TotalNetProfit;
@@ -80,6 +85,107 @@ public class DashboardController : ControllerBase
                 partnersSummary = null;
             }
 
+            // Live Treasury Liquidity (Cashboxes vs Bank/Digital accounts)
+            decimal treasuryCashBalance = 0m;
+            decimal treasuryBankBalance = 0m;
+            try
+            {
+                var activeBoxes = await _context.CashBoxes
+                    .AsNoTracking()
+                    .Where(cb => cb.IsActive)
+                    .Select(cb => new { cb.AccountType, cb.CurrentBalance })
+                    .ToListAsync(ct);
+
+                foreach (var cb in activeBoxes)
+                {
+                    var type = (cb.AccountType ?? "Cashbox").Trim();
+                    if (string.Equals(type, "BankAccount", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "DigitalWallet", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "BANK", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "WALLET", StringComparison.OrdinalIgnoreCase))
+                    {
+                        treasuryBankBalance += cb.CurrentBalance;
+                    }
+                    else
+                    {
+                        treasuryCashBalance += cb.CurrentBalance;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Dashboard summary treasury query warning.");
+            }
+
+            // Inventory Valuation & Low Stock Alert Count
+            decimal inventoryValuation = 0m;
+            int lowStockCount = 0;
+            try
+            {
+                var physicalProducts = await _context.Products
+                    .AsNoTracking()
+                    .Include(p => p.WarehouseStocks)
+                    .Where(p => p.IsActive && !p.IsBundle)
+                    .ToListAsync(ct);
+
+                foreach (var p in physicalProducts)
+                {
+                    var qty = warehouseId.HasValue && warehouseId.Value != Guid.Empty
+                        ? p.WarehouseStocks.Where(ws => ws.WarehouseId == warehouseId.Value).Sum(ws => Math.Max(0, ws.Quantity))
+                        : p.WarehouseStocks.Sum(ws => Math.Max(0, ws.Quantity));
+
+                    if (qty <= p.MinStockAlert)
+                    {
+                        lowStockCount++;
+                    }
+                    if (canViewProfitsOrPartners)
+                    {
+                        inventoryValuation += p.CostPrice * qty;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Dashboard summary inventory query warning.");
+            }
+
+            // Customer Receivables & Overdue Installments Summary
+            decimal receivablesTotalBalance = 0m;
+            int receivablesCustomersCount = 0;
+            int overdueInstallmentsCount = 0;
+            decimal overdueInstallmentsAmount = 0m;
+            decimal totalInstallmentsRemaining = 0m;
+            try
+            {
+                var creditCustomers = await _context.Customers
+                    .AsNoTracking()
+                    .Where(c => !c.IsDefaultCashCustomer && c.CurrentBalance > 0m)
+                    .Select(c => c.CurrentBalance)
+                    .ToListAsync(ct);
+
+                receivablesCustomersCount = creditCustomers.Count;
+                receivablesTotalBalance = creditCustomers.Sum();
+
+                var nowUtc = DateTime.UtcNow;
+                var overdueSchedules = await _context.InstallmentScheduleItems
+                    .AsNoTracking()
+                    .Where(s => s.DueDate < nowUtc && s.Status != InstallmentScheduleStatus.Paid)
+                    .Select(s => new { s.Amount, s.PaidAmount })
+                    .ToListAsync(ct);
+
+                overdueInstallmentsCount = overdueSchedules.Count;
+                overdueInstallmentsAmount = overdueSchedules.Sum(s => Math.Max(0m, s.Amount - s.PaidAmount));
+
+                totalInstallmentsRemaining = await _context.InstallmentContracts
+                    .AsNoTracking()
+                    .Where(c => c.Status == InstallmentContractStatus.Active)
+                    .SumAsync(c => (decimal?)c.RemainingAmount, ct) ?? 0m;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Dashboard summary receivables/installments query warning.");
+            }
+
             var dueRecurringExpenses = canViewProfitsOrPartners
                 ? await _recurringExpenseService.GetDueForDashboardAsync(ct)
                 : new List<RecurringExpenseDto>();
@@ -87,10 +193,21 @@ public class DashboardController : ControllerBase
             return Ok(ApiResponse<DashboardSummaryDto>.Ok(new DashboardSummaryDto
             {
                 Period = normPeriod,
-                TotalRevenue = totalRevenue,
-                TotalExpenses = totalExpenses,
-                NetProfit = netProfit,
+                CanViewProfits = canViewProfitsOrPartners,
+                TotalRevenue = Math.Round(totalRevenue, 4),
+                TotalExpenses = Math.Round(totalExpenses, 4),
+                NetProfit = Math.Round(netProfit, 4),
                 InvoicesCount = invoicesCount,
+                TreasuryCashBalance = Math.Round(treasuryCashBalance, 4),
+                TreasuryBankBalance = Math.Round(treasuryBankBalance, 4),
+                TreasuryTotalBalance = Math.Round(treasuryCashBalance + treasuryBankBalance, 4),
+                InventoryValuation = Math.Round(inventoryValuation, 4),
+                LowStockCount = lowStockCount,
+                ReceivablesTotalBalance = Math.Round(receivablesTotalBalance, 4),
+                ReceivablesCustomersCount = receivablesCustomersCount,
+                OverdueInstallmentsCount = overdueInstallmentsCount,
+                OverdueInstallmentsAmount = Math.Round(overdueInstallmentsAmount, 4),
+                TotalInstallmentsRemaining = Math.Round(totalInstallmentsRemaining, 4),
                 PartnersSummary = partnersSummary,
                 DueRecurringExpensesCount = dueRecurringExpenses.Count,
                 DueRecurringExpenses = dueRecurringExpenses

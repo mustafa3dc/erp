@@ -53,6 +53,7 @@ public class InvoicesController : ControllerBase
         {
             var query = _context.SalesInvoices
                 .Include(i => i.Items)
+                .Include(i => i.Customer)
                 .AsNoTracking()
                 .OrderByDescending(i => i.CreatedAt)
                 .AsQueryable();
@@ -62,6 +63,7 @@ public class InvoicesController : ControllerBase
                 var s = search.Trim().ToLower();
                 query = query.Where(i => 
                     i.InvoiceNumber.ToLower().Contains(s) ||
+                    (i.CustomerName != null && i.CustomerName.ToLower().Contains(s)) ||
                     (i.CashierName != null && i.CashierName.ToLower().Contains(s)));
             }
 
@@ -72,7 +74,11 @@ public class InvoicesController : ControllerBase
                 Id = i.Id,
                 InvoiceNumber = i.InvoiceNumber,
                 CashierName = i.CashierName ?? "الكاشير",
+                CustomerName = i.CustomerName ?? i.Customer?.Name,
+                CustomerPhone = i.Customer?.Phone,
                 TotalAmount = i.TotalAmount,
+                PaymentStatus = i.PaymentStatus,
+                PaymentMethod = i.PaymentMethod,
                 DispenseMode = i.DispenseMode,
                 FulfillmentStatus = i.FulfillmentStatus,
                 CreatedAt = i.CreatedAt,
@@ -317,7 +323,11 @@ public class InvoiceSummaryDto
     public Guid Id { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
     public string CashierName { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public string? CustomerPhone { get; set; }
     public decimal TotalAmount { get; set; }
+    public string PaymentStatus { get; set; } = "PAID";
+    public string PaymentMethod { get; set; } = "CASH";
     public string DispenseMode { get; set; } = "IN_STORE";
     public string FulfillmentStatus { get; set; } = "FULFILLED";
     public DateTime CreatedAt { get; set; }

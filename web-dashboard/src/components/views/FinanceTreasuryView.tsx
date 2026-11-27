@@ -14,7 +14,8 @@ import {
   EyeOff,
   Eye,
   X,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from 'lucide-react';
 import {
   fetchTreasuryAccountsList,
@@ -33,6 +34,8 @@ import {
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
 import { ModalBackdropPortal } from '../ui/dialog';
+import { getStoredAuthSession } from '../../services/storageService';
+import { formatReceiptVoucherWhatsAppMessage, openWhatsAppShare } from '../../utils/whatsappUtils';
 
 interface FinanceTreasuryViewProps {
   lang: 'en' | 'ar';
@@ -660,12 +663,13 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   <th>{getTranslation(lang, 'finance.colBalanceAfter')}</th>
                   <th>{getTranslation(lang, 'finance.colTimestamp')}</th>
                   <th>{getTranslation(lang, 'finance.colNotes')}</th>
+                  <th>{getTranslation(lang, 'general_settings.actionCol')}</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredVouchers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-muted-foreground text-xs">
+                    <td colSpan={9} className="text-center py-10 text-muted-foreground text-xs">
                       {getTranslation(lang, 'finance.emptyVouchers')}
                     </td>
                   </tr>
@@ -699,6 +703,35 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                         </td>
                         <td className="text-xs text-muted-foreground max-w-[220px] truncate" title={v.notes}>
                           {v.notes || '—'}
+                        </td>
+                        <td>
+                          {v.transactionType === 'RECEIPT' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const session = getStoredAuthSession();
+                                const storeName = session?.tenantName || settings.organizationName || 'ZiloX ERP';
+                                const msg = formatReceiptVoucherWhatsAppMessage({
+                                  lang,
+                                  storeName,
+                                  voucherNo: v.referenceNumber,
+                                  partyName: v.partyName || undefined,
+                                  amountFormatted: formatMoney(v.amount),
+                                  dateText: new Date(v.voucherDate || v.createdAt).toLocaleDateString(),
+                                  accountName: v.cashBoxName || undefined,
+                                });
+                                openWhatsAppShare(undefined, msg);
+                                showToast(getTranslation(lang, 'whatsapp.openedToast'));
+                              }}
+                              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors cursor-pointer whitespace-nowrap"
+                              title={getTranslation(lang, 'whatsapp.sendBtn')}
+                            >
+                              <MessageCircle size={12} />
+                              <span>{getTranslation(lang, 'whatsapp.sendBtn')}</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
                     );

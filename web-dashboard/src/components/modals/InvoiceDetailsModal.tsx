@@ -1,11 +1,14 @@
 import React, { useRef } from 'react';
-import { X, Printer, FileText, CheckCircle2, Clock, AlertCircle, Building2, User, Phone, MapPin, QrCode } from 'lucide-react';
+import { X, Printer, FileText, CheckCircle2, Clock, AlertCircle, Building2, User, Phone, MapPin, QrCode, MessageCircle } from 'lucide-react';
 import BarcodeSvg from '../BarcodeSvg';
 import { SalesInvoice } from '../../types/warehouse';
 import { localizeWarehouse, localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
 import { getStoredAuthSession } from '../../services/storageService';
 import { ModalBackdropPortal } from '../ui/dialog';
+import { getTranslation } from '../../lib/i18n';
+import { formatInvoiceWhatsAppMessage, openWhatsAppShare } from '../../utils/whatsappUtils';
+import { toast } from 'sonner';
 
 interface InvoiceDetailsModalProps {
   invoice: SalesInvoice | null;
@@ -206,6 +209,29 @@ export default function InvoiceDetailsModal({
     }, 250);
   };
 
+  const handleSendWhatsApp = () => {
+    const total = Number(invoice.total || 0);
+    const paid = invoice.status === 'paid' ? total : 0;
+    const remaining = Math.max(0, total - paid);
+    const itemsSummary = invoice.items && invoice.items.length > 0
+      ? invoice.items.slice(0, 4).map(it => `${isAr ? it.nameAr : (it.nameEn || it.nameAr)} x${it.quantity}`).join('، ')
+      : undefined;
+
+    const msg = formatInvoiceWhatsAppMessage({
+      lang,
+      storeName: tenantDisplayName,
+      invoiceNo: invoice.invoiceNo,
+      customerName: invoice.customerName,
+      itemsSummary,
+      itemsCount: invoice.itemsCount,
+      totalAmountFormatted: formatMoney(total),
+      paidAmountFormatted: formatMoney(paid),
+      remainingAmountFormatted: formatMoney(remaining),
+    });
+    openWhatsAppShare(invoice.customerPhone, msg);
+    toast.success(getTranslation(lang, 'whatsapp.openedToast'));
+  };
+
   const statusColor = 
     invoice.status === 'paid' ? 'status-active' :
     invoice.status === 'pending' ? 'status-pending' : 'status-danger';
@@ -272,6 +298,14 @@ export default function InvoiceDetailsModal({
           </div>
 
           <div className="invoice-topbar-actions">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-500/20 transition-colors cursor-pointer"
+              onClick={handleSendWhatsApp}
+            >
+              <MessageCircle size={15} />
+              <span>{getTranslation(lang, 'whatsapp.sendBtn')}</span>
+            </button>
             <button 
               type="button" 
               className="btn-print-invoice"

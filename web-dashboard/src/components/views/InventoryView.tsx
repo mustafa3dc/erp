@@ -5,7 +5,7 @@ import {
   TrendingUp, Download, Printer, Copy, Check, ChevronDown, ChevronUp,
   Edit3, History, ArrowLeftRight, ChevronLeft, ChevronRight, Filter,
   Tag, Shield, Lock, Unlock, Barcode as BarcodeIcon, Building2,
-  ArrowUpDown, ArrowUp, ArrowDown, FolderTree, Trash2, Scale
+  ArrowUpDown, ArrowUp, ArrowDown, FolderTree, Trash2, Scale, Upload
 } from 'lucide-react';
 import { Product, Warehouse } from '../../types/warehouse';
 import { TransactionDetail } from '../TransactionModal';
@@ -14,9 +14,11 @@ import StockHistoryModal from '../modals/StockHistoryModal';
 import BatchPrintLabelsModal from '../modals/BatchPrintLabelsModal';
 import ManageCategoriesModal from '../modals/ManageCategoriesModal';
 import StockAdjustmentModal from '../modals/StockAdjustmentModal';
+import BulkImportProductsModal from '../modals/BulkImportProductsModal';
 import { localizeCategory, localizeWarehouse, localizeUnit } from '../../lib/localeHelpers';
 import { useSettings } from '../../context/settings-context';
 import { usePermissions } from '../../hooks/usePermissions';
+import { getTranslation } from '../../lib/i18n';
 import { saveStoredProducts } from '../../services/storageService';
 import { ModalBackdropPortal } from '../ui/dialog';
 
@@ -120,6 +122,7 @@ export default function InventoryView({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState<boolean>(false);
   const [copiedCode, setCopiedCode] = useState<string>('');
 
   // Active warehouse object for isolation banner and specs
@@ -449,15 +452,26 @@ export default function InventoryView({
 
         <div className="view-header-actions">
           {!isReadOnly && hasPermission('inventory.items.create') && (
-            <button 
-              type="button" 
-              className="btn-add-primary" 
-              onClick={() => onOpenAddModal(selectedWarehouseId !== 'ALL' ? selectedWarehouseId : undefined)}
-              title={activeWh ? (isAr ? `إضافة بضاعة مباشرة إلى ${activeWh.nameAr}` : `Add item directly to ${activeWh.nameAr}`) : undefined}
-            >
-              <Plus size={15} />
-              <span>{activeWh ? (isAr ? `إضافة بضاعة لـ ${activeWh.nameAr}` : `Add to ${activeWh.nameEn || activeWh.nameAr}`) : (isAr ? 'إضافة صنف جديد' : 'New Item')}</span>
-            </button>
+            <>
+              <button 
+                type="button" 
+                className="btn-add-primary" 
+                onClick={() => onOpenAddModal(selectedWarehouseId !== 'ALL' ? selectedWarehouseId : undefined)}
+                title={activeWh ? (isAr ? `إضافة بضاعة مباشرة إلى ${activeWh.nameAr}` : `Add item directly to ${activeWh.nameAr}`) : undefined}
+              >
+                <Plus size={15} />
+                <span>{activeWh ? (isAr ? `إضافة بضاعة لـ ${activeWh.nameAr}` : `Add to ${activeWh.nameEn || activeWh.nameAr}`) : (isAr ? 'إضافة صنف جديد' : 'New Item')}</span>
+              </button>
+              <button
+                type="button"
+                className="btn-secondary-flat"
+                onClick={() => setIsBulkImportOpen(true)}
+                title={getTranslation(lang, 'bulkImport.buttonLabel')}
+              >
+                <Upload size={15} />
+                <span>{getTranslation(lang, 'bulkImport.buttonLabel')}</span>
+              </button>
+            </>
           )}
           <button type="button" className="btn-secondary-flat" onClick={handleExportPdf} title={isAr ? 'طباعة وحفظ كتقرير' : 'Print / Export PDF'}>
 
@@ -1585,6 +1599,20 @@ export default function InventoryView({
         products={products}
         onUpdateProducts={onUpdateProducts}
         lang={lang}
+      />
+
+      {/* Bulk Excel / CSV Import Modal */}
+      <BulkImportProductsModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        lang={lang}
+        existingProducts={products}
+        warehouses={warehouses}
+        onImported={(nextProducts) => {
+          if (onUpdateProducts) {
+            onUpdateProducts(nextProducts);
+          }
+        }}
       />
     </div>
   );

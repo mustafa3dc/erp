@@ -13,7 +13,8 @@ import {
   Layers,
   Lock,
   Unlock,
-  AlertTriangle
+  AlertTriangle,
+  MessageCircle
 } from 'lucide-react';
 import { SalesInvoice, Product } from '../../types/warehouse';
 import { Button } from '../ui/button';
@@ -22,7 +23,9 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { useSettings } from '../../context/settings-context';
 import { localizeWarehouse } from '../../lib/localeHelpers';
 import { getTranslation } from '../../lib/i18n';
-import { ActiveShift, getStoredActiveShift } from '../../services/storageService';
+import { ActiveShift, getStoredActiveShift, getStoredAuthSession } from '../../services/storageService';
+import { formatInvoiceWhatsAppMessage, openWhatsAppShare } from '../../utils/whatsappUtils';
+import { toast } from 'sonner';
 
 export interface SalesInvoicesViewProps {
   invoices: SalesInvoice[];
@@ -45,8 +48,35 @@ export default function SalesInvoicesView({
 }: SalesInvoicesViewProps) {
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions();
-  const { formatMoney } = useSettings();
+  const { settings, formatMoney } = useSettings();
   const gt = (key: string, fallback?: string) => getTranslation(lang, `ui.invoiceShiftGate.${key}`, fallback);
+
+  const handleShareInvoiceWhatsApp = (inv: SalesInvoice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const session = getStoredAuthSession();
+    const storeName = session?.tenantName || settings.organizationName || 'ZiloX ERP';
+    const total = Number(inv.total || 0);
+    const paid = inv.status === 'paid' ? total : 0;
+    const remaining = Math.max(0, total - paid);
+    const itemsSummary = inv.items && inv.items.length > 0
+      ? inv.items.slice(0, 4).map(it => `${isAr ? it.nameAr : (it.nameEn || it.nameAr)} x${it.quantity}`).join('، ')
+      : undefined;
+
+    const msg = formatInvoiceWhatsAppMessage({
+      lang,
+      storeName,
+      invoiceNo: inv.invoiceNo,
+      customerName: inv.customerName,
+      itemsSummary,
+      itemsCount: inv.itemsCount,
+      totalAmountFormatted: formatMoney(total),
+      paidAmountFormatted: formatMoney(paid),
+      remainingAmountFormatted: formatMoney(remaining),
+    });
+
+    openWhatsAppShare(inv.customerPhone, msg);
+    toast.success(getTranslation(lang, 'whatsapp.openedToast'));
+  };
 
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => getStoredActiveShift());
   const [showNoShiftModal, setShowNoShiftModal] = useState(false);
@@ -375,19 +405,32 @@ export default function SalesInvoicesView({
 
                       {/* Action */}
                       <td className="py-3 px-3 text-center">
-                        <Button 
-                          type="button" 
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-2.5 text-xs gap-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenInvoiceDetails(inv);
-                          }}
-                        >
-                          <Eye size={13} />
-                          <span>{isAr ? 'عرض' : 'View'}</span>
-                        </Button>
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          <Button 
+                            type="button" 
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenInvoiceDetails(inv);
+                            }}
+                          >
+                            <Eye size={13} />
+                            <span>{isAr ? 'عرض' : 'View'}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                            onClick={(e) => handleShareInvoiceWhatsApp(inv, e)}
+                            title={getTranslation(lang, 'whatsapp.sendBtn')}
+                          >
+                            <MessageCircle size={13} />
+                            <span>{getTranslation(lang, 'whatsapp.sendBtn')}</span>
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );

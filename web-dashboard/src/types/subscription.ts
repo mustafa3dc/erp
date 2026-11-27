@@ -26,6 +26,8 @@ export type PlanFeatureKey =
   | 'SerialTracking'
   | 'AiExecutiveAdvisor'
   | 'WarehouseTransfers'
+  | 'SelfServiceBackup'
+  | 'AuditLog'
   | 'MultiBranch'
   | 'PurchaseOrders'
   | 'DispatchOrders'
@@ -135,6 +137,8 @@ export const PLAN_FEATURE_MIN_TIER: Record<PlanFeatureKey, SubscriptionPlan> = {
   SerialTracking: 'Pro',
   AiExecutiveAdvisor: 'Pro',
   WarehouseTransfers: 'Pro',
+  SelfServiceBackup: 'Pro',
+  AuditLog: 'Pro',
   MultiBranch: 'Enterprise',
   PurchaseOrders: 'Enterprise',
   DispatchOrders: 'Enterprise',

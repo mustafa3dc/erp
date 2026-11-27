@@ -45,15 +45,18 @@ public class InventoryController : ControllerBase
     private readonly AppDbContext _context;
     private readonly IConnectionMultiplexer? _redis;
     private readonly ITenantFeatureService _tenantFeatureService;
+    private readonly IAuditLogService _auditLogService;
 
     public InventoryController(
         AppDbContext context,
         IServiceProvider serviceProvider,
-        ITenantFeatureService tenantFeatureService)
+        ITenantFeatureService tenantFeatureService,
+        IAuditLogService auditLogService)
     {
         _context = context;
         _redis = serviceProvider.GetService<IConnectionMultiplexer>();
         _tenantFeatureService = tenantFeatureService;
+        _auditLogService = auditLogService;
     }
 
     /// <summary>
@@ -219,6 +222,29 @@ public class InventoryController : ControllerBase
                 }
             };
             _context.StockMovements.Add(stockMovement);
+
+            _auditLogService.QueueLog(
+                action: "STOCK_ADJUSTMENT",
+                entityName: "warehouse_stock",
+                entityId: $"{product.Sku}@{warehouse.Code}",
+                oldValues: new
+                {
+                    ProductId = product.Id,
+                    ProductName = product.Name,
+                    WarehouseId = warehouse.Id,
+                    WarehouseName = warehouse.Name,
+                    PreviousStock = previousStock
+                },
+                newValues: new
+                {
+                    AdjustmentType = normalizedType,
+                    QuantityChange = quantityChange,
+                    NewStock = stock.Quantity,
+                    Reason = request.Reason.Trim(),
+                    Notes = request.Notes?.Trim()
+                },
+                tenantIdOverride: tenantGuid,
+                userIdOverride: userId);
 
             await _context.SaveChangesAsync();
             await dbTransaction.CommitAsync();

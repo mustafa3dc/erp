@@ -37,7 +37,9 @@ import {
   Languages,
   CheckCircle2,
   Award,
-  Sparkles
+  Sparkles,
+  DatabaseBackup,
+  ShieldCheck
 } from 'lucide-react';
 import {
   useSettings,
@@ -51,6 +53,8 @@ import {
   LoyaltySettings,
 } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { getTenantAuthHeaders } from '../../lib/api-client';
+import { getAuthToken } from '../../services/purchasesService';
 import {
   DEFAULT_LOYALTY_SETTINGS,
   getStoredLoyaltySettings,
@@ -230,7 +234,7 @@ function StatusBadge({
 
 // ─── Tab IDs ──────────────────────────────────────────────────────────────────
 
-type TabId = 'company_identity' | 'financial_currency' | 'pos_hardware' | 'loyalty_program' | 'active_modules';
+type TabId = 'company_identity' | 'financial_currency' | 'pos_hardware' | 'loyalty_program' | 'active_modules' | 'backup_restore';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -331,6 +335,47 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     settings.loyaltySettings || getStoredLoyaltySettings() || DEFAULT_LOYALTY_SETTINGS
   );
   const [isSavingLoyalty, setIsSavingLoyalty] = useState(false);
+
+  // ── Self-Service Backup & Restore State ────────────────────────────────────
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('zilox_last_backup_at');
+    } catch {
+      return null;
+    }
+  });
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePreviewMeta, setRestorePreviewMeta] = useState<{
+    tenantName?: string;
+    exportedAtUtc?: string;
+    checksumSha256?: string;
+  } | null>(null);
+  const [restoreConfirmedCheck, setRestoreConfirmedCheck] = useState(false);
+  const [restoreConfirmWord, setRestoreConfirmWord] = useState('');
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const [restoreErrorMsg, setRestoreErrorMsg] = useState('');
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (!canAccess('SelfServiceBackup')) return;
+    const token = getAuthToken();
+    if (!token) return;
+
+    const headers = getTenantAuthHeaders();
+    fetch('/api/tenant/backup/status', { headers })
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        const ts = json?.data?.lastBackupAt;
+        if (ts) {
+          setLastBackupAt(ts);
+          try {
+            localStorage.setItem('zilox_last_backup_at', ts);
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [canAccess]);
 
   React.useEffect(() => {
     const token = typeof window !== 'undefined'
@@ -651,6 +696,149 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     reader.readAsDataURL(file);
   };
 
+  const handleDownloadTenantBackup = async () => {
+    if (!canAccess('SelfServiceBackup')) {
+      openUpgradeModal('Pro', 'SelfServiceBackup');
+      return;
+    }
+
+    setIsExportingBackup(true);
+    try {
+      const token = getAuthToken();
+      if (token) {
+        const headers = getTenantAuthHeaders();
+        delete headers['Content-Type'];
+        const res = await fetch('/api/tenant/backup/export', { headers });
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => null);
+          const errCode = errJson?.errorCode || 'ERR_INVALID_BACKUP_FILE';
+          toast.error(getTranslation(settingsLang, `errors.ERR.BACKUP.${errCode}`, getTranslation(settingsLang, 'backup.downloadErrorToast')));
+          return;
+        }
+
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^"]+)"?/i);
+        const filename = match?.[1] || `zilox_backup_${new Date().toISOString().slice(0, 10)}.json`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        const data = {
+          schemaVersion: '1.0',
+          exportedAtUtc: new Date().toISOString(),
+          data: {
+            settings,
+            products: getStoredProducts(),
+            invoices: getStoredInvoices(),
+            transactions: getStoredTransactions(),
+          },
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `zilox_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      const nowIso = new Date().toISOString();
+      setLastBackupAt(nowIso);
+      try {
+        localStorage.setItem('zilox_last_backup_at', nowIso);
+      } catch {}
+      toast.success(getTranslation(settingsLang, 'backup.downloadSuccessToast'));
+    } catch {
+      toast.error(getTranslation(settingsLang, 'backup.downloadErrorToast'));
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
+  const handleSelectRestoreBackupFile = async (file: File | null) => {
+    setRestoreErrorMsg('');
+    setRestorePreviewMeta(null);
+    setRestoreFile(file);
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || !parsed.schemaVersion || !parsed.data || !parsed.checksumSha256) {
+        setRestoreErrorMsg(getTranslation(settingsLang, 'errors.ERR.BACKUP.ERR_INVALID_BACKUP_FILE'));
+        return;
+      }
+      setRestorePreviewMeta({
+        tenantName: parsed.tenantName || parsed.tenantSlug || '—',
+        exportedAtUtc: parsed.exportedAtUtc,
+        checksumSha256: parsed.checksumSha256,
+      });
+    } catch {
+      setRestoreErrorMsg(getTranslation(settingsLang, 'errors.ERR.BACKUP.ERR_INVALID_BACKUP_FILE'));
+    }
+  };
+
+  const handleExecuteTenantRestore = async () => {
+    if (!canAccess('SelfServiceBackup')) {
+      openUpgradeModal('Pro', 'SelfServiceBackup');
+      return;
+    }
+    if (!restoreFile || !restoreConfirmedCheck) return;
+
+    const expectedKeyword = getTranslation(settingsLang, 'backup.confirmKeywordValue');
+    if (
+      restoreConfirmWord.trim() !== expectedKeyword &&
+      restoreConfirmWord.trim().toUpperCase() !== 'RESTORE' &&
+      restoreConfirmWord.trim() !== 'استعادة'
+    ) {
+      return;
+    }
+
+    setIsRestoringBackup(true);
+    setRestoreErrorMsg('');
+    try {
+      const token = getAuthToken();
+      if (token) {
+        const headers = getTenantAuthHeaders();
+        delete headers['Content-Type'];
+        const formData = new FormData();
+        formData.append('file', restoreFile);
+
+        const res = await fetch('/api/tenant/backup/restore', {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.success) {
+          const code = json?.errorCode || 'ERR_BACKUP_RESTORE_FAILED';
+          setRestoreErrorMsg(getTranslation(settingsLang, `errors.ERR.BACKUP.${code}`, code));
+          return;
+        }
+      }
+
+      toast.success(getTranslation(settingsLang, 'backup.restoreSuccessToast'));
+      setRestoreFile(null);
+      setRestorePreviewMeta(null);
+      setRestoreConfirmedCheck(false);
+      setRestoreConfirmWord('');
+      window.dispatchEvent(new CustomEvent('zilox_query_invalidate'));
+    } catch {
+      setRestoreErrorMsg(getTranslation(settingsLang, 'errors.ERR.BACKUP.ERR_BACKUP_RESTORE_FAILED'));
+    } finally {
+      setIsRestoringBackup(false);
+    }
+  };
+
   // ── Tab definitions ────────────────────────────────────────────────────────
 
   const tabs: {
@@ -695,6 +883,14 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
       labelEn: getTranslation('en', 'serialTracking.additionalFeaturesTab'),
       locked: !canAccess('SerialTracking'),
       onLockedClick: () => openUpgradeModal('Pro', 'SerialTracking'),
+    },
+    {
+      id: 'backup_restore',
+      icon: <DatabaseBackup className="w-4 h-4" />,
+      labelAr: getTranslation('ar', 'backup.tabLabel'),
+      labelEn: getTranslation('en', 'backup.tabLabel'),
+      locked: !canAccess('SelfServiceBackup'),
+      onLockedClick: () => openUpgradeModal('Pro', 'SelfServiceBackup'),
     },
   ];
 
@@ -1889,6 +2085,199 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── TAB 6: Self-Service Backup & Restore ──────────────────────────── */}
+      {activeTab === 'backup_restore' && (
+        <div className="space-y-5">
+          {!canAccess('SelfServiceBackup') ? (
+            <SectionCard
+              icon={<DatabaseBackup className="w-4 h-4" />}
+              title={getTranslation(settingsLang, 'backup.sectionTitle')}
+            >
+              <div className="p-6 rounded-xl border border-border bg-muted/40 text-center space-y-3">
+                <Lock className="w-7 h-7 text-muted-foreground mx-auto" />
+                <p className="text-sm font-bold text-foreground m-0">
+                  {getTranslation(settingsLang, 'backup.proLockedNotice')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openUpgradeModal('Pro', 'SelfServiceBackup')}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{getTranslation(settingsLang, 'installmentsDue.upgradeBtn')}</span>
+                </button>
+              </div>
+            </SectionCard>
+          ) : (
+            <>
+              <SectionCard
+                icon={<DatabaseBackup className="w-4 h-4" />}
+                title={getTranslation(settingsLang, 'backup.sectionTitle')}
+              >
+                <p className="text-xs text-muted-foreground m-0">
+                  {getTranslation(settingsLang, 'backup.sectionSubtitle')}
+                </p>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-border bg-muted/40">
+                  <div className="space-y-1">
+                    <span className="text-xs font-semibold text-muted-foreground block">
+                      {getTranslation(settingsLang, 'backup.lastBackupLabel')}
+                    </span>
+                    <div className="text-sm font-bold text-foreground font-mono tabular-nums" dir="ltr">
+                      {lastBackupAt
+                        ? new Date(lastBackupAt).toLocaleString(isAr ? 'ar-IQ' : 'en-US')
+                        : getTranslation(settingsLang, 'backup.neverBackedUp')}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadTenantBackup}
+                    disabled={isExportingBackup}
+                    className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-60 transition-colors cursor-pointer"
+                  >
+                    {isExportingBackup ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isExportingBackup
+                        ? getTranslation(settingsLang, 'backup.downloadingBtn')
+                        : getTranslation(settingsLang, 'backup.downloadNowBtn')}
+                    </span>
+                  </button>
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                icon={<ShieldCheck className="w-4 h-4" />}
+                title={getTranslation(settingsLang, 'backup.restoreSectionTitle')}
+              >
+                <p className="text-xs text-muted-foreground m-0">
+                  {getTranslation(settingsLang, 'backup.restoreSectionSubtitle')}
+                </p>
+
+                <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-medium flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{getTranslation(settingsLang, 'backup.restoreWarning')}</span>
+                </div>
+
+                {restoreErrorMsg && (
+                  <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{restoreErrorMsg}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => backupFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>{getTranslation(settingsLang, 'backup.selectBackupFileBtn')}</span>
+                  </button>
+                  <input
+                    ref={backupFileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={(e) => handleSelectRestoreBackupFile(e.target.files?.[0] || null)}
+                  />
+                  {restoreFile && (
+                    <span className="text-xs text-muted-foreground font-mono" dir="ltr">
+                      {restoreFile.name}
+                    </span>
+                  )}
+                </div>
+
+                {restorePreviewMeta && (
+                  <div className="p-4 rounded-xl border border-border bg-muted/30 space-y-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <span className="text-muted-foreground block">
+                          {getTranslation(settingsLang, 'backup.archiveTenantLabel')}
+                        </span>
+                        <strong className="text-foreground" dir="auto">{restorePreviewMeta.tenantName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">
+                          {getTranslation(settingsLang, 'backup.archiveDateLabel')}
+                        </span>
+                        <strong className="font-mono text-foreground tabular-nums" dir="ltr">
+                          {restorePreviewMeta.exportedAtUtc
+                            ? new Date(restorePreviewMeta.exportedAtUtc).toLocaleString()
+                            : '—'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">
+                          {getTranslation(settingsLang, 'backup.archiveChecksumLabel')}
+                        </span>
+                        <strong className="font-mono text-primary block truncate" dir="ltr">
+                          {restorePreviewMeta.checksumSha256}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-foreground font-semibold pt-2 border-t border-border/60">
+                      <input
+                        type="checkbox"
+                        checked={restoreConfirmedCheck}
+                        onChange={(e) => setRestoreConfirmedCheck(e.target.checked)}
+                        className="rounded border-border"
+                      />
+                      <span>{getTranslation(settingsLang, 'backup.confirmCheckboxLabel')}</span>
+                    </label>
+
+                    <div className="space-y-1.5">
+                      <label className="block font-semibold text-foreground">
+                        {getTranslation(settingsLang, 'backup.confirmKeywordLabel')}
+                      </label>
+                      <input
+                        type="text"
+                        value={restoreConfirmWord}
+                        onChange={(e) => setRestoreConfirmWord(e.target.value)}
+                        placeholder={getTranslation(settingsLang, 'backup.confirmKeywordPlaceholder')}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleExecuteTenantRestore}
+                        disabled={
+                          isRestoringBackup ||
+                          !restoreConfirmedCheck ||
+                          (restoreConfirmWord.trim() !== getTranslation(settingsLang, 'backup.confirmKeywordValue') &&
+                            restoreConfirmWord.trim().toUpperCase() !== 'RESTORE' &&
+                            restoreConfirmWord.trim() !== 'استعادة')
+                        }
+                        className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      >
+                        {isRestoringBackup ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-4 h-4" />
+                        )}
+                        <span>
+                          {isRestoringBackup
+                            ? getTranslation(settingsLang, 'backup.restoringBtn')
+                            : getTranslation(settingsLang, 'backup.restoreNowBtn')}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </SectionCard>
+            </>
+          )}
         </div>
       )}
 

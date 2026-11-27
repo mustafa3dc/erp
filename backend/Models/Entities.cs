@@ -1075,6 +1075,9 @@ public class Tenant
     [Column("logo_url")]
     public string? LogoUrl { get; set; }
 
+    [Column("last_backup_at")]
+    public DateTimeOffset? LastBackupAt { get; set; }
+
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
@@ -2352,9 +2355,9 @@ public class AuditLog : ITenantEntity
     public string? Username { get; set; }
 
     [Required]
-    [MaxLength(20)]
+    [MaxLength(40)]
     [Column("action")]
-    public string Action { get; set; } = string.Empty; // INSERT, UPDATE, DELETE, APPROVE, REJECT, CONVERT
+    public string Action { get; set; } = string.Empty; // INSERT, UPDATE, DELETE, APPROVE, REJECT, CONVERT, PRICE_CHANGE, POS_DISCOUNT, STOCK_ADJUSTMENT, SHIFT_CLOSE, VOID
 
     [Required]
     [MaxLength(100)]

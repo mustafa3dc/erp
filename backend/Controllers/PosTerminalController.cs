@@ -13,17 +13,20 @@ public class PosTerminalController : ControllerBase
     private readonly IDiscountEngineService _discountEngine;
     private readonly ISerialTrackingService _serialTrackingService;
     private readonly AppDbContext _context;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<PosTerminalController> _logger;
 
     public PosTerminalController(
         IDiscountEngineService discountEngine,
         ISerialTrackingService serialTrackingService,
         AppDbContext context,
+        IAuditLogService auditLogService,
         ILogger<PosTerminalController> logger)
     {
         _discountEngine = discountEngine;
         _serialTrackingService = serialTrackingService;
         _context = context;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
@@ -455,6 +458,31 @@ public class PosTerminalController : ControllerBase
         {
             _shiftAuditTrail.Insert(0, closedRecord);
         }
+
+        await _auditLogService.LogAndSaveAsync(
+            action: "SHIFT_CLOSE",
+            entityName: "pos_shifts",
+            entityId: shiftId,
+            oldValues: new
+            {
+                OpeningFloat = request.OpeningFloat,
+                ExpectedCash = expectedCash
+            },
+            newValues: new
+            {
+                ZReportNumber = zReportNumber,
+                CashierName = request.CashierName,
+                TerminalId = request.TerminalId,
+                CashSales = cashSales,
+                CardSales = cardSales,
+                ZainCashSales = zainCashSales,
+                QiCardSales = qiCardSales,
+                PettyExpenses = pettyExpenses,
+                ActualCash = request.ActualCash,
+                Difference = difference,
+                ClosedAt = closedAt
+            },
+            usernameOverride: request.CashierName);
 
         _logger.LogInformation("POS Shift closed with Z-Report {ZReport} at {CloseTime}. Duration: {Duration}",
             closedRecord.ZReportNumber, closedRecord.EndTime, closedRecord.Duration);

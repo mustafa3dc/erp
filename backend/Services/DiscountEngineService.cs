@@ -13,6 +13,7 @@ public class DiscountEngineService : IDiscountEngineService
     private readonly ILogger<DiscountEngineService> _logger;
     private readonly IDatabase? _redisDb;
     private readonly ILoyaltyService? _loyaltyService;
+    private readonly IAuditLogService? _auditLogService;
 
     // Standardized generic error message (Strict Cost Masking: Never leak CostPrice or Margins)
     private const string ErrorCodeLimitExceeded = "ERR_DISCOUNT_EXCEEDED_LIMIT";
@@ -22,12 +23,14 @@ public class DiscountEngineService : IDiscountEngineService
         AppDbContext context,
         ILogger<DiscountEngineService> logger,
         IConnectionMultiplexer? redis = null,
-        ILoyaltyService? loyaltyService = null)
+        ILoyaltyService? loyaltyService = null,
+        IAuditLogService? auditLogService = null)
     {
         _context = context;
         _logger = logger;
         _redisDb = redis?.GetDatabase();
         _loyaltyService = loyaltyService;
+        _auditLogService = auditLogService;
     }
 
     /// <summary>
@@ -251,6 +254,25 @@ public class DiscountEngineService : IDiscountEngineService
         }
 
         var approvalToken = $"OVR-{Guid.NewGuid():N}";
+
+        if (_auditLogService != null)
+        {
+            await _auditLogService.LogAndSaveAsync(
+                action: "POS_PRICE_OVERRIDE",
+                entityName: "products",
+                entityId: request.ProductId.ToString(),
+                oldValues: new { OriginalPrice = product?.SellingPrice },
+                newValues: new
+                {
+                    DiscountType = request.DiscountType,
+                    DiscountValue = request.DiscountValue,
+                    ApprovedByManagerId = manager.StaffCode,
+                    ApprovedByManagerName = manager.FullName,
+                    ApprovalToken = approvalToken
+                },
+                userIdOverride: manager.StaffCode,
+                usernameOverride: manager.FullName);
+        }
 
         return new ManagerOverrideResponse
         {
@@ -773,6 +795,33 @@ public class DiscountEngineService : IDiscountEngineService
             if (auditLogs.Any())
             {
                 _context.DiscountAuditLogs.AddRange(auditLogs);
+            }
+
+            if (_auditLogService != null && (auditLogs.Any() || invoiceLevelDiscount > 0m))
+            {
+                _auditLogService.QueueLog(
+                    action: overriddenCount > 0 ? "POS_PRICE_OVERRIDE" : "POS_DISCOUNT",
+                    entityName: "sales_invoices",
+                    entityId: salesInvoice.InvoiceNumber,
+                    oldValues: new
+                    {
+                        Subtotal = calculatedSubtotal,
+                        ItemsCount = invoiceItems.Count
+                    },
+                    newValues: new
+                    {
+                        InvoiceNumber = salesInvoice.InvoiceNumber,
+                        ItemDiscountsTotal = calculatedTotalDiscount,
+                        InvoiceLevelDiscount = invoiceLevelDiscount,
+                        TotalDiscount = salesInvoice.DiscountAmount,
+                        TotalAmount = salesInvoice.TotalAmount,
+                        DiscountedItemsCount = discountedCount,
+                        OverriddenItemsCount = overriddenCount,
+                        ShiftId = salesInvoice.ShiftId
+                    },
+                    tenantIdOverride: salesInvoice.TenantId,
+                    userIdOverride: request.CashierId,
+                    usernameOverride: actorName);
             }
 
             await _context.SaveChangesAsync();

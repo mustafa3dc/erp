@@ -72,6 +72,9 @@ builder.Services.AddScoped<IPartnersService, PartnersService>();
 builder.Services.AddScoped<IRecurringExpenseService, RecurringExpenseService>();
 builder.Services.AddHostedService<RecurringExpenseBackgroundWorker>();
 builder.Services.AddScoped<IInvoiceOcrService, GeminiInvoiceOcrService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IProductImportService, ProductImportService>();
+builder.Services.AddScoped<ITenantBackupService, TenantBackupService>();
 
 // JWT Authentication Configuration
 var jwtSecret = "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";
@@ -512,14 +515,32 @@ using (var scope = app.Services.CreateScope())
                 logger.LogWarning(ex, "Recurring expenses always-run DDL warning (non-fatal).");
             }
 
-            // Always ensure tenant subscription columns exist (runs regardless of DB init state)
+            // Always ensure tenant subscription & backup columns + immutable audit_logs exist
             try
             {
                 dbContext.Database.ExecuteSqlRaw(@"
                     ALTER TABLE IF EXISTS tenants
                         ADD COLUMN IF NOT EXISTS plan_type INT NOT NULL DEFAULT 2,
                         ADD COLUMN IF NOT EXISTS billing_cycle_type INT NOT NULL DEFAULT 1,
-                        ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ NULL;
+                        ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ NULL,
+                        ADD COLUMN IF NOT EXISTS last_backup_at TIMESTAMPTZ NULL;
+
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+                        user_id VARCHAR(100),
+                        username VARCHAR(150),
+                        action VARCHAR(40) NOT NULL,
+                        entity_name VARCHAR(100) NOT NULL,
+                        entity_id VARCHAR(100) NOT NULL,
+                        old_values JSONB,
+                        new_values JSONB,
+                        ip_address VARCHAR(45),
+                        timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    ALTER TABLE IF EXISTS audit_logs ALTER COLUMN action TYPE VARCHAR(40);
+                    CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_entity ON audit_logs(tenant_id, entity_name, entity_id);
+                    CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
                 ");
             }
             catch (Exception ex)

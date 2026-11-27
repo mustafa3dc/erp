@@ -105,6 +105,7 @@ import StockCountsView from './components/views/StockCountsView';
 import SuppliersView from './components/views/SuppliersView';
 import ReportsView from './components/views/ReportsView';
 import SettingsView from './components/views/SettingsView';
+import AuditLogView from './components/views/AuditLogView';
 import TransfersView from './components/views/TransfersView';
 import PosTerminalView from './components/views/PosTerminalView';
 import ShiftsView from './components/views/ShiftsView';
@@ -203,6 +204,7 @@ const NAV_TITLES: Record<string, { ar: string; en: string }> = {
   'Partners & Profit Sharing': { ar: 'الشركاء وتوزيع الأرباح', en: 'Partners & Profit Sharing' },
   'Reports': { ar: 'التقارير', en: 'Reports' },
   'Users & Staff': { ar: 'المستخدمون والصلاحيات', en: 'Users & Permissions' },
+  'Audit Log': { ar: 'سجل التدقيق والرقابة', en: 'Audit Log' },
   'Settings': { ar: 'الإعدادات العامة', en: 'General Settings' },
   'Delivery & Logistics': { ar: 'الشحن والتوصيل', en: 'Delivery & Logistics' },
   'Inbound (Goods In)': { ar: 'الوارد ومذكرات الاستلام', en: 'Inbound Shipments' },
@@ -598,7 +600,7 @@ function DashboardApp() {
       setExpandedGroups(prev => ({ ...prev, warehouse: true }));
     } else if (['Finance & Treasury', 'Finance Vouchers', 'Operational Expenses', 'Partners & Profit Sharing'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, finance: true }));
-    } else if (['Reports', 'Users & Staff', 'Settings'].includes(activeNav)) {
+    } else if (['Reports', 'Users & Staff', 'Audit Log', 'Settings'].includes(activeNav)) {
       setExpandedGroups(prev => ({ ...prev, system: true }));
     }
     if (activeNav !== 'Operational Expenses') {
@@ -2627,6 +2629,11 @@ function DashboardApp() {
             lang={lang}
             showToast={showToast}
           />
+        )}
+
+        {/* View: System Audit Trail & Activity Log */}
+        {activeNav === 'Audit Log' && (
+          <AuditLogView lang={lang} />
         )}
 
         {/* View 14: Settings */}

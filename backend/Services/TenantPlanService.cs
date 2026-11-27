@@ -57,7 +57,9 @@ public class TenantPlanService : ITenantPlanService
         PlanFeatureKeys.ShelvesOrganizer,
         PlanFeatureKeys.SerialTracking,
         PlanFeatureKeys.AiExecutiveAdvisor,
-        PlanFeatureKeys.WarehouseTransfers
+        PlanFeatureKeys.WarehouseTransfers,
+        PlanFeatureKeys.SelfServiceBackup,
+        PlanFeatureKeys.AuditLog
     };
 
     private static readonly HashSet<string> EnterpriseOnlyFeatures = new(StringComparer.OrdinalIgnoreCase)

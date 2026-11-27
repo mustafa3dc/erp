@@ -79,6 +79,56 @@ public class InstallmentsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/installments/due-reminders
+    /// Returns due (next 7 days) and overdue installment schedule items for WhatsApp reminders.
+    /// </summary>
+    [HttpGet("due-reminders")]
+    public async Task<ActionResult<ApiResponse<List<DueInstallmentReminderDto>>>> GetDueReminders(
+        [FromQuery] int daysAhead = 7,
+        CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var horizon = now.AddDays(Math.Clamp(daysAhead, 0, 90));
+
+        var contracts = await _context.InstallmentContracts
+            .Include(c => c.Schedules)
+            .Where(c => c.Status == InstallmentContractStatus.Active)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        var reminders = contracts
+            .SelectMany(c => c.Schedules
+                .Where(s => s.Status != InstallmentScheduleStatus.Paid && s.DueDate <= horizon)
+                .Select(s =>
+                {
+                    var dueAmt = Math.Round(Math.Max(0m, s.Amount - s.PaidAmount), 4, MidpointRounding.AwayFromZero);
+                    var isOverdue = s.DueDate < now;
+                    var daysOverdue = isOverdue ? Math.Max(0, (int)(now.Date - s.DueDate.Date).TotalDays) : 0;
+                    return new DueInstallmentReminderDto(
+                        ScheduleItemId: s.Id,
+                        ContractId: c.Id,
+                        ContractNumber: c.ContractNumber,
+                        InvoiceNumber: c.InvoiceNumber,
+                        CustomerId: c.CustomerId,
+                        CustomerName: c.CustomerName,
+                        CustomerPhone: c.CustomerPhone,
+                        InstallmentNumber: s.InstallmentNumber,
+                        DueDate: s.DueDate,
+                        Amount: s.Amount,
+                        PaidAmount: s.PaidAmount,
+                        RemainingInstallmentAmount: dueAmt,
+                        ContractRemainingAmount: c.RemainingAmount,
+                        IsOverdue: isOverdue,
+                        DaysOverdue: daysOverdue
+                    );
+                }))
+            .OrderBy(r => r.DueDate)
+            .ToList();
+
+        return Ok(ApiResponse<List<DueInstallmentReminderDto>>.Ok(reminders));
+    }
+
+    /// <summary>
     /// GET /api/installments/contracts
     /// Lists installment contracts with optional status filter and search.
     /// Also updates overdue status for past-due pending items.

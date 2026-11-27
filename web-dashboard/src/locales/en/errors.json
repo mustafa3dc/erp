@@ -17,7 +17,27 @@
       "ERR_INVALID_SERIAL_FOR_TRANSFER": "Selected InStock serial numbers in the source warehouse must match the transfer quantity.",
       "ERR_TRANSFER_FAILED": "Failed to complete inter-warehouse stock transfer.",
       "ERR_PRODUCT_NOT_FOUND": "Selected product was not found.",
-      "ERR_BUNDLE_NO_PHYSICAL_STOCK": "Bundle products do not hold physical stock; transfer their components instead."
+      "ERR_BUNDLE_NO_PHYSICAL_STOCK": "Bundle products do not hold physical stock; transfer their components instead.",
+      "ERR_IMPORT_EMPTY_FILE": "The uploaded file is empty or contains no data rows.",
+      "ERR_IMPORT_INVALID_FORMAT": "Invalid file format or column headers (only .xlsx and .csv are supported).",
+      "ERR_IMPORT_MISSING_NAME": "Product Name is missing in this row.",
+      "ERR_IMPORT_MISSING_SKU": "Product SKU is missing in this row.",
+      "ERR_IMPORT_DUPLICATE_SKU": "Duplicate SKU found in the file or already registered in catalog.",
+      "ERR_IMPORT_INVALID_PRICE": "Invalid price value (SalePrice must be > 0 and MinSalePrice <= SalePrice).",
+      "ERR_IMPORT_INVALID_QUANTITY": "Invalid opening quantity (must be a non-negative whole number).",
+      "ERR_IMPORT_WAREHOUSE_NOT_FOUND": "WarehouseCode was not found or is inactive.",
+      "ERR_IMPORT_VALIDATION_FAILED": "File contains invalid rows; please resolve all errors before importing.",
+      "ERR_IMPORT_TRANSACTION_FAILED": "Database transaction failed during bulk product import."
+    },
+    "BACKUP": {
+      "ERR_INVALID_BACKUP_FILE": "Invalid or corrupted backup file, or SHA-256 checksum verification failed.",
+      "ERR_BACKUP_TENANT_MISMATCH": "This backup archive belongs to a different tenant and cannot be restored here.",
+      "ERR_BACKUP_RESTORE_FAILED": "Backup restore transaction failed and was safely rolled back.",
+      "ERR_FORBIDDEN_ACTION": "Access denied: this action is restricted to Owner or Admin.",
+      "ERR_TENANT_NOT_FOUND": "Tenant record was not found."
+    },
+    "AUDIT": {
+      "ERR_FORBIDDEN_ACTION": "Access denied: Audit Log access is restricted to Owner or Admin."
     },
     "CONCURRENCY": {
       "ERR_CONCURRENCY_LOCK_TIMEOUT": "This item is currently locked by another transaction; please retry shortly.",

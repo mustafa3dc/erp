@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Authorization;
@@ -14,12 +15,26 @@ public class ProductsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IInventoryService _inventoryService;
+    private readonly IProductImportService _productImportService;
+    private readonly IAuditLogService _auditLogService;
 
-    public ProductsController(AppDbContext context, IInventoryService inventoryService)
+    public ProductsController(
+        AppDbContext context,
+        IInventoryService inventoryService,
+        IProductImportService productImportService,
+        IAuditLogService auditLogService)
     {
         _context = context;
         _inventoryService = inventoryService;
+        _productImportService = productImportService;
+        _auditLogService = auditLogService;
     }
+
+    private string CurrentActorName =>
+        User.FindFirst(ClaimTypes.Name)?.Value
+        ?? User.FindFirst("username")?.Value
+        ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? "System";
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetProducts(
@@ -214,9 +229,17 @@ public class ProductsController : ControllerBase
             return NotFound(new { success = false, errorCode = "ERR_PRODUCT_NOT_FOUND", message = "الصنف غير موجود" });
         }
 
+        var oldSellingPrice = product.SellingPrice;
+        var oldMinSellingPrice = product.MinSellingPrice;
+        var oldCostPrice = product.CostPrice;
+
         product.Name = updatedProduct.Name;
         product.Sku = updatedProduct.Sku;
         product.Barcode = updatedProduct.Barcode;
+        if (updatedProduct.CostPrice > 0)
+        {
+            product.CostPrice = updatedProduct.CostPrice;
+        }
         product.SellingPrice = updatedProduct.SellingPrice;
         product.MinSellingPrice = updatedProduct.MinSellingPrice;
         product.UnitOfMeasure = updatedProduct.UnitOfMeasure;
@@ -228,8 +251,68 @@ public class ProductsController : ControllerBase
         product.IsActive = updatedProduct.IsActive;
         product.UpdatedAt = DateTime.UtcNow;
 
+        if (oldSellingPrice != product.SellingPrice ||
+            oldMinSellingPrice != product.MinSellingPrice ||
+            oldCostPrice != product.CostPrice)
+        {
+            _auditLogService.QueueLog(
+                action: "PRICE_CHANGE",
+                entityName: "products",
+                entityId: product.Id.ToString(),
+                oldValues: new
+                {
+                    product.Sku,
+                    product.Name,
+                    CostPrice = oldCostPrice,
+                    SellingPrice = oldSellingPrice,
+                    MinSellingPrice = oldMinSellingPrice
+                },
+                newValues: new
+                {
+                    product.Sku,
+                    product.Name,
+                    CostPrice = product.CostPrice,
+                    SellingPrice = product.SellingPrice,
+                    MinSellingPrice = product.MinSellingPrice
+                },
+                tenantIdOverride: product.TenantId);
+        }
+
         await _context.SaveChangesAsync();
         return Ok(product);
+    }
+
+    [HttpGet("import-template")]
+    public IActionResult DownloadImportTemplate([FromQuery] string format = "xlsx")
+    {
+        if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            var csvBytes = _productImportService.GenerateTemplateCsv();
+            return File(csvBytes, "text/csv; charset=utf-8", "products_import_template.csv");
+        }
+
+        var xlsxBytes = _productImportService.GenerateTemplateXlsx();
+        return File(
+            xlsxBytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "products_import_template.xlsx");
+    }
+
+    [HttpPost("import")]
+    [HasPermission(Permissions.Inventory.ItemsCreate)]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<ActionResult<ApiResponse<BulkProductImportResultDto>>> ImportProducts(
+        IFormFile? file,
+        [FromQuery] bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        var result = await _productImportService.ImportAsync(file, dryRun, CurrentActorName, ct);
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 
     [HttpDelete("{id}")]

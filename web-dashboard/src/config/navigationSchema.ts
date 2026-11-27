@@ -304,6 +304,15 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         badgeClass: 'accent'
       },
       {
+        id: 'Audit Log',
+        titleAr: 'سجل التدقيق والرقابة',
+        titleEn: 'Audit Log',
+        path: '/admin/audit-logs',
+        requiredPermission: 'settings.audit',
+        planFeature: 'AuditLog',
+        requiredPlan: 'Pro'
+      },
+      {
         id: 'Settings',
         titleAr: 'الإعدادات العامة',
         titleEn: 'General Settings',

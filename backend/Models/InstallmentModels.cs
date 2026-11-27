@@ -199,3 +199,21 @@ public class InstallmentKpiStatsDto
     public decimal TotalRemainingAmount { get; set; }
 }
 
+public sealed record DueInstallmentReminderDto(
+    Guid ScheduleItemId,
+    Guid ContractId,
+    string ContractNumber,
+    string InvoiceNumber,
+    Guid CustomerId,
+    string CustomerName,
+    string CustomerPhone,
+    int InstallmentNumber,
+    DateTime DueDate,
+    decimal Amount,
+    decimal PaidAmount,
+    decimal RemainingInstallmentAmount,
+    decimal ContractRemainingAmount,
+    bool IsOverdue,
+    int DaysOverdue
+);
+

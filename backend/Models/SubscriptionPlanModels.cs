@@ -43,6 +43,8 @@ public static class PlanFeatureKeys
     public const string SerialTracking = "SerialTracking";
     public const string AiExecutiveAdvisor = "AiExecutiveAdvisor";
     public const string WarehouseTransfers = "WarehouseTransfers";
+    public const string SelfServiceBackup = "SelfServiceBackup";
+    public const string AuditLog = "AuditLog";
 
     // Enterprise Plan Features (Locked in Starter & Pro; Enabled ONLY for Enterprise)
     public const string MultiBranch = "MultiBranch";
@@ -76,6 +78,8 @@ public static class PlanFeatureKeys
         SerialTracking,
         AiExecutiveAdvisor,
         WarehouseTransfers,
+        SelfServiceBackup,
+        AuditLog,
         MultiBranch,
         PurchaseOrders,
         DispatchOrders,

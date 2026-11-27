@@ -72,6 +72,7 @@ export const navigationItems: NavigationSection[] = [
     items: [
       { name: 'التقارير', href: '/reports' },
       { name: 'المستخدمون والصلاحيات', href: '/admin/users' },
+      { name: 'سجل التدقيق والرقابة', href: '/admin/audit-logs' },
       { name: 'الإعدادات العامة', href: '/admin/settings' },
     ],
   },

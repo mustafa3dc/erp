@@ -22,9 +22,14 @@ import {
   Receipt,
   Eye,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  MessageCircle,
+  Lock,
+  Sparkles
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
+import { getTranslation } from '../../lib/i18n';
 import { 
   InstallmentContract, 
   InstallmentScheduleItem, 
@@ -34,8 +39,16 @@ import {
   getStoredInstallmentContracts, 
   payInstallmentScheduleItem, 
   getInstallmentStats, 
-  getStoredActiveShift 
+  getStoredActiveShift,
+  getStoredAuthSession
 } from '../../services/storageService';
+import { getTenantAuthHeaders } from '../../lib/api-client';
+import {
+  formatInstallmentReminderWhatsAppMessage,
+  formatReceiptVoucherWhatsAppMessage,
+  openWhatsAppShare
+} from '../../utils/whatsappUtils';
+import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ModalBackdropPortal } from '../ui/dialog';
@@ -44,12 +57,30 @@ interface InstallmentsViewProps {
   lang: 'ar' | 'en';
 }
 
+interface DueReminderRow {
+  scheduleItemId: string;
+  contractId: string;
+  contractNumber: string;
+  invoiceNumber: string;
+  customerName: string;
+  customerPhone: string;
+  installmentNumber: number;
+  dueDate: string;
+  remainingInstallmentAmount: number;
+  contractRemainingAmount: number;
+  isOverdue: boolean;
+  daysOverdue: number;
+}
+
 export default function InstallmentsView({ lang }: InstallmentsViewProps) {
   const isAr = lang === 'ar';
-  const { formatMoney } = useSettings();
+  const { settings, formatMoney } = useSettings();
+  const { canAccess, openUpgradeModal } = useTenantPlan();
+  const isProRemindersAllowed = canAccess('Installments');
 
   const [contracts, setContracts] = useState<InstallmentContract[]>(() => getStoredInstallmentContracts());
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'COMPLETED'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'DUE_REMINDERS' | 'COMPLETED'>('ALL');
+  const [remoteDueReminders, setRemoteDueReminders] = useState<DueReminderRow[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedContractId, setExpandedContractId] = useState<string | null>(null);
   
@@ -64,6 +95,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
     receiptNumber: string;
     contractNumber: string;
     customerName: string;
+    customerPhone: string;
     guarantorName: string;
     installmentNumber: number;
     amount: number;
@@ -78,11 +110,89 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
       const updated = list.find(c => c.id === selectedContract.id);
       if (updated) setSelectedContract(updated);
     }
+
+    if (isProRemindersAllowed) {
+      fetch('/api/installments/due-reminders?daysAhead=7', { headers: getTenantAuthHeaders() })
+        .then(res => (res.ok ? res.json() : null))
+        .then(json => {
+          const rows = json?.data;
+          if (Array.isArray(rows) && rows.length > 0) {
+            setRemoteDueReminders(rows);
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   useEffect(() => {
     refreshData();
-  }, []);
+  }, [isProRemindersAllowed]);
+
+  const dueAndOverdueReminders = useMemo<DueReminderRow[]>(() => {
+    if (remoteDueReminders && remoteDueReminders.length > 0) {
+      return remoteDueReminders;
+    }
+
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const rows: DueReminderRow[] = [];
+
+    for (const c of contracts) {
+      if (c.status !== 'ACTIVE') continue;
+      for (const s of c.schedules) {
+        if (s.status === 'PAID') continue;
+        const due = new Date(s.dueDate);
+        if (Number.isNaN(due.getTime())) continue;
+        if (due <= horizon || s.status === 'OVERDUE') {
+          const isOverdue = due < now || s.status === 'OVERDUE';
+          const daysOverdue = isOverdue ? Math.max(0, Math.floor((now.getTime() - due.getTime()) / (24 * 60 * 60 * 1000))) : 0;
+          rows.push({
+            scheduleItemId: s.id,
+            contractId: c.id,
+            contractNumber: c.contractNumber,
+            invoiceNumber: c.invoiceNumber,
+            customerName: c.customerName,
+            customerPhone: c.customerPhone,
+            installmentNumber: s.installmentNumber,
+            dueDate: s.dueDate,
+            remainingInstallmentAmount: Math.max(0, s.amount - s.paidAmount),
+            contractRemainingAmount: c.remainingAmount,
+            isOverdue,
+            daysOverdue
+          });
+        }
+      }
+    }
+
+    return rows.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  }, [contracts, remoteDueReminders]);
+
+  const handleSendInstallmentWhatsApp = (params: {
+    customerName: string;
+    customerPhone?: string;
+    contractNumber: string;
+    installmentNumber: number;
+    dueDate: string;
+    amountDue: number;
+    contractRemaining: number;
+    isOverdue: boolean;
+  }) => {
+    const session = getStoredAuthSession();
+    const storeName = session?.tenantName || settings.organizationName || 'ZiloX ERP';
+    const msg = formatInstallmentReminderWhatsAppMessage({
+      lang,
+      storeName,
+      customerName: params.customerName,
+      contractNumber: params.contractNumber,
+      installmentNumber: params.installmentNumber,
+      dueDate: String(params.dueDate).slice(0, 10),
+      amountDueFormatted: formatMoney(params.amountDue),
+      remainingContractFormatted: formatMoney(params.contractRemaining),
+      isOverdue: params.isOverdue
+    });
+    openWhatsAppShare(params.customerPhone, msg);
+    toast.success(getTranslation(lang, 'whatsapp.openedToast'));
+  };
 
   const stats = useMemo(() => {
     return getInstallmentStats();
@@ -152,6 +262,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
         receiptNumber: result.receiptNumber,
         contractNumber: contract.contractNumber,
         customerName: contract.customerName,
+        customerPhone: contract.customerPhone,
         guarantorName: contract.guarantorName,
         installmentNumber: item.installmentNumber,
         amount: paymentAmount,
@@ -389,8 +500,32 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
               type="button"
               variant="outline"
               size="sm"
+              onClick={() => {
+                const session = getStoredAuthSession();
+                const storeName = session?.tenantName || settings.organizationName || 'ZiloX ERP';
+                const msg = formatReceiptVoucherWhatsAppMessage({
+                  lang,
+                  storeName,
+                  voucherNo: issuedReceiptVoucher.receiptNumber,
+                  partyName: issuedReceiptVoucher.customerName,
+                  amountFormatted: formatMoney(issuedReceiptVoucher.amount),
+                  dateText: new Date(issuedReceiptVoucher.date).toLocaleDateString(),
+                  accountName: issuedReceiptVoucher.contractNumber
+                });
+                openWhatsAppShare(issuedReceiptVoucher.customerPhone, msg);
+                toast.success(getTranslation(lang, 'whatsapp.openedToast'));
+              }}
+              className="h-9 px-3 text-xs font-bold rounded-lg gap-1 border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+            >
+              <MessageCircle size={14} />
+              <span>{getTranslation(lang, 'whatsapp.sendBtn')}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={printReceipt}
-              className="w-1/2 h-9 text-xs font-semibold rounded-lg gap-1 border-border/80"
+              className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1 border-border/80"
             >
               <Printer size={14} />
               <span>{isAr ? 'طباعة السند' : 'Print Voucher'}</span>
@@ -399,7 +534,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
               type="button"
               size="sm"
               onClick={() => setIssuedReceiptVoucher(null)}
-              className="w-1/2 h-9 text-xs font-bold bg-primary text-primary-foreground rounded-lg shadow-xs hover:bg-primary/90 cursor-pointer"
+              className="flex-1 h-9 text-xs font-bold bg-primary text-primary-foreground rounded-lg shadow-xs hover:bg-primary/90 cursor-pointer"
             >
               <span>{isAr ? 'تم' : 'Done'}</span>
             </Button>
@@ -644,14 +779,35 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         {!isPaid ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleOpenPay(selectedContract, item)}
-                            className="h-7 px-3 text-xs font-bold bg-primary text-primary-foreground rounded-md shadow-2xs hover:bg-primary/90 cursor-pointer"
-                          >
-                            {isAr ? 'سداد' : 'Pay'}
-                          </Button>
+                          <div className="inline-flex items-center justify-center gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleOpenPay(selectedContract, item)}
+                              className="h-7 px-3 text-xs font-bold bg-primary text-primary-foreground rounded-md shadow-2xs hover:bg-primary/90 cursor-pointer"
+                            >
+                              {isAr ? 'سداد' : 'Pay'}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSendInstallmentWhatsApp({
+                                customerName: selectedContract.customerName,
+                                customerPhone: selectedContract.customerPhone,
+                                contractNumber: selectedContract.contractNumber,
+                                installmentNumber: item.installmentNumber,
+                                dueDate: item.dueDate,
+                                amountDue: Math.max(0, item.amount - item.paidAmount),
+                                contractRemaining: selectedContract.remainingAmount,
+                                isOverdue
+                              })}
+                              className="h-7 px-2 text-xs font-bold border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 rounded-md cursor-pointer"
+                              title={getTranslation(lang, 'whatsapp.sendBtn')}
+                            >
+                              <MessageCircle size={12} />
+                            </Button>
+                          </div>
                         ) : (
                           <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                             {isAr ? 'تم القبض' : 'Cleared'}
@@ -825,6 +981,27 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
             </button>
             <button
               type="button"
+              onClick={() => {
+                if (!isProRemindersAllowed) {
+                  openUpgradeModal('Pro', 'Installments');
+                  return;
+                }
+                setActiveFilter('DUE_REMINDERS');
+              }}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                activeFilter === 'DUE_REMINDERS'
+                  ? 'bg-background text-emerald-600 dark:text-emerald-400 shadow-2xs font-bold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {!isProRemindersAllowed && <Lock size={11} className="text-muted-foreground" />}
+              <span>{getTranslation(lang, 'installmentsDue.filterTabLabel')}</span>
+              <span className="ms-1 text-[11px] font-mono tabular-nums">
+                ({dueAndOverdueReminders.length})
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveFilter('COMPLETED')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 activeFilter === 'COMPLETED'
@@ -852,7 +1029,150 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
           </div>
         </div>
 
-        {/* Contracts Table */}
+        {/* Due & Overdue Installments WhatsApp Reminder Widget (Pro & Enterprise) */}
+        {activeFilter === 'DUE_REMINDERS' ? (
+          !isProRemindersAllowed ? (
+            <div className="p-6 rounded-xl border border-border bg-muted/30 text-center space-y-3">
+              <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                <Lock size={20} />
+              </div>
+              <h3 className="text-sm font-bold text-foreground m-0">
+                {getTranslation(lang, 'installmentsDue.proLockedTitle')}
+              </h3>
+              <p className="text-xs text-muted-foreground m-0 max-w-md mx-auto">
+                {getTranslation(lang, 'installmentsDue.proLockedSubtitle')}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => openUpgradeModal('Pro', 'Installments')}
+                className="h-9 px-4 text-xs font-bold gap-1.5"
+              >
+                <Sparkles size={14} />
+                <span>{getTranslation(lang, 'installmentsDue.upgradeBtn')}</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+                <div>
+                  <h3 className="text-sm font-bold text-foreground m-0">
+                    {getTranslation(lang, 'installmentsDue.widgetTitle')}
+                  </h3>
+                  <p className="text-xs text-muted-foreground m-0 mt-0.5">
+                    {getTranslation(lang, 'installmentsDue.widgetSubtitle')}
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto border border-border/80 rounded-lg bg-background">
+                <table className="w-full text-xs text-start">
+                  <thead>
+                    <tr className="bg-muted/60 border-b border-border/80 text-muted-foreground font-semibold text-[11px]">
+                      <th className="py-2.5 px-3 text-start">{getTranslation(lang, 'installmentsDue.colCustomer')}</th>
+                      <th className="py-2.5 px-3 text-start">{getTranslation(lang, 'installmentsDue.colContract')}</th>
+                      <th className="py-2.5 px-3 text-center">{getTranslation(lang, 'installmentsDue.colInstallment')}</th>
+                      <th className="py-2.5 px-3 text-start">{getTranslation(lang, 'installmentsDue.colDueDate')}</th>
+                      <th className="py-2.5 px-3 text-center">{getTranslation(lang, 'installmentsDue.colDueAmount')}</th>
+                      <th className="py-2.5 px-3 text-center">{getTranslation(lang, 'installmentsDue.colRemainingContract')}</th>
+                      <th className="py-2.5 px-3 text-center">{getTranslation(lang, 'installmentsDue.colReminder')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {dueAndOverdueReminders.filter(r => {
+                      if (!searchQuery.trim()) return true;
+                      const q = searchQuery.toLowerCase().trim();
+                      return r.customerName.toLowerCase().includes(q)
+                        || r.customerPhone.includes(q)
+                        || r.contractNumber.toLowerCase().includes(q)
+                        || r.invoiceNumber.toLowerCase().includes(q);
+                    }).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-10 text-center text-muted-foreground">
+                          <CheckCircle2 className="w-6 h-6 mx-auto mb-2 text-emerald-500 opacity-70" />
+                          <p className="text-xs font-semibold text-foreground m-0">
+                            {getTranslation(lang, 'installmentsDue.emptyTitle')}
+                          </p>
+                          <span className="text-[11px] text-muted-foreground">
+                            {getTranslation(lang, 'installmentsDue.emptySubtitle')}
+                          </span>
+                        </td>
+                      </tr>
+                    ) : (
+                      dueAndOverdueReminders
+                        .filter(r => {
+                          if (!searchQuery.trim()) return true;
+                          const q = searchQuery.toLowerCase().trim();
+                          return r.customerName.toLowerCase().includes(q)
+                            || r.customerPhone.includes(q)
+                            || r.contractNumber.toLowerCase().includes(q)
+                            || r.invoiceNumber.toLowerCase().includes(q);
+                        })
+                        .map(rem => (
+                          <tr key={rem.scheduleItemId} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-2.5 px-3">
+                              <strong className="block text-foreground text-xs" dir="auto">{rem.customerName}</strong>
+                              <span className="text-[11px] text-muted-foreground font-mono tabular-nums" dir="ltr">
+                                {rem.customerPhone || '—'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <strong className="block text-foreground font-mono text-xs" dir="ltr">{rem.contractNumber}</strong>
+                              <span className="text-[10px] text-muted-foreground font-mono" dir="ltr">{rem.invoiceNumber}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-mono font-bold tabular-nums">
+                              #{rem.installmentNumber}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="font-mono text-xs text-foreground tabular-nums block" dir="ltr">
+                                {String(rem.dueDate).slice(0, 10)}
+                              </span>
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 ${
+                                rem.isOverdue
+                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                              }`}>
+                                {rem.isOverdue && rem.daysOverdue > 0
+                                  ? getTranslation(lang, 'installmentsDue.daysOverdueLabel').replace('{days}', String(rem.daysOverdue))
+                                  : getTranslation(lang, rem.isOverdue ? 'installmentsDue.overdueBadge' : 'installmentsDue.dueBadge')}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-mono font-bold text-primary tabular-nums" dir="ltr">
+                              {formatMoney(rem.remainingInstallmentAmount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-foreground tabular-nums" dir="ltr">
+                              {formatMoney(rem.contractRemainingAmount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleSendInstallmentWhatsApp({
+                                  customerName: rem.customerName,
+                                  customerPhone: rem.customerPhone,
+                                  contractNumber: rem.contractNumber,
+                                  installmentNumber: rem.installmentNumber,
+                                  dueDate: rem.dueDate,
+                                  amountDue: rem.remainingInstallmentAmount,
+                                  contractRemaining: rem.contractRemainingAmount,
+                                  isOverdue: rem.isOverdue
+                                })}
+                                className="h-8 px-3 text-xs font-bold gap-1.5 border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 cursor-pointer"
+                              >
+                                <MessageCircle size={13} />
+                                <span>{getTranslation(lang, 'whatsapp.sendReminderBtn')}</span>
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        ) : (
+        /* Contracts Table */
         <div className="overflow-x-auto border border-border/80 rounded-lg bg-background">
           <table className="w-full text-xs text-start">
             <thead>
@@ -993,6 +1313,31 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                             >
                               <ExternalLink size={13} />
                             </Button>
+                            {(() => {
+                              const nextDueItem = contract.schedules.find(s => s.status !== 'PAID');
+                              if (!nextDueItem) return null;
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  title={getTranslation(lang, 'whatsapp.sendBtn')}
+                                  onClick={() => handleSendInstallmentWhatsApp({
+                                    customerName: contract.customerName,
+                                    customerPhone: contract.customerPhone,
+                                    contractNumber: contract.contractNumber,
+                                    installmentNumber: nextDueItem.installmentNumber,
+                                    dueDate: nextDueItem.dueDate,
+                                    amountDue: Math.max(0, nextDueItem.amount - nextDueItem.paidAmount),
+                                    contractRemaining: contract.remainingAmount,
+                                    isOverdue: nextDueItem.status === 'OVERDUE'
+                                  })}
+                                  className="h-8 px-2 text-xs font-bold border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 cursor-pointer rounded-lg"
+                                >
+                                  <MessageCircle size={13} />
+                                </Button>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -1108,14 +1453,35 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                                           </td>
                                           <td className="py-2 px-3 text-center">
                                             {!isPaid ? (
-                                              <Button
-                                                type="button"
-                                                size="sm"
-                                                onClick={() => handleOpenPay(contract, item)}
-                                                className="h-7 px-2.5 text-xs font-bold bg-primary text-primary-foreground rounded-md shadow-2xs hover:bg-primary/90 cursor-pointer"
-                                              >
-                                                {isAr ? 'سداد' : 'Pay'}
-                                              </Button>
+                                              <div className="inline-flex items-center justify-center gap-1">
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  onClick={() => handleOpenPay(contract, item)}
+                                                  className="h-7 px-2.5 text-xs font-bold bg-primary text-primary-foreground rounded-md shadow-2xs hover:bg-primary/90 cursor-pointer"
+                                                >
+                                                  {isAr ? 'سداد' : 'Pay'}
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => handleSendInstallmentWhatsApp({
+                                                    customerName: contract.customerName,
+                                                    customerPhone: contract.customerPhone,
+                                                    contractNumber: contract.contractNumber,
+                                                    installmentNumber: item.installmentNumber,
+                                                    dueDate: item.dueDate,
+                                                    amountDue: Math.max(0, item.amount - item.paidAmount),
+                                                    contractRemaining: contract.remainingAmount,
+                                                    isOverdue
+                                                  })}
+                                                  className="h-7 px-2 text-xs border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 rounded-md cursor-pointer"
+                                                  title={getTranslation(lang, 'whatsapp.sendBtn')}
+                                                >
+                                                  <MessageCircle size={12} />
+                                                </Button>
+                                              </div>
                                             ) : (
                                               <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                                                 {isAr ? 'تم القبض' : 'Cleared'}
@@ -1139,6 +1505,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* Small Dialogs for Pay and Receipt */}

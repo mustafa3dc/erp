@@ -51,7 +51,7 @@ import {
 import { SettingsProvider, useSettings } from './context/settings-context';
 import { getTranslation } from './lib/i18n';
 import { toLatinDigits, formatLatinNumber } from './lib/formatters';
-import { getStoredJwtToken, getTenantAuthHeaders } from './lib/api-client';
+import { getStoredJwtToken, getTenantAuthHeaders, saveStoredJwtToken } from './lib/api-client';
 import CommandPaletteModal from './components/modals/CommandPaletteModal';
 import MiniSparkline from './components/ui/MiniSparkline';
 import { parseDateSafely } from './utils/dateFormatter';
@@ -392,6 +392,14 @@ function DashboardApp() {
     return currentUser ? getPermittedNavigation(currentUser) : null;
   }, [currentUser]);
 
+  useEffect(() => {
+    const onRequireRelogin = () => {
+      handleLogout();
+    };
+    window.addEventListener('zilox_require_relogin', onRequireRelogin);
+    return () => window.removeEventListener('zilox_require_relogin', onRequireRelogin);
+  }, []);
+
   const handleLogout = () => {
     clearStoredAuthSession();
     sessionStorage.removeItem('zilox_impersonating_superadmin');
@@ -408,7 +416,7 @@ function DashboardApp() {
     showToast(isAr ? 'تم تسجيل الخروج بنجاح' : 'Signed out successfully');
   };
 
-  const handleImpersonateTenant = (tenant: Tenant) => {
+  const handleImpersonateTenant = async (tenant: Tenant) => {
     const allUsers: UserAccount[] = getAllStoredUsersMaster();
     const cleanSlug = tenant.slug.toLowerCase();
     let tenantUser = allUsers.find((u: UserAccount) => u.tenantSlug?.toLowerCase() === cleanSlug && (u.role === 'SuperAdmin' || u.role === 'BranchManager'))
@@ -436,7 +444,7 @@ function DashboardApp() {
     }
 
     if (tenantUser) {
-      const profile = buildUserProfileFromAccount(tenantUser);
+      const profile: any = buildUserProfileFromAccount(tenantUser);
       profile.tenantId = tenant.id;
       profile.tenantSlug = tenant.slug;
       profile.tenantName = tenant.name;
@@ -447,6 +455,25 @@ function DashboardApp() {
       if (currentUser?.role === 'PlatformSuperAdmin') {
         sessionStorage.setItem('zilox_impersonating_superadmin', JSON.stringify(currentUser));
         setImpersonatingSuperAdminProfile(currentUser);
+      }
+
+      // Issue a live tenant-scoped JWT from backend when SuperAdmin impersonates
+      try {
+        const res = await fetch(`/api/v1/auth/superadmin/tenants/${encodeURIComponent(tenant.id)}/impersonate`, {
+          method: 'POST',
+          headers: getTenantAuthHeaders()
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          const issuedToken = data?.token || data?.Token;
+          if (issuedToken) {
+            saveStoredJwtToken(issuedToken);
+            profile.token = issuedToken;
+          }
+          if (data?.user?.tenantId) profile.tenantId = data.user.tenantId;
+        }
+      } catch {
+        // Fallback smoothly when backend is unreachable
       }
 
       setProducts([]);

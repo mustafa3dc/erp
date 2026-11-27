@@ -25,6 +25,7 @@ import {
 import { checkSlugAvailabilityApi, registerSelfServiceTenant, SelfServiceRegisterInput } from '../../services/tenantService';
 import { UserProfile, UserAccount } from '../../types/rbac';
 import { PRICING_TIERS, PlanTierId } from '../../lib/pricing-tiers';
+import { saveStoredJwtToken } from '../../lib/api-client';
 
 interface SelfServiceRegisterViewProps {
   initialConfig?: {
@@ -248,8 +249,14 @@ export default function SelfServiceRegisterView({
       const result = await registerSelfServiceTenant(input);
 
       if (result.success && result.userProfile && result.userAccount) {
-        // Successfully registered! Directly hand off to active dashboard session
-        onRegisterSuccess(result.userProfile, result.userAccount);
+        // Successfully registered! Save JWT & directly hand off to active dashboard session
+        if (result.token) {
+          saveStoredJwtToken(result.token);
+        }
+        const profileWithToken = result.token
+          ? ({ ...result.userProfile, token: result.token } as UserProfile)
+          : result.userProfile;
+        onRegisterSuccess(profileWithToken, result.userAccount);
       } else {
         setIsSubmitting(false);
         setFormError(result.message || 'حدث خطأ أثناء إتمام عملية التسجيل.');

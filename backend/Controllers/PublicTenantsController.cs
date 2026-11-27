@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ERP.Warehouse.Api.Data;
+using ERP.Warehouse.Api.Domain.Constants;
 using ERP.Warehouse.Api.Models;
 using ERP.Warehouse.Api.Services;
 
@@ -282,19 +283,39 @@ public class PublicTenantsController : ControllerBase
 
     private string GenerateOnboardingToken(User user, Tenant tenant)
     {
-        var jwtSecret = _configuration["Jwt:Secret"] ?? "ZiloxERPEnterpriseSecretKey2026WithHighEntropy!";
+        var jwtSecret = _configuration["Jwt:Secret"] ?? "ZiloxEnterpriseSecretSigningKey2026_SecureKeyForJwtTokenAuth!!";
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.UniqueName, $"{user.Username}@{tenant.Slug}"),
-            new Claim("tenant_id", tenant.Id.ToString()),
-            new Claim("tenant_slug", tenant.Slug),
-            new Claim(ClaimTypes.Role, "SuperAdmin"),
-            new Claim("full_name", user.FullName),
-            new Claim("branch_id", user.BranchId)
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.UniqueName, $"{user.Username}@{tenant.Slug}"),
+            new(ClaimTypes.Name, $"{user.Username}@{tenant.Slug}"),
+            new("tenant_id", tenant.Id.ToString()),
+            new("tenant_slug", tenant.Slug),
+            new("tenant_name", tenant.Name),
+            new(ClaimTypes.Role, "SuperAdmin"),
+            new("full_name", user.FullName),
+            new("branch_id", user.BranchId),
+            new("Permission", Permissions.DashboardView),
+            new("Permission", Permissions.InventoryView),
+            new("Permission", Permissions.InventoryManage),
+            new("Permission", Permissions.InventoryCostPriceView),
+            new("Permission", Permissions.TransfersManage),
+            new("Permission", Permissions.StockCountsManage),
+            new("Permission", Permissions.LogisticsDispatch),
+            new("Permission", Permissions.PurchasesManage),
+            new("Permission", Permissions.PosTerminalAccess),
+            new("Permission", Permissions.ShiftsManage),
+            new("Permission", Permissions.InvoicesManage),
+            new("Permission", Permissions.ReturnsManage),
+            new("Permission", Permissions.FinanceLedger),
+            new("Permission", Permissions.CustomersManage),
+            new("Permission", Permissions.ReportsExecutive),
+            new("Permission", Permissions.SettingsAudit),
+            new("Permission", Permissions.Treasury.PartnersManage)
         };
 
         var tokenDescriptor = new JwtSecurityToken(

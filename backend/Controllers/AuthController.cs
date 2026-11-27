@@ -1172,9 +1172,54 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("superadmin/tenants/{id}/impersonate")]
-    public ActionResult ImpersonateTenant(string id)
+    public async Task<ActionResult> ImpersonateTenant(string id, CancellationToken ct)
     {
-        var tenant = SupportedTenants.FirstOrDefault(t => t.Id == id);
+        if (_context != null)
+        {
+            var dbTenant = Guid.TryParse(id, out var parsedTenantGuid)
+                ? await _context.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == parsedTenantGuid, ct)
+                : await _context.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Slug.ToLower() == id.ToLower(), ct);
+
+            if (dbTenant != null)
+            {
+                var dbAdmin = await _context.Users.AsNoTracking()
+                    .Where(u => u.TenantId == dbTenant.Id)
+                    .OrderBy(u => u.Role == UserRole.SuperAdmin ? 0 : 1)
+                    .FirstOrDefaultAsync(ct);
+
+                var dbProfile = BuildUserProfile(dbAdmin?.Role ?? UserRole.SuperAdmin);
+                if (dbAdmin != null)
+                {
+                    dbProfile.Id = dbAdmin.Id.ToString();
+                    dbProfile.Username = $"{dbAdmin.Username}@{dbTenant.Slug}";
+                    dbProfile.FullName = dbAdmin.FullName;
+                    dbProfile.Email = dbAdmin.Email ?? $"{dbAdmin.Username}@{dbTenant.Slug}.zilox.com";
+                    dbProfile.BranchId = dbAdmin.BranchId;
+                    dbProfile.DefaultWarehouseId = dbAdmin.DefaultWarehouseId;
+                }
+                else
+                {
+                    dbProfile.Username = $"admin@{dbTenant.Slug}";
+                }
+
+                dbProfile.TenantId = dbTenant.Id.ToString();
+                dbProfile.TenantSlug = dbTenant.Slug;
+                dbProfile.TenantName = dbTenant.Name;
+                dbProfile.BusinessPreset = dbTenant.BusinessPreset;
+                dbProfile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(dbTenant.BusinessPreset);
+                dbProfile.Features = dbTenant.Features ?? BusinessPresetFactory.CreateFeatures(dbTenant.BusinessPreset);
+
+                var dbToken = GenerateJwtToken(dbProfile);
+                return Ok(new
+                {
+                    Message = $"تم تسجيل الدخول كعميل (Impersonation) لحساب {dbProfile.FullName} بشركة {dbTenant.Name}",
+                    Token = dbToken,
+                    User = dbProfile
+                });
+            }
+        }
+
+        var tenant = SupportedTenants.FirstOrDefault(t => t.Id == id || t.Slug.Equals(id, StringComparison.OrdinalIgnoreCase));
         if (tenant == null)
         {
             return NotFound(new { Message = "المنشأة غير موجودة." });
@@ -1189,6 +1234,12 @@ public class AuthController : ControllerBase
         }
 
         var profile = BuildUserProfile(adminUser.Role, adminUser);
+        profile.TenantId = tenant.Id;
+        profile.TenantSlug = tenant.Slug;
+        profile.TenantName = tenant.Name;
+        profile.BusinessPreset = tenant.BusinessPreset;
+        profile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(tenant.BusinessPreset);
+        profile.Features = tenant.Features ?? BusinessPresetFactory.CreateFeatures(tenant.BusinessPreset);
         var token = GenerateJwtToken(profile);
 
         return Ok(new

@@ -1,5 +1,6 @@
 import { UserAccount, DEFAULT_USER_ACCOUNTS, BusinessPreset, CompanyFeatures } from '../types/rbac';
 import { getAllStoredUsersMaster, saveStoredUsers, getScopedKey } from './storageService';
+import { saveStoredJwtToken } from '../lib/api-client';
 
 export interface Tenant {
   id: string;
@@ -491,6 +492,8 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
 
   // Attempt backend API call
   let backendToken: string | undefined;
+  let backendTenantId: string | undefined;
+  let backendUserId: string | undefined;
   try {
     const res = await fetch('/api/v1/public/tenants/register', {
       method: 'POST',
@@ -515,6 +518,13 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
       const data = await res.json();
       if (data.token) {
         backendToken = data.token;
+        saveStoredJwtToken(data.token);
+      }
+      if (data?.tenant?.id) {
+        backendTenantId = String(data.tenant.id);
+      }
+      if (data?.user?.id) {
+        backendUserId = String(data.user.id);
       }
     }
   } catch {
@@ -529,7 +539,7 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
   const selfCityName = selfCountryCode === 'IQ' ? 'بغداد' : '';
 
   const newTenant: Tenant = {
-    id: `tenant-${Date.now().toString(36)}`,
+    id: backendTenantId || `tenant-${Date.now().toString(36)}`,
     name: input.companyName.trim(),
     slug: cleanSlug,
     countryCode: selfCountryCode,
@@ -605,7 +615,7 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
   const isEmail = contact.includes('@');
   
   const newAdminAccount: UserAccount = {
-    id: `USR-ADMIN-${Date.now().toString(36).toUpperCase()}`,
+    id: backendUserId || `USR-ADMIN-${Date.now().toString(36).toUpperCase()}`,
     fullName: input.adminFullName.trim(),
     username: fullUsername,
     password: input.adminPassword || '123',
@@ -627,9 +637,13 @@ export async function registerSelfServiceTenant(input: SelfServiceRegisterInput)
   saveStoredUsers(existingUsers);
 
   const { buildUserProfileFromAccount } = await import('../types/rbac');
-  const userProfile = buildUserProfileFromAccount(newAdminAccount);
+  const userProfile: any = buildUserProfileFromAccount(newAdminAccount);
+  userProfile.tenantId = newTenant.id;
   userProfile.tenantSlug = cleanSlug;
   userProfile.tenantName = newTenant.name;
+  if (backendToken) {
+    userProfile.token = backendToken;
+  }
 
   return {
     success: true,

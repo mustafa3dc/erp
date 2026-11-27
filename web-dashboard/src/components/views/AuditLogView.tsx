@@ -366,14 +366,26 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
 
       {/* Error Alert Banner */}
       {errorMsg && (
-        <div className="p-3.5 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={loadAuditLogs} className="h-7 px-2.5 text-[11px]">
-            {t('refreshBtn')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {!getAuthToken() && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => window.dispatchEvent(new CustomEvent('zilox_require_relogin'))}
+                className="h-7 px-3 text-[11px]"
+              >
+                {t('reloginBtn')}
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={loadAuditLogs} className="h-7 px-2.5 text-[11px]">
+              {t('refreshBtn')}
+            </Button>
+          </div>
         </div>
       )}
 

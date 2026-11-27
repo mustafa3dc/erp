@@ -748,9 +748,9 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
 
       {/* Tab 1: Direct Product Quantity Pricing */}
       {activeTab === 'TIERS' && (
-        <div className="data-table-container clean-card" style={{ borderRadius: '14px', overflow: 'hidden' }}>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0 }}>
+            <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
               <colgroup>
                 <col style={{ width: '28%' }} />
                 <col style={{ width: '17%' }} />
@@ -758,21 +758,21 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
-              <thead>
+              <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', letterSpacing: '0.03em', textAlign: isAr ? 'right' : 'left' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colProduct')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colBasePrice')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colQtyRange')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colTierPrice')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colActions')}
                   </th>
                 </tr>
@@ -805,27 +805,18 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       ? Math.round(((basePrice - tier.unitPrice) / basePrice) * 100)
                       : 0;
                     return (
-                      <tr key={tier.id} className="hover:bg-muted/30 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
-                        {/* Product Name + SKU */}
-                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)', lineHeight: 1.3 }}>
+                      <tr key={tier.id} className="hover:bg-muted/30 transition-colors border-t border-border">
+                        {/* Product Name + SKU — stacked tightly, no justify-between */}
+                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="font-semibold text-foreground" style={{ fontSize: '13px', lineHeight: 1.3 }}>
                               {productName}
                             </span>
                             {productSku && (
                               <span
                                 dir="ltr"
-                                style={{
-                                  fontSize: '11px',
-                                  fontFamily: 'monospace',
-                                  color: 'var(--muted-foreground)',
-                                  background: 'var(--muted)',
-                                  borderRadius: '4px',
-                                  padding: '1px 5px',
-                                  display: 'inline-block',
-                                  alignSelf: isAr ? 'flex-end' : 'flex-start',
-                                  letterSpacing: '0.03em'
-                                }}
+                                className="text-xs font-mono text-muted-foreground bg-muted px-2 rounded"
+                                style={{ padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.03em', alignSelf: 'flex-start' }}
                               >
                                 {productSku}
                               </span>
@@ -833,31 +824,30 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           </div>
                         </td>
 
-                        {/* Base Price */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--muted-foreground)', fontVariantNumeric: 'tabular-nums' }}>
+                        {/* Base Price — start-aligned, tabular-nums */}
+                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
+                          <span className="tabular-nums text-muted-foreground" style={{ fontFamily: 'monospace', fontSize: '13px' }}>
                             {formatMoney(basePrice)}
                           </span>
                         </td>
 
-                        {/* Qty Range */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                        {/* Qty Range — centered pill badge */}
+                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
                           <span
                             dir="ltr"
+                            className="tabular-nums"
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
-                              padding: '4px 12px',
+                              padding: '3px 11px',
                               borderRadius: '999px',
                               fontSize: '12px',
                               fontWeight: 700,
                               fontFamily: 'monospace',
-                              fontVariantNumeric: 'tabular-nums',
                               background: 'color-mix(in srgb, var(--primary) 10%, transparent)',
                               color: 'var(--primary)',
                               border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)',
-                              letterSpacing: '0.02em'
                             }}
                           >
                             {tier.maxQty != null
@@ -866,14 +856,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           </span>
                         </td>
 
-                        {/* Tier Price + Savings Badge */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                            <span style={{
+                        {/* Tier Price + Savings Badge — start-aligned, inline-flex, tight gap */}
+                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
+                          <span className="inline-flex items-center gap-2">
+                            <span className="tabular-nums font-bold" style={{
                               fontFamily: 'monospace',
-                              fontWeight: 700,
                               fontSize: '14px',
-                              fontVariantNumeric: 'tabular-nums',
                               color: 'var(--color-emerald-600, #059669)'
                             }}>
                               {formatMoney(tier.unitPrice)}
@@ -887,35 +875,21 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                                 background: 'color-mix(in srgb, #10b981 15%, transparent)',
                                 color: '#059669',
                                 border: '1px solid color-mix(in srgb, #10b981 30%, transparent)',
-                                letterSpacing: '0.02em'
                               }}>
                                 -{savingsPct}%
                               </span>
                             )}
-                          </div>
+                          </span>
                         </td>
 
-                        {/* Actions */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {/* Actions — centered icon buttons */}
+                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => openTierModal(tier.productId)}
                               title={getTranslation(lang, 'quantityPricing.editTooltip')}
-                              style={{
-                                padding: '6px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--border)',
-                                background: 'var(--card)',
-                                color: 'var(--foreground)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.15s'
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer flex items-center justify-center transition-colors hover:bg-muted"
                             >
                               <Edit2 size={13} />
                             </button>
@@ -923,20 +897,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               type="button"
                               onClick={() => handleDeleteTier(tier.id)}
                               title={getTranslation(lang, 'quantityPricing.deleteTooltip')}
-                              style={{
-                                padding: '6px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--border)',
-                                background: 'var(--card)',
-                                color: 'var(--destructive)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.15s'
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer flex items-center justify-center transition-colors hover:bg-destructive/10"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -954,16 +915,16 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
 
       {/* Tab 2: Product Bundles */}
       {activeTab === 'BUNDLES' && (
-        <div className="data-table-container clean-card" style={{ borderRadius: '14px', overflow: 'hidden' }}>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Info banner */}
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Package size={14} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/60 border-b border-border">
+            <Package size={13} style={{ color: '#8b5cf6', flexShrink: 0 }} />
             <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
               {getTranslation(lang, 'priceLists.deductNotice')}
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="enterprise-table w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0 }}>
+            <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
               <colgroup>
                 <col style={{ width: '15%' }} />
                 <col style={{ width: '21%' }} />
@@ -972,24 +933,24 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 <col style={{ width: '26%' }} />
                 <col style={{ width: '11%' }} />
               </colgroup>
-              <thead>
+              <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'priceLists.bundleSku')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'priceLists.bundleName')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'bundles.colAvailableQty')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'priceLists.bundlePrice')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: isAr ? 'right' : 'left' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'priceLists.components')}
                   </th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '12px', textAlign: 'center' }}>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     {getTranslation(lang, 'quantityPricing.colActions')}
                   </th>
                 </tr>
@@ -1032,10 +993,10 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       : 0;
 
                     return (
-                      <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
-                        {/* SKU & Barcode */}
-                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: isAr ? 'flex-end' : 'flex-start' }}>
+                      <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors border-t border-border">
+                        {/* SKU & Barcode — stacked, start-aligned */}
+                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                          <div className="flex flex-col items-start gap-1">
                             <span
                               dir="ltr"
                               style={{
@@ -1055,23 +1016,19 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               {bundleSku}
                             </span>
                             {group.barcode && (
-                              <span dir="ltr" style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--muted-foreground)' }}>
+                              <span dir="ltr" className="text-muted-foreground" style={{ fontSize: '10px', fontFamily: 'monospace' }}>
                                 {group.barcode}
                               </span>
                             )}
                           </div>
                         </td>
-                        {/* Bundle Name + Badge */}
-                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--foreground)' }}>
+                        {/* Bundle Name + Badge — stacked tightly */}
+                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="font-semibold text-foreground" style={{ fontSize: '13px' }}>
                               {bundleTitle}
                             </span>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              alignSelf: 'flex-start',
+                            <span className="inline-flex items-center gap-1" style={{
                               fontSize: '10px',
                               fontWeight: 700,
                               padding: '1px 7px',
@@ -1086,7 +1043,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           </div>
                         </td>
                         {/* Dynamically Available Qty */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }} title={getTranslation(lang, 'bundles.dynamicStockHint')}>
+                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }} title={getTranslation(lang, 'bundles.dynamicStockHint')}>
                           <span
                             dir="ltr"
                             style={{
@@ -1111,14 +1068,12 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                             {availableQty}
                           </span>
                         </td>
-                        {/* Price */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                            <span style={{
+                        {/* Price — start-aligned, inline-flex tight */}
+                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
+                          <span className="inline-flex items-center gap-2">
+                            <span className="tabular-nums font-bold" style={{
                               fontFamily: 'monospace',
-                              fontWeight: 700,
                               fontSize: '14px',
-                              fontVariantNumeric: 'tabular-nums',
                               color: 'var(--color-emerald-600, #059669)'
                             }}>
                               {formatMoney(bundlePrice)}
@@ -1136,10 +1091,10 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                                 -{savingsPct}%
                               </span>
                             )}
-                          </div>
+                          </span>
                         </td>
                         {/* Components */}
-                        <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                             {group.components.map(c => (
                               <span
@@ -1159,22 +1114,14 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                             ))}
                           </div>
                         </td>
-                        {/* Actions (Edit + Delete) */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {/* Actions (Edit + Delete) — centered icon buttons */}
+                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => openBundleModal(group)}
                               title={getTranslation(lang, 'bundles.editBundle')}
-                              style={{
-                                padding: '6px', borderRadius: '8px',
-                                border: '1px solid var(--border)', background: 'var(--card)',
-                                color: 'var(--foreground)', cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.15s'
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--muted)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer flex items-center justify-center transition-colors hover:bg-muted"
                             >
                               <Edit2 size={13} />
                             </button>
@@ -1182,15 +1129,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               type="button"
                               onClick={() => handleDeleteBundle(group.parentProductId)}
                               title={getTranslation(lang, 'bundles.deleteBundle')}
-                              style={{
-                                padding: '6px', borderRadius: '8px',
-                                border: '1px solid var(--border)', background: 'var(--card)',
-                                color: 'var(--destructive)', cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.15s'
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--destructive) 10%, transparent)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'var(--card)')}
+                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer flex items-center justify-center transition-colors hover:bg-destructive/10"
                             >
                               <Trash2 size={13} />
                             </button>

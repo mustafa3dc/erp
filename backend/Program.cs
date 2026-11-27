@@ -320,31 +320,65 @@ using (var scope = app.Services.CreateScope())
                     ALTER TABLE IF EXISTS customers
                         ADD COLUMN IF NOT EXISTS tenant_id UUID,
                         ADD COLUMN IF NOT EXISTS price_list_id UUID;
+                ");
 
-                    CREATE TABLE IF NOT EXISTS warehouse_shelves (
-                        id UUID PRIMARY KEY,
-                        tenant_id UUID NULL,
-                        warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
-                        name VARCHAR(150) NOT NULL,
-                        code VARCHAR(50) NULL,
-                        notes TEXT NULL,
-                        max_capacity INT NULL,
-                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMPTZ NULL
-                    );
-                    ALTER TABLE IF EXISTS warehouse_shelves
-                        ALTER COLUMN code DROP NOT NULL,
-                        ALTER COLUMN notes DROP NOT NULL,
-                        ALTER COLUMN max_capacity DROP NOT NULL;
-                    CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
-                    CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code
-                        ON warehouse_shelves (tenant_id, warehouse_id, LOWER(code))
-                        WHERE code IS NOT NULL AND is_active = TRUE;
+                try
+                {
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        CREATE TABLE IF NOT EXISTS warehouse_shelves (
+                            id UUID PRIMARY KEY,
+                            tenant_id UUID NULL,
+                            warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+                            name VARCHAR(150) NOT NULL,
+                            code VARCHAR(50) NULL,
+                            notes TEXT NULL,
+                            max_capacity INT NULL,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            updated_at TIMESTAMPTZ NULL
+                        );
+                        ALTER TABLE IF EXISTS warehouse_shelves
+                            ADD COLUMN IF NOT EXISTS tenant_id UUID NULL,
+                            ADD COLUMN IF NOT EXISTS warehouse_id UUID NULL,
+                            ADD COLUMN IF NOT EXISTS name VARCHAR(150) NULL,
+                            ADD COLUMN IF NOT EXISTS code VARCHAR(50) NULL,
+                            ADD COLUMN IF NOT EXISTS notes TEXT NULL,
+                            ADD COLUMN IF NOT EXISTS max_capacity INT NULL,
+                            ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL,
+                            ADD COLUMN IF NOT EXISTS created_by VARCHAR(150) NULL;
+                        DO $$
+                        DECLARE
+                            col_name TEXT;
+                        BEGIN
+                            FOREACH col_name IN ARRAY ARRAY['code', 'notes', 'max_capacity', 'zone', 'aisle', 'rack', 'level', 'bin_code', 'shelf_type', 'status', 'updated_at', 'created_by']
+                            LOOP
+                                IF EXISTS (
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'warehouse_shelves'
+                                      AND column_name = col_name
+                                      AND is_nullable = 'NO'
+                                ) THEN
+                                    EXECUTE format('ALTER TABLE warehouse_shelves ALTER COLUMN %I DROP NOT NULL', col_name);
+                                END IF;
+                            END LOOP;
+                        END $$;
+                        CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+                        DROP INDEX IF EXISTS ux_warehouse_shelves_tenant_wh_code;
+                        CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code_partial
+                            ON warehouse_shelves (tenant_id, warehouse_id, LOWER(code))
+                            WHERE code IS NOT NULL AND code <> '' AND is_active = TRUE;
+                        ALTER TABLE IF EXISTS warehouse_stock
+                            ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Warehouse shelves startup DDL reconciliation warning.");
+                }
 
-                    ALTER TABLE IF EXISTS warehouse_stock
-                        ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;
-
+                dbContext.Database.ExecuteSqlRaw(@"
                     CREATE TABLE IF NOT EXISTS recurring_expenses (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         tenant_id UUID NULL,

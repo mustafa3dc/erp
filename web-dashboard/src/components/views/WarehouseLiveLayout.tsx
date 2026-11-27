@@ -304,10 +304,16 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           (res.status === 404
             ? 'ERR_WAREHOUSE_NOT_FOUND'
             : 'ERR_SHELF_SAVE_FAILED');
-        const pgPart = err?.details?.pgCode ? ` • PG:${err.details.pgCode}` : '';
+        const sqlState = err?.details?.sqlState || err?.details?.pgCode;
+        const columnName = err?.details?.columnName;
+        const constraintName = err?.details?.constraintName || err?.details?.constraint;
+        const metaParts = [code, `HTTP ${res.status}`];
+        if (sqlState) metaParts.push(String(sqlState));
+        if (columnName) metaParts.push(String(columnName));
+        else if (constraintName) metaParts.push(String(constraintName));
         setShelfFormError({
           message: resolveShelfError(code),
-          meta: `${code} (HTTP ${res.status}${pgPart})`
+          meta: metaParts.join(' • ')
         });
         return;
       }
@@ -570,7 +576,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           <div
             className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
             dir={isAr ? 'rtl' : 'ltr'}
-            onClick={() => setIsShelfModalOpen(false)}
+            onClick={() => {
+              setShelfFormError(null);
+              setIsShelfModalOpen(false);
+            }}
           >
             <div
               className="w-full max-w-md rounded-xl bg-card border border-border shadow-xl p-5"
@@ -582,7 +591,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setIsShelfModalOpen(false)}
+                  onClick={() => {
+                    setShelfFormError(null);
+                    setIsShelfModalOpen(false);
+                  }}
                   className="p-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground"
                 >
                   <X size={16} />
@@ -607,7 +619,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                     type="text"
                     required
                     value={shelfNameInput}
-                    onChange={e => setShelfNameInput(e.target.value)}
+                    onChange={e => {
+                      setShelfNameInput(e.target.value);
+                      if (shelfFormError) setShelfFormError(null);
+                    }}
                     placeholder={tr('shelfNamePlaceholder')}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-muted text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
@@ -619,7 +634,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                     type="text"
                     dir="ltr"
                     value={shelfCodeInput}
-                    onChange={e => setShelfCodeInput(e.target.value)}
+                    onChange={e => {
+                      setShelfCodeInput(e.target.value);
+                      if (shelfFormError) setShelfFormError(null);
+                    }}
                     placeholder={tr('shelfCodePlaceholder')}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-muted text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
@@ -630,7 +648,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   <textarea
                     rows={2}
                     value={shelfNotesInput}
-                    onChange={e => setShelfNotesInput(e.target.value)}
+                    onChange={e => {
+                      setShelfNotesInput(e.target.value);
+                      if (shelfFormError) setShelfFormError(null);
+                    }}
                     placeholder={tr('shelfNotesPlaceholder')}
                     className="w-full p-3 rounded-lg border border-border bg-muted text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
@@ -639,7 +660,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsShelfModalOpen(false)}
+                    onClick={() => {
+                      setShelfFormError(null);
+                      setIsShelfModalOpen(false);
+                    }}
                     className="px-4 h-9 rounded-lg border border-border bg-muted text-foreground text-xs font-bold"
                   >
                     {tr('cancelBtn')}

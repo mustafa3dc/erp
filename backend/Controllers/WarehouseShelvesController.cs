@@ -24,6 +24,8 @@ public class AssignShelfItemsRequest
     public List<Guid> ProductIds { get; set; } = new();
 }
 
+public record ApiErrorResponse(bool Success, string ErrorCode, object? Details = null);
+
 [ApiController]
 [Route("api/warehouses/{warehouseIdOrCode}/shelves")]
 [Route("api/v1/warehouses/{warehouseIdOrCode}/shelves")]
@@ -69,7 +71,8 @@ public class WarehouseShelvesController : ControllerBase
                         ADD COLUMN IF NOT EXISTS max_capacity INT NULL,
                         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
                         ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL;");
+                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL,
+                        ADD COLUMN IF NOT EXISTS created_by VARCHAR(150) NULL;");
             }
             catch { }
             try
@@ -79,7 +82,7 @@ public class WarehouseShelvesController : ControllerBase
                     DECLARE
                         col_name TEXT;
                     BEGIN
-                        FOREACH col_name IN ARRAY ARRAY['code', 'notes', 'max_capacity', 'zone', 'bay', 'row_code', 'level_code', 'shelf_type']
+                        FOREACH col_name IN ARRAY ARRAY['code', 'notes', 'max_capacity', 'zone', 'aisle', 'rack', 'level', 'bin_code', 'shelf_type', 'status', 'updated_at', 'created_by']
                         LOOP
                             IF EXISTS (
                                 SELECT 1 FROM information_schema.columns
@@ -236,41 +239,42 @@ public class WarehouseShelvesController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
-            return BadRequest(new { success = false, errorCode = "ERR_SHELF_NAME_REQUIRED" });
-        }
-
-        await EnsureShelvesSchemaAsync();
-        var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
-
-        if (warehouse == null)
-        {
-            return NotFound(new { success = false, errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
-        }
-
-        var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
-        var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
-
-        if (normalizedCode != null)
-        {
-            var codeLower = normalizedCode.ToLowerInvariant();
-            var duplicateExists = await _context.WarehouseShelves
-                .AsNoTracking()
-                .AnyAsync(s =>
-                    s.WarehouseId == warehouse.Id &&
-                    s.IsActive &&
-                    (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
-                    s.Code != null &&
-                    s.Code.ToLower() == codeLower);
-
-            if (duplicateExists)
-            {
-                return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
-            }
+            return BadRequest(new ApiErrorResponse(false, "ERR_SHELF_NAME_REQUIRED"));
         }
 
         try
         {
+            await EnsureShelvesSchemaAsync();
+            var tenantId = await ResolveTenantIdAsync();
+            var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
+
+            if (warehouse == null)
+            {
+                return NotFound(new ApiErrorResponse(false, "ERR_WAREHOUSE_NOT_FOUND"));
+            }
+
+            var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
+            var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+
+            if (normalizedCode != null)
+            {
+                var codeLower = normalizedCode.ToLowerInvariant();
+                var duplicateExists = await _context.WarehouseShelves
+                    .AsNoTracking()
+                    .AnyAsync(s =>
+                        s.WarehouseId == warehouse.Id &&
+                        s.IsActive &&
+                        (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
+                        s.Code != null &&
+                        s.Code.ToLower() == codeLower);
+
+                if (duplicateExists)
+                {
+                    return Conflict(new ApiErrorResponse(false, "ERR_SHELF_CODE_ALREADY_EXISTS"));
+                }
+            }
+
+            var nowUtc = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
             var shelf = new WarehouseShelf
             {
                 Id = Guid.NewGuid(),
@@ -281,8 +285,8 @@ public class WarehouseShelvesController : ControllerBase
                 Notes = normalizedNotes,
                 MaxCapacity = request.MaxCapacity,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = nowUtc,
+                UpdatedAt = nowUtc
             };
 
             _context.WarehouseShelves.Add(shelf);
@@ -305,36 +309,43 @@ public class WarehouseShelvesController : ControllerBase
         }
         catch (DbUpdateException dbEx)
         {
-            var pgEx = dbEx.InnerException as PostgresException;
-            _logger.LogError(dbEx, "CreateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Constraint={Constraint})",
-                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ConstraintName);
+            var baseEx = dbEx.GetBaseException();
+            var pgEx = baseEx as PostgresException ?? dbEx.InnerException as PostgresException;
+            _logger.LogError(dbEx,
+                "CreateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Column={ColumnName}, Constraint={ConstraintName})",
+                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ColumnName, pgEx?.ConstraintName);
 
             if (pgEx?.SqlState == "23505")
             {
-                return Conflict(new
+                return Conflict(new ApiErrorResponse(false, "ERR_SHELF_CODE_ALREADY_EXISTS", new
                 {
-                    success = false,
-                    errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS",
-                    details = new { pgCode = pgEx.SqlState, constraint = pgEx.ConstraintName }
-                });
+                    ExceptionType = baseEx.GetType().Name,
+                    SqlState = pgEx.SqlState,
+                    ColumnName = pgEx.ColumnName,
+                    ConstraintName = pgEx.ConstraintName
+                }));
             }
 
-            return StatusCode(500, new
+            return StatusCode(500, new ApiErrorResponse(false, "ERR_SHELF_SAVE_FAILED", new
             {
-                success = false,
-                errorCode = "ERR_SHELF_SAVE_FAILED",
-                details = new { pgCode = pgEx?.SqlState, constraint = pgEx?.ConstraintName }
-            });
+                ExceptionType = baseEx.GetType().Name,
+                SqlState = pgEx?.SqlState,
+                ColumnName = pgEx?.ColumnName,
+                ConstraintName = pgEx?.ConstraintName
+            }));
         }
         catch (Exception ex)
         {
+            var baseEx = ex.GetBaseException();
+            var pgEx = baseEx as PostgresException ?? ex.InnerException as PostgresException;
             _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseIdOrCode}", warehouseIdOrCode);
-            return StatusCode(500, new
+            return StatusCode(500, new ApiErrorResponse(false, "ERR_SHELF_SAVE_FAILED", new
             {
-                success = false,
-                errorCode = "ERR_SHELF_SAVE_FAILED",
-                details = new { pgCode = (string?)null, constraint = (string?)null }
-            });
+                ExceptionType = baseEx.GetType().Name,
+                SqlState = pgEx?.SqlState,
+                ColumnName = pgEx?.ColumnName,
+                ConstraintName = pgEx?.ConstraintName
+            }));
         }
     }
 
@@ -343,58 +354,58 @@ public class WarehouseShelvesController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
-            return BadRequest(new { success = false, errorCode = "ERR_SHELF_NAME_REQUIRED" });
-        }
-
-        await EnsureShelvesSchemaAsync();
-        var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
-        if (warehouse == null)
-        {
-            return NotFound(new { success = false, errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
-        }
-
-        var shelf = await _context.WarehouseShelves
-            .FirstOrDefaultAsync(s =>
-                s.Id == shelfId &&
-                s.WarehouseId == warehouse.Id &&
-                s.IsActive &&
-                (!tenantId.HasValue || s.TenantId == tenantId.Value));
-
-        if (shelf == null)
-        {
-            return NotFound(new { errorCode = "ERR_SHELF_NOT_FOUND" });
-        }
-
-        var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
-        var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
-
-        if (normalizedCode != null)
-        {
-            var codeLower = normalizedCode.ToLowerInvariant();
-            var duplicateExists = await _context.WarehouseShelves
-                .AsNoTracking()
-                .AnyAsync(s =>
-                    s.Id != shelf.Id &&
-                    s.WarehouseId == warehouse.Id &&
-                    s.IsActive &&
-                    (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
-                    s.Code != null &&
-                    s.Code.ToLower() == codeLower);
-
-            if (duplicateExists)
-            {
-                return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
-            }
+            return BadRequest(new ApiErrorResponse(false, "ERR_SHELF_NAME_REQUIRED"));
         }
 
         try
         {
+            await EnsureShelvesSchemaAsync();
+            var tenantId = await ResolveTenantIdAsync();
+            var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
+            if (warehouse == null)
+            {
+                return NotFound(new ApiErrorResponse(false, "ERR_WAREHOUSE_NOT_FOUND"));
+            }
+
+            var shelf = await _context.WarehouseShelves
+                .FirstOrDefaultAsync(s =>
+                    s.Id == shelfId &&
+                    s.WarehouseId == warehouse.Id &&
+                    s.IsActive &&
+                    (!tenantId.HasValue || s.TenantId == tenantId.Value));
+
+            if (shelf == null)
+            {
+                return NotFound(new ApiErrorResponse(false, "ERR_SHELF_NOT_FOUND"));
+            }
+
+            var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
+            var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+
+            if (normalizedCode != null)
+            {
+                var codeLower = normalizedCode.ToLowerInvariant();
+                var duplicateExists = await _context.WarehouseShelves
+                    .AsNoTracking()
+                    .AnyAsync(s =>
+                        s.Id != shelf.Id &&
+                        s.WarehouseId == warehouse.Id &&
+                        s.IsActive &&
+                        (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
+                        s.Code != null &&
+                        s.Code.ToLower() == codeLower);
+
+                if (duplicateExists)
+                {
+                    return Conflict(new ApiErrorResponse(false, "ERR_SHELF_CODE_ALREADY_EXISTS"));
+                }
+            }
+
             shelf.Name = request.Name.Trim();
             shelf.Code = normalizedCode;
             shelf.Notes = normalizedNotes;
             shelf.MaxCapacity = request.MaxCapacity;
-            shelf.UpdatedAt = DateTime.UtcNow;
+            shelf.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
             await _context.SaveChangesAsync();
 
@@ -411,36 +422,43 @@ public class WarehouseShelvesController : ControllerBase
         }
         catch (DbUpdateException dbEx)
         {
-            var pgEx = dbEx.InnerException as PostgresException;
-            _logger.LogError(dbEx, "CreateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Constraint={Constraint})",
-                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ConstraintName);
+            var baseEx = dbEx.GetBaseException();
+            var pgEx = baseEx as PostgresException ?? dbEx.InnerException as PostgresException;
+            _logger.LogError(dbEx,
+                "UpdateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Column={ColumnName}, Constraint={ConstraintName})",
+                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ColumnName, pgEx?.ConstraintName);
 
             if (pgEx?.SqlState == "23505")
             {
-                return Conflict(new
+                return Conflict(new ApiErrorResponse(false, "ERR_SHELF_CODE_ALREADY_EXISTS", new
                 {
-                    success = false,
-                    errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS",
-                    details = new { pgCode = pgEx.SqlState, constraint = pgEx.ConstraintName }
-                });
+                    ExceptionType = baseEx.GetType().Name,
+                    SqlState = pgEx.SqlState,
+                    ColumnName = pgEx.ColumnName,
+                    ConstraintName = pgEx.ConstraintName
+                }));
             }
 
-            return StatusCode(500, new
+            return StatusCode(500, new ApiErrorResponse(false, "ERR_SHELF_SAVE_FAILED", new
             {
-                success = false,
-                errorCode = "ERR_SHELF_SAVE_FAILED",
-                details = new { pgCode = pgEx?.SqlState, constraint = pgEx?.ConstraintName }
-            });
+                ExceptionType = baseEx.GetType().Name,
+                SqlState = pgEx?.SqlState,
+                ColumnName = pgEx?.ColumnName,
+                ConstraintName = pgEx?.ConstraintName
+            }));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseIdOrCode}", warehouseIdOrCode);
-            return StatusCode(500, new
+            var baseEx = ex.GetBaseException();
+            var pgEx = baseEx as PostgresException ?? ex.InnerException as PostgresException;
+            _logger.LogError(ex, "UpdateShelf failed for warehouse {WarehouseIdOrCode}", warehouseIdOrCode);
+            return StatusCode(500, new ApiErrorResponse(false, "ERR_SHELF_SAVE_FAILED", new
             {
-                success = false,
-                errorCode = "ERR_SHELF_SAVE_FAILED",
-                details = new { pgCode = (string?)null, constraint = (string?)null }
-            });
+                ExceptionType = baseEx.GetType().Name,
+                SqlState = pgEx?.SqlState,
+                ColumnName = pgEx?.ColumnName,
+                ConstraintName = pgEx?.ConstraintName
+            }));
         }
     }
 

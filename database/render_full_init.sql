@@ -218,7 +218,6 @@ CREATE TABLE IF NOT EXISTS warehouse_stock (
     reserved_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0.0000,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    xmin UINT,
     CONSTRAINT uq_wh_item UNIQUE (warehouse_id, item_id),
     CONSTRAINT chk_stock_positive CHECK (quantity >= 0),
     CONSTRAINT chk_reserved_positive CHECK (reserved_quantity >= 0),

@@ -24,6 +24,8 @@ public class RecurringExpenseService : IRecurringExpenseService
 {
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> InMemoryRuleLocks = new();
     private static readonly TimeSpan LockExpiry = TimeSpan.FromSeconds(10);
+    private static readonly SemaphoreSlim SchemaInitLock = new(1, 1);
+    private static volatile bool _schemaEnsured;
 
     private readonly AppDbContext _context;
     private readonly IConnectionMultiplexer? _redis;
@@ -39,8 +41,68 @@ public class RecurringExpenseService : IRecurringExpenseService
         _logger = logger;
     }
 
+    private async Task EnsureSchemaAsync(CancellationToken ct = default)
+    {
+        if (_schemaEnsured) return;
+
+        await SchemaInitLock.WaitAsync(ct);
+        try
+        {
+            if (_schemaEnsured) return;
+
+            await _context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS recurring_expenses (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id UUID NULL,
+                    title VARCHAR(200) NOT NULL,
+                    category VARCHAR(150) NOT NULL,
+                    amount NUMERIC(18, 4) NOT NULL,
+                    frequency VARCHAR(30) NOT NULL DEFAULT 'Monthly',
+                    day_of_month INT NULL,
+                    day_of_week INT NULL,
+                    interval_days INT NULL,
+                    next_due_date TIMESTAMPTZ NOT NULL,
+                    last_executed_date TIMESTAMPTZ NULL,
+                    execution_mode VARCHAR(30) NOT NULL DEFAULT 'RemindAndConfirm',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                    notes VARCHAR(1000) NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );", ct);
+
+            _schemaEnsured = true;
+
+            try
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE INDEX IF NOT EXISTS ix_recurring_expenses_tenant_due
+                        ON recurring_expenses (tenant_id, is_active, is_deleted, next_due_date);
+                    CREATE INDEX IF NOT EXISTS ix_recurring_expenses_due_date
+                        ON recurring_expenses (next_due_date)
+                        WHERE is_active = TRUE AND is_deleted = FALSE;
+                    ALTER TABLE IF EXISTS expense_vouchers
+                        ADD COLUMN IF NOT EXISTS recurring_expense_id UUID NULL;
+                ", ct);
+            }
+            catch (Exception indexEx)
+            {
+                _logger.LogWarning(indexEx, "EnsureSchemaAsync index/alter warning (non-fatal).");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "EnsureSchemaAsync failed for recurring_expenses.");
+        }
+        finally
+        {
+            SchemaInitLock.Release();
+        }
+    }
+
     public async Task<List<RecurringExpenseDto>> GetAllAsync(CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         // Trigger on-demand catch-up for this tenant before returning list
         await ProcessDueAutoPostRulesAsync(_context.CurrentTenantId, ct);
 
@@ -59,6 +121,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<List<RecurringExpenseDto>> GetDueForDashboardAsync(CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         await ProcessDueAutoPostRulesAsync(_context.CurrentTenantId, ct);
 
         var todayEndUtc = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddTicks(-1), TimeSpan.Zero);
@@ -77,6 +140,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<ApiResponse<RecurringExpenseDto>> CreateAsync(UpsertRecurringExpenseRequest request, CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var validationError = ValidateRequest(request);
         if (validationError != null)
         {
@@ -123,6 +187,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<ApiResponse<RecurringExpenseDto>> UpdateAsync(Guid id, UpsertRecurringExpenseRequest request, CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var validationError = ValidateRequest(request);
         if (validationError != null)
         {
@@ -167,6 +232,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<ApiResponse<RecurringExpenseDto>> ToggleAsync(Guid id, CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var tenantId = _context.CurrentTenantId;
         var entity = await _context.RecurringExpenses
             .FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted && (!tenantId.HasValue || r.TenantId == tenantId.Value), ct);
@@ -185,6 +251,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task<ApiResponse<bool>> DeleteAsync(Guid id, CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var entity = await _context.RecurringExpenses.FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted, ct);
         if (entity == null)
         {
@@ -205,6 +272,7 @@ public class RecurringExpenseService : IRecurringExpenseService
         string? confirmedBy,
         CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var (acquired, releaseLock) = await AcquireRuleLockAsync(id, ct);
         if (!acquired)
         {
@@ -277,6 +345,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     public async Task ProcessDueAutoPostRulesAsync(Guid? tenantId = null, CancellationToken ct = default)
     {
+        await EnsureSchemaAsync(ct);
         var todayEndUtc = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1).AddTicks(-1), TimeSpan.Zero);
 
         var query = _context.RecurringExpenses

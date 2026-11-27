@@ -278,7 +278,7 @@ using (var scope = app.Services.CreateScope())
         if (dbContext.Database.CanConnect())
         {
             int count;
-            using (var conn = dbContext.Database.GetDbConnection())
+            using (var conn = new Npgsql.NpgsqlConnection(connectionString))
             {
                 conn.Open();
                 using var cmd = conn.CreateCommand();
@@ -429,146 +429,86 @@ using (var scope = app.Services.CreateScope())
                         ON recurring_expenses (tenant_id, is_active, is_deleted, next_due_date);
                 ");
 
-                // Ensure incremental Profit-Based Customer Loyalty schema upgrades are idempotently applied
-                string[] incrementalPaths =
+                void RunScriptSafe(string scriptFileName)
                 {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "13_profit_based_customer_loyalty.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "13_profit_based_customer_loyalty.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "13_profit_based_customer_loyalty.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "13_profit_based_customer_loyalty.sql")
-                };
-                var loyaltySqlPath = incrementalPaths.FirstOrDefault(File.Exists);
-                if (loyaltySqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(loyaltySqlPath));
+                    string[] scriptPaths =
+                    {
+                        Path.Combine(AppContext.BaseDirectory, "database", "scripts", scriptFileName),
+                        Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", scriptFileName),
+                        Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", scriptFileName),
+                        Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", scriptFileName)
+                    };
+                    var scriptPath = scriptPaths.FirstOrDefault(File.Exists);
+                    if (scriptPath == null) return;
+                    try
+                    {
+                        dbContext.Database.ExecuteSqlRaw(File.ReadAllText(scriptPath));
+                    }
+                    catch (Exception scriptEx)
+                    {
+                        logger.LogWarning(scriptEx, "Incremental SQL script {Script} warning (non-fatal).", scriptFileName);
+                    }
                 }
 
-                // Ensure incremental Loyalty Rewards Store & Digital Wallet schema upgrades are idempotently applied
-                string[] rewardsSqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "14_loyalty_rewards_store_and_digital_wallet.sql")
-                };
-                var rewardsSqlPath = rewardsSqlPaths.FirstOrDefault(File.Exists);
-                if (rewardsSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(rewardsSqlPath));
-                }
+                RunScriptSafe("13_profit_based_customer_loyalty.sql");
+                RunScriptSafe("14_loyalty_rewards_store_and_digital_wallet.sql");
+                RunScriptSafe("15_partners_and_profit_distribution.sql");
+                RunScriptSafe("16_recurring_operating_expenses.sql");
+                RunScriptSafe("17_remove_seeded_expense_categories.sql");
+                RunScriptSafe("18_recurring_budget_cap_and_treasury_ledger.sql");
+                RunScriptSafe("19_serial_warranty_lifecycle.sql");
+                RunScriptSafe("20_purchase_treasury_and_supplier_payments.sql");
+                RunScriptSafe("22_warehouse_shelves.sql");
+                RunScriptSafe("21_treasury_vouchers_and_accounts.sql");
+            }
 
-                // Ensure incremental Partners & Profit Sharing schema upgrades are idempotently applied
-                string[] partnersSqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "15_partners_and_profit_distribution.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "15_partners_and_profit_distribution.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "15_partners_and_profit_distribution.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "15_partners_and_profit_distribution.sql")
-                };
-                var partnersSqlPath = partnersSqlPaths.FirstOrDefault(File.Exists);
-                if (partnersSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(partnersSqlPath));
-                }
-
-                // Ensure incremental Recurring & Fixed Operating Expenses schema upgrades are idempotently applied
-                string[] recurringSqlPaths =
+            // Always ensure recurring_expenses table exists (runs regardless of DB init state)
+            try
+            {
+                string[] recScriptPaths =
                 {
                     Path.Combine(AppContext.BaseDirectory, "database", "scripts", "16_recurring_operating_expenses.sql"),
                     Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "16_recurring_operating_expenses.sql"),
                     Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "16_recurring_operating_expenses.sql"),
                     Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "16_recurring_operating_expenses.sql")
                 };
-                var recurringSqlPath = recurringSqlPaths.FirstOrDefault(File.Exists);
-                if (recurringSqlPath != null)
+                var recScriptPath = recScriptPaths.FirstOrDefault(File.Exists);
+                if (recScriptPath != null)
                 {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(recurringSqlPath));
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(recScriptPath));
                 }
-
-                // Cleanup pre-populated seeded expense categories and allow optional category assignment on expense vouchers
-                string[] cleanupCategoriesSqlPaths =
+                else
                 {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "17_remove_seeded_expense_categories.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "17_remove_seeded_expense_categories.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "17_remove_seeded_expense_categories.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "17_remove_seeded_expense_categories.sql")
-                };
-                var cleanupCategoriesSqlPath = cleanupCategoriesSqlPaths.FirstOrDefault(File.Exists);
-                if (cleanupCategoriesSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(cleanupCategoriesSqlPath));
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        CREATE TABLE IF NOT EXISTS recurring_expenses (
+                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            tenant_id UUID NULL,
+                            title VARCHAR(200) NOT NULL,
+                            category VARCHAR(150) NOT NULL,
+                            amount NUMERIC(18, 4) NOT NULL,
+                            frequency VARCHAR(30) NOT NULL DEFAULT 'Monthly',
+                            day_of_month INT NULL,
+                            day_of_week INT NULL,
+                            interval_days INT NULL,
+                            next_due_date TIMESTAMPTZ NOT NULL,
+                            last_executed_date TIMESTAMPTZ NULL,
+                            execution_mode VARCHAR(30) NOT NULL DEFAULT 'RemindAndConfirm',
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                            notes VARCHAR(1000) NULL,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        );
+                        CREATE INDEX IF NOT EXISTS ix_recurring_expenses_tenant_due
+                            ON recurring_expenses (tenant_id, is_active, is_deleted, next_due_date);
+                        ALTER TABLE IF EXISTS expense_vouchers
+                            ADD COLUMN IF NOT EXISTS recurring_expense_id UUID NULL;
+                    ");
                 }
-
-                // Ensure Treasury Transactions ledger & recurring budget cleanup migration is applied idempotently
-                string[] treasuryLedgerSqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "18_recurring_budget_cap_and_treasury_ledger.sql")
-                };
-                var treasuryLedgerSqlPath = treasuryLedgerSqlPaths.FirstOrDefault(File.Exists);
-                if (treasuryLedgerSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryLedgerSqlPath));
-                }
-
-                // Ensure Serial & Warranty Lifecycle Automation schema upgrades are idempotently applied
-                string[] serialLifecycleSqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "19_serial_warranty_lifecycle.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "19_serial_warranty_lifecycle.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "19_serial_warranty_lifecycle.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "19_serial_warranty_lifecycle.sql")
-                };
-                var serialLifecycleSqlPath = serialLifecycleSqlPaths.FirstOrDefault(File.Exists);
-                if (serialLifecycleSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(serialLifecycleSqlPath));
-                }
-
-                // Ensure Purchase Invoice Treasury Deduction & Supplier Settlement schema upgrades are idempotently applied
-                string[] purchaseTreasurySqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "20_purchase_treasury_and_supplier_payments.sql")
-                };
-                var purchaseTreasurySqlPath = purchaseTreasurySqlPaths.FirstOrDefault(File.Exists);
-                if (purchaseTreasurySqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(purchaseTreasurySqlPath));
-                }
-
-                // Ensure Warehouse Shelves schema is applied idempotently (migration 22)
-                string[] warehouseShelvesScriptPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "22_warehouse_shelves.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "22_warehouse_shelves.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "22_warehouse_shelves.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "22_warehouse_shelves.sql")
-                };
-                var warehouseShelvesScriptPath = warehouseShelvesScriptPaths.FirstOrDefault(File.Exists);
-                if (warehouseShelvesScriptPath != null)
-                {
-                    try { dbContext.Database.ExecuteSqlRaw(File.ReadAllText(warehouseShelvesScriptPath)); }
-                    catch (Exception ex) { logger.LogWarning(ex, "Warehouse shelves migration script warning."); }
-                }
-
-                // Ensure Treasury Vouchers & Flexible CashBox AccountType schema upgrades are idempotently applied
-                string[] treasuryAccountsSqlPaths =
-                {
-                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "21_treasury_vouchers_and_accounts.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "21_treasury_vouchers_and_accounts.sql")
-                };
-                var treasuryAccountsSqlPath = treasuryAccountsSqlPaths.FirstOrDefault(File.Exists);
-                if (treasuryAccountsSqlPath != null)
-                {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryAccountsSqlPath));
-                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Recurring expenses always-run DDL warning (non-fatal).");
             }
 
             // Always ensure warehouse_shelves table exists (runs regardless of DB init state)

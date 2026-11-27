@@ -327,13 +327,20 @@ using (var scope = app.Services.CreateScope())
                         warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
                         name VARCHAR(150) NOT NULL,
                         code VARCHAR(50) NULL,
-                        notes VARCHAR(500) NULL,
+                        notes TEXT NULL,
                         max_capacity INT NULL,
                         is_active BOOLEAN NOT NULL DEFAULT TRUE,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         updated_at TIMESTAMPTZ NULL
                     );
+                    ALTER TABLE IF EXISTS warehouse_shelves
+                        ALTER COLUMN code DROP NOT NULL,
+                        ALTER COLUMN notes DROP NOT NULL,
+                        ALTER COLUMN max_capacity DROP NOT NULL;
                     CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code
+                        ON warehouse_shelves (tenant_id, warehouse_id, LOWER(code))
+                        WHERE code IS NOT NULL AND is_active = TRUE;
 
                     ALTER TABLE IF EXISTS warehouse_stock
                         ADD COLUMN IF NOT EXISTS shelf_id UUID NULL;

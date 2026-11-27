@@ -631,9 +631,10 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
                   <button
                     type="submit"
                     disabled={isSavingShelf}
-                    className="btn-add-primary px-4 h-9 text-xs font-bold disabled:opacity-60"
+                    className="btn-add-primary px-4 h-9 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60"
                   >
-                    {isSavingShelf ? tr('savingBtn') : tr('saveShelfBtn')}
+                    {isSavingShelf && <RefreshCw size={13} className="animate-spin" />}
+                    <span>{isSavingShelf ? tr('savingBtn') : tr('saveShelfBtn')}</span>
                   </button>
                 </div>
               </form>

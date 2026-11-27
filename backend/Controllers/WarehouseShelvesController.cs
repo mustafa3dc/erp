@@ -50,7 +50,7 @@ public class WarehouseShelvesController : ControllerBase
                     warehouse_id UUID NOT NULL,
                     name VARCHAR(150) NOT NULL,
                     code VARCHAR(50) NULL,
-                    notes VARCHAR(500) NULL,
+                    notes TEXT NULL,
                     max_capacity INT NULL,
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -58,8 +58,21 @@ public class WarehouseShelvesController : ControllerBase
                 );");
             try
             {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE IF EXISTS warehouse_shelves
+                        ALTER COLUMN code DROP NOT NULL,
+                        ALTER COLUMN notes DROP NOT NULL,
+                        ALTER COLUMN max_capacity DROP NOT NULL;");
+            }
+            catch { }
+            try
+            {
                 await _context.Database.ExecuteSqlRawAsync(
                     "CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);");
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code
+                        ON warehouse_shelves (tenant_id, warehouse_id, LOWER(code))
+                        WHERE code IS NOT NULL AND is_active = TRUE;");
             }
             catch { }
             try
@@ -206,6 +219,27 @@ public class WarehouseShelvesController : ControllerBase
             return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
         }
 
+        var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
+        var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+
+        if (normalizedCode != null)
+        {
+            var codeLower = normalizedCode.ToLowerInvariant();
+            var duplicateExists = await _context.WarehouseShelves
+                .AsNoTracking()
+                .AnyAsync(s =>
+                    s.WarehouseId == warehouse.Id &&
+                    s.IsActive &&
+                    (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
+                    s.Code != null &&
+                    s.Code.ToLower() == codeLower);
+
+            if (duplicateExists)
+            {
+                return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
+            }
+        }
+
         try
         {
             var shelf = new WarehouseShelf
@@ -214,8 +248,8 @@ public class WarehouseShelvesController : ControllerBase
                 TenantId = tenantId ?? warehouse.TenantId,
                 WarehouseId = warehouse.Id,
                 Name = request.Name.Trim(),
-                Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim(),
-                Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+                Code = normalizedCode,
+                Notes = normalizedNotes,
                 MaxCapacity = request.MaxCapacity,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
@@ -239,6 +273,10 @@ public class WarehouseShelvesController : ControllerBase
                 topItems = Array.Empty<string>(),
                 items = Array.Empty<object>()
             });
+        }
+        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("23505") == true)
+        {
+            return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
         }
         catch (Exception ex)
         {
@@ -279,11 +317,33 @@ public class WarehouseShelvesController : ControllerBase
             return NotFound(new { errorCode = "ERR_SHELF_NOT_FOUND" });
         }
 
+        var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
+        var normalizedNotes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+
+        if (normalizedCode != null)
+        {
+            var codeLower = normalizedCode.ToLowerInvariant();
+            var duplicateExists = await _context.WarehouseShelves
+                .AsNoTracking()
+                .AnyAsync(s =>
+                    s.Id != shelf.Id &&
+                    s.WarehouseId == warehouse.Id &&
+                    s.IsActive &&
+                    (!tenantId.HasValue || s.TenantId == tenantId.Value) &&
+                    s.Code != null &&
+                    s.Code.ToLower() == codeLower);
+
+            if (duplicateExists)
+            {
+                return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
+            }
+        }
+
         try
         {
             shelf.Name = request.Name.Trim();
-            shelf.Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
-            shelf.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+            shelf.Code = normalizedCode;
+            shelf.Notes = normalizedNotes;
             shelf.MaxCapacity = request.MaxCapacity;
             shelf.UpdatedAt = DateTime.UtcNow;
 
@@ -299,6 +359,10 @@ public class WarehouseShelvesController : ControllerBase
                 maxCapacity = shelf.MaxCapacity,
                 isActive = shelf.IsActive
             });
+        }
+        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("23505") == true)
+        {
+            return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
         }
         catch (Exception ex)
         {

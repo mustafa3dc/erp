@@ -134,7 +134,7 @@ public class DashboardController : ControllerBase
                         ? p.WarehouseStocks.Where(ws => ws.WarehouseId == warehouseId.Value).Sum(ws => Math.Max(0, ws.Quantity))
                         : p.WarehouseStocks.Sum(ws => Math.Max(0, ws.Quantity));
 
-                    if (qty <= p.MinStockAlert)
+                    if (qty <= p.MinStockLevel)
                     {
                         lowStockCount++;
                     }

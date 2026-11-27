@@ -33,13 +33,14 @@ public class TenantSubscriptionController : ControllerBase
     [HttpGet("/api/v1/tenant/subscription")]
     public async Task<ActionResult<ApiResponse<TenantSubscriptionDto>>> GetCurrentSubscription(CancellationToken ct)
     {
-        var tenantId = _tenantProvider.GetCurrentTenantId();
-        var tenantSlug = User.FindFirst("tenant_slug")?.Value
+        var tenantId = _tenantProvider.CurrentTenantId;
+        var tenantSlug = _tenantProvider.CurrentTenantSlug
+            ?? User.FindFirst("tenant_slug")?.Value
             ?? Request.Headers["X-Tenant-Slug"].FirstOrDefault();
 
         if ((!tenantId.HasValue || tenantId.Value == Guid.Empty) && !string.IsNullOrWhiteSpace(tenantSlug))
         {
-            var slugLower = tenantSlug.Trim().ToLowerInvariant();
+            var slugLower = tenantSlug!.Trim().ToLowerInvariant();
             tenantId = await _dbContext.Tenants
                 .AsNoTracking()
                 .Where(t => t.Slug.ToLower() == slugLower)

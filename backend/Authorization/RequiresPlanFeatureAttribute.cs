@@ -51,15 +51,16 @@ public sealed class PlanFeatureGateFilter : IAsyncActionFilter
             return;
         }
 
-        var tenantId = _tenantProvider.GetCurrentTenantId();
+        var tenantId = _tenantProvider.CurrentTenantId;
         if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
         {
-            var tenantSlug = user.FindFirst("tenant_slug")?.Value
+            var tenantSlug = _tenantProvider.CurrentTenantSlug
+                ?? user.FindFirst("tenant_slug")?.Value
                 ?? context.HttpContext.Request.Headers["X-Tenant-Slug"].FirstOrDefault();
 
             if (!string.IsNullOrWhiteSpace(tenantSlug))
             {
-                var slugLower = tenantSlug.Trim().ToLowerInvariant();
+                var slugLower = tenantSlug!.Trim().ToLowerInvariant();
                 var dbTenantId = await _dbContext.Tenants
                     .AsNoTracking()
                     .Where(t => t.Slug.ToLower() == slugLower)

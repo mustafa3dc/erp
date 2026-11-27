@@ -750,7 +750,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {activeTab === 'TIERS' && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+            <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: '28%' }} />
                 <col style={{ width: '17%' }} />
@@ -758,26 +758,29 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
-              <thead className="bg-muted/50 border-b border-border">
+              <thead
+                className="bg-muted/50 border-b border-border"
+                style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 50%, transparent)' }}
+              >
                 <tr>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colProduct')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colBasePrice')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colQtyRange')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colTierPrice')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colActions')}
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {filteredTiers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-10">
@@ -805,18 +808,17 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       ? Math.round(((basePrice - tier.unitPrice) / basePrice) * 100)
                       : 0;
                     return (
-                      <tr key={tier.id} className="hover:bg-muted/30 transition-colors border-t border-border">
-                        {/* Product Name + SKU — stacked tightly, no justify-between */}
-                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                      <tr key={tier.id} className="hover:bg-muted/30 hover:bg-muted transition-colors">
+                        {/* Product Name + SKU — stacked tightly */}
+                        <td className="px-4 py-3.5 align-middle text-start">
                           <div className="flex flex-col items-start gap-1">
-                            <span className="font-semibold text-foreground" style={{ fontSize: '13px', lineHeight: 1.3 }}>
+                            <span className="font-semibold text-foreground text-[13px] leading-snug">
                               {productName}
                             </span>
                             {productSku && (
                               <span
                                 dir="ltr"
-                                className="text-xs font-mono text-muted-foreground bg-muted px-2 rounded"
-                                style={{ padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.03em', alignSelf: 'flex-start' }}
+                                className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded tracking-wide"
                               >
                                 {productSku}
                               </span>
@@ -825,26 +827,18 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                         </td>
 
                         {/* Base Price — start-aligned, tabular-nums */}
-                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
-                          <span className="tabular-nums text-muted-foreground" style={{ fontFamily: 'monospace', fontSize: '13px' }}>
+                        <td className="px-4 py-3.5 align-middle text-start">
+                          <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
                             {formatMoney(basePrice)}
                           </span>
                         </td>
 
-                        {/* Qty Range — centered pill badge */}
-                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
+                        {/* Qty Range — centered compact pill badge */}
+                        <td className="px-4 py-3.5 align-middle text-center">
                           <span
                             dir="ltr"
-                            className="tabular-nums"
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold font-mono tabular-nums"
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '3px 11px',
-                              borderRadius: '999px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              fontFamily: 'monospace',
                               background: 'color-mix(in srgb, var(--primary) 10%, transparent)',
                               color: 'var(--primary)',
                               border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)',
@@ -856,26 +850,21 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           </span>
                         </td>
 
-                        {/* Tier Price + Savings Badge — start-aligned, inline-flex, tight gap */}
-                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
+                        {/* Tier Price + Savings Badge — start-aligned, inline-flex tight gap */}
+                        <td className="px-4 py-3.5 align-middle text-start">
                           <span className="inline-flex items-center gap-2">
-                            <span className="tabular-nums font-bold" style={{
-                              fontFamily: 'monospace',
-                              fontSize: '14px',
-                              color: 'var(--color-emerald-600, #059669)'
-                            }}>
+                            <span className="font-mono text-sm tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
                               {formatMoney(tier.unitPrice)}
                             </span>
                             {savingsPct > 0 && (
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                padding: '2px 7px',
-                                borderRadius: '999px',
-                                background: 'color-mix(in srgb, #10b981 15%, transparent)',
-                                color: '#059669',
-                                border: '1px solid color-mix(in srgb, #10b981 30%, transparent)',
-                              }}>
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums"
+                                style={{
+                                  background: 'color-mix(in srgb, #10b981 15%, transparent)',
+                                  color: '#059669',
+                                  border: '1px solid color-mix(in srgb, #10b981 30%, transparent)',
+                                }}
+                              >
                                 -{savingsPct}%
                               </span>
                             )}
@@ -883,13 +872,13 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                         </td>
 
                         {/* Actions — centered icon buttons */}
-                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div className="inline-flex items-center gap-1.5">
+                        <td className="px-4 py-3.5 align-middle text-center">
+                          <div className="inline-flex items-center justify-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => openTierModal(tier.productId)}
                               title={getTranslation(lang, 'quantityPricing.editTooltip')}
-                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer flex items-center justify-center transition-colors hover:bg-muted"
+                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer inline-flex items-center justify-center transition-colors hover:bg-muted"
                             >
                               <Edit2 size={13} />
                             </button>
@@ -897,7 +886,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               type="button"
                               onClick={() => handleDeleteTier(tier.id)}
                               title={getTranslation(lang, 'quantityPricing.deleteTooltip')}
-                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer flex items-center justify-center transition-colors hover:bg-destructive/10"
+                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer inline-flex items-center justify-center transition-colors hover:bg-red-500/10"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -917,14 +906,17 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
       {activeTab === 'BUNDLES' && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Info banner */}
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/60 border-b border-border">
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 bg-muted/60 border-b border-border"
+            style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 60%, transparent)' }}
+          >
             <Package size={13} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-            <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
+            <span className="text-xs text-muted-foreground">
               {getTranslation(lang, 'priceLists.deductNotice')}
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+            <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: '15%' }} />
                 <col style={{ width: '21%' }} />
@@ -933,29 +925,32 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                 <col style={{ width: '26%' }} />
                 <col style={{ width: '11%' }} />
               </colgroup>
-              <thead className="bg-muted/50 border-b border-border">
+              <thead
+                className="bg-muted/50 border-b border-border"
+                style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 50%, transparent)' }}
+              >
                 <tr>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'priceLists.bundleSku')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'priceLists.bundleName')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'bundles.colAvailableQty')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'priceLists.bundlePrice')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'start', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'priceLists.components')}
                   </th>
-                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', letterSpacing: '0.04em', textAlign: 'center', color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  <th className="px-4 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {getTranslation(lang, 'quantityPricing.colActions')}
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {filteredBundleGroups.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-10">
@@ -993,69 +988,53 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                       : 0;
 
                     return (
-                      <tr key={group.parentProductId} className="hover:bg-muted/30 transition-colors border-t border-border">
+                      <tr key={group.parentProductId} className="hover:bg-muted/30 hover:bg-muted transition-colors">
                         {/* SKU & Barcode — stacked, start-aligned */}
-                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                        <td className="px-4 py-3.5 align-middle text-start">
                           <div className="flex flex-col items-start gap-1">
                             <span
                               dir="ltr"
+                              className="text-xs font-mono font-bold px-2 py-0.5 rounded whitespace-nowrap tracking-wide"
                               style={{
-                                fontFamily: 'monospace',
-                                fontSize: '11px',
-                                fontWeight: 700,
                                 color: '#7c3aed',
                                 background: 'color-mix(in srgb, #8b5cf6 10%, transparent)',
                                 border: '1px solid color-mix(in srgb, #8b5cf6 22%, transparent)',
-                                borderRadius: '5px',
-                                padding: '2px 7px',
-                                display: 'inline-block',
-                                letterSpacing: '0.03em',
-                                whiteSpace: 'nowrap'
                               }}
                             >
                               {bundleSku}
                             </span>
                             {group.barcode && (
-                              <span dir="ltr" className="text-muted-foreground" style={{ fontSize: '10px', fontFamily: 'monospace' }}>
+                              <span dir="ltr" className="text-[11px] font-mono text-muted-foreground">
                                 {group.barcode}
                               </span>
                             )}
                           </div>
                         </td>
                         {/* Bundle Name + Badge — stacked tightly */}
-                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
+                        <td className="px-4 py-3.5 align-middle text-start">
                           <div className="flex flex-col items-start gap-1">
-                            <span className="font-semibold text-foreground" style={{ fontSize: '13px' }}>
+                            <span className="font-semibold text-foreground text-[13px] leading-snug">
                               {bundleTitle}
                             </span>
-                            <span className="inline-flex items-center gap-1" style={{
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              padding: '1px 7px',
-                              borderRadius: '999px',
-                              background: 'color-mix(in srgb, #8b5cf6 12%, transparent)',
-                              color: '#7c3aed',
-                              border: '1px solid color-mix(in srgb, #8b5cf6 25%, transparent)'
-                            }}>
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                              style={{
+                                background: 'color-mix(in srgb, #8b5cf6 12%, transparent)',
+                                color: '#7c3aed',
+                                border: '1px solid color-mix(in srgb, #8b5cf6 25%, transparent)'
+                              }}
+                            >
                               <Boxes size={10} />
                               <span>{getTranslation(lang, 'bundles.bundleBadge')}</span>
                             </span>
                           </div>
                         </td>
                         {/* Dynamically Available Qty */}
-                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }} title={getTranslation(lang, 'bundles.dynamicStockHint')}>
+                        <td className="px-4 py-3.5 align-middle text-center" title={getTranslation(lang, 'bundles.dynamicStockHint')}>
                           <span
                             dir="ltr"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold font-mono tabular-nums"
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '4px 11px',
-                              borderRadius: '999px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              fontFamily: 'monospace',
-                              fontVariantNumeric: 'tabular-nums',
                               background: availableQty > 5
                                 ? 'color-mix(in srgb, #10b981 14%, transparent)'
                                 : availableQty > 0
@@ -1069,59 +1048,47 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                           </span>
                         </td>
                         {/* Price — start-aligned, inline-flex tight */}
-                        <td style={{ padding: '13px 16px', textAlign: 'start', verticalAlign: 'middle' }}>
+                        <td className="px-4 py-3.5 align-middle text-start">
                           <span className="inline-flex items-center gap-2">
-                            <span className="tabular-nums font-bold" style={{
-                              fontFamily: 'monospace',
-                              fontSize: '14px',
-                              color: 'var(--color-emerald-600, #059669)'
-                            }}>
+                            <span className="font-mono text-sm tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
                               {formatMoney(bundlePrice)}
                             </span>
                             {savingsPct > 0 && (
-                              <span style={{
-                                fontSize: '10px',
-                                fontWeight: 700,
-                                padding: '1px 6px',
-                                borderRadius: '999px',
-                                background: 'color-mix(in srgb, #10b981 14%, transparent)',
-                                color: '#059669',
-                                border: '1px solid color-mix(in srgb, #10b981 25%, transparent)'
-                              }}>
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums"
+                                style={{
+                                  background: 'color-mix(in srgb, #10b981 14%, transparent)',
+                                  color: '#059669',
+                                  border: '1px solid color-mix(in srgb, #10b981 25%, transparent)'
+                                }}
+                              >
                                 -{savingsPct}%
                               </span>
                             )}
                           </span>
                         </td>
                         {/* Components */}
-                        <td style={{ padding: '13px 16px', verticalAlign: 'middle' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                        <td className="px-4 py-3.5 align-middle text-start">
+                          <div className="flex flex-wrap gap-1.5">
                             {group.components.map(c => (
                               <span
                                 key={c.id}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  padding: '3px 8px', borderRadius: '7px', fontSize: '11px',
-                                  fontWeight: 500,
-                                  background: 'var(--muted)',
-                                  border: '1px solid var(--border)',
-                                  color: 'var(--foreground)'
-                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted border border-border text-foreground"
                               >
                                 <span>{c.childProductName}</span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>×{c.quantity}</span>
+                                <span className="font-mono font-bold text-primary tabular-nums">×{c.quantity}</span>
                               </span>
                             ))}
                           </div>
                         </td>
                         {/* Actions (Edit + Delete) — centered icon buttons */}
-                        <td style={{ padding: '13px 16px', textAlign: 'center', verticalAlign: 'middle' }}>
-                          <div className="inline-flex items-center gap-1.5">
+                        <td className="px-4 py-3.5 align-middle text-center">
+                          <div className="inline-flex items-center justify-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => openBundleModal(group)}
                               title={getTranslation(lang, 'bundles.editBundle')}
-                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer flex items-center justify-center transition-colors hover:bg-muted"
+                              className="p-1.5 rounded-lg border border-border bg-card text-foreground cursor-pointer inline-flex items-center justify-center transition-colors hover:bg-muted"
                             >
                               <Edit2 size={13} />
                             </button>
@@ -1129,7 +1096,7 @@ export default function PriceListsView({ lang }: PriceListsViewProps) {
                               type="button"
                               onClick={() => handleDeleteBundle(group.parentProductId)}
                               title={getTranslation(lang, 'bundles.deleteBundle')}
-                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer flex items-center justify-center transition-colors hover:bg-destructive/10"
+                              className="p-1.5 rounded-lg border border-border bg-card text-destructive cursor-pointer inline-flex items-center justify-center transition-colors hover:bg-red-500/10"
                             >
                               <Trash2 size={13} />
                             </button>

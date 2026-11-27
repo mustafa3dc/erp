@@ -46,6 +46,7 @@ public class WarehouseShelvesController : ControllerBase
         if (_schemaEnsured) return;
         try
         {
+            // Step 1: Create table (no FK to avoid ordering issues)
             await _context.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS warehouse_shelves (
                     id UUID PRIMARY KEY,
@@ -59,6 +60,8 @@ public class WarehouseShelvesController : ControllerBase
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NULL
                 );");
+            // Mark as ensured immediately after table creation succeeds
+            _schemaEnsured = true;
             try
             {
                 await _context.Database.ExecuteSqlRawAsync(@"

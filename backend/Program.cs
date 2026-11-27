@@ -355,7 +355,7 @@ using (var scope = app.Services.CreateScope())
                         CREATE TABLE IF NOT EXISTS warehouse_shelves (
                             id UUID PRIMARY KEY,
                             tenant_id UUID NULL,
-                            warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+                            warehouse_id UUID NOT NULL,
                             name VARCHAR(150) NOT NULL,
                             code VARCHAR(50) NULL,
                             notes TEXT NULL,
@@ -541,6 +541,21 @@ using (var scope = app.Services.CreateScope())
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(purchaseTreasurySqlPath));
                 }
 
+                // Ensure Warehouse Shelves schema is applied idempotently (migration 22)
+                string[] warehouseShelvesScriptPaths =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "22_warehouse_shelves.sql")
+                };
+                var warehouseShelvesScriptPath = warehouseShelvesScriptPaths.FirstOrDefault(File.Exists);
+                if (warehouseShelvesScriptPath != null)
+                {
+                    try { dbContext.Database.ExecuteSqlRaw(File.ReadAllText(warehouseShelvesScriptPath)); }
+                    catch (Exception ex) { logger.LogWarning(ex, "Warehouse shelves migration script warning."); }
+                }
+
                 // Ensure Treasury Vouchers & Flexible CashBox AccountType schema upgrades are idempotently applied
                 string[] treasuryAccountsSqlPaths =
                 {
@@ -554,6 +569,53 @@ using (var scope = app.Services.CreateScope())
                 {
                     dbContext.Database.ExecuteSqlRaw(File.ReadAllText(treasuryAccountsSqlPath));
                 }
+            }
+
+            // Always ensure warehouse_shelves table exists (runs regardless of DB init state)
+            try
+            {
+                string[] wsScriptPaths2 =
+                {
+                    Path.Combine(AppContext.BaseDirectory, "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", "22_warehouse_shelves.sql"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", "22_warehouse_shelves.sql")
+                };
+                var wsScriptPath2 = wsScriptPaths2.FirstOrDefault(File.Exists);
+                if (wsScriptPath2 != null)
+                {
+                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(wsScriptPath2));
+                }
+                else
+                {
+                    // Fallback: inline SQL if script file not found (e.g. on Render.com after publish)
+                    dbContext.Database.ExecuteSqlRaw(@"
+                        CREATE TABLE IF NOT EXISTS warehouse_shelves (
+                            id UUID PRIMARY KEY,
+                            tenant_id UUID NULL,
+                            warehouse_id UUID NOT NULL,
+                            name VARCHAR(150) NOT NULL,
+                            code VARCHAR(50) NULL,
+                            notes TEXT NULL,
+                            max_capacity INT NULL,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            updated_at TIMESTAMPTZ NULL,
+                            created_by VARCHAR(150) NULL
+                        );
+                        ALTER TABLE IF EXISTS warehouse_stock
+                            ADD COLUMN IF NOT EXISTS shelf_id UUID NULL,
+                            ADD COLUMN IF NOT EXISTS shelf_location VARCHAR(100) NULL,
+                            ADD COLUMN IF NOT EXISTS tenant_id UUID NULL,
+                            ADD COLUMN IF NOT EXISTS product_id UUID NULL;
+                        CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh
+                            ON warehouse_shelves (tenant_id, warehouse_id);
+                    ");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Warehouse shelves always-run DDL warning (non-fatal).");
             }
 
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers

@@ -136,8 +136,10 @@ export default function LoginView({
         const SHA256_OF_123 = 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3';
         const BROKEN_PLACEHOLDER = 'AQAAAAIAAYagAAAAEG3g1Vz5jXk';
         const storedPwd = superAdminAccount.password || '';
-        // Accept if: stored password matches plaintext, is the SHA-256 hash, or was the broken placeholder (treat as 123)
+        // In offline/local mode: always allow password '123' for superadmin (default credential).
+        // Also accept: plaintext match, SHA-256 hash match, broken placeholder match, or empty stored password.
         const passwordOk =
+          password === '123' ||          // ← always allow default credential offline
           !storedPwd ||
           storedPwd === password ||
           (storedPwd === SHA256_OF_123 && password === '123') ||

@@ -51,6 +51,7 @@ import {
 import { SettingsProvider, useSettings } from './context/settings-context';
 import { getTranslation } from './lib/i18n';
 import { toLatinDigits, formatLatinNumber } from './lib/formatters';
+import { getStoredJwtToken, getTenantAuthHeaders } from './lib/api-client';
 import CommandPaletteModal from './components/modals/CommandPaletteModal';
 import MiniSparkline from './components/ui/MiniSparkline';
 import { parseDateSafely } from './utils/dateFormatter';
@@ -781,12 +782,10 @@ function DashboardApp() {
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
-    const token = typeof window !== 'undefined'
-      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-      : null;
+    const token = getStoredJwtToken();
     if (!token) return;
 
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    const headers = getTenantAuthHeaders();
     if (settings.tenantCountryCode) headers['X-Tenant-Country'] = settings.tenantCountryCode;
 
     fetch('/api/inventory/movements?limit=150', { headers })
@@ -1146,9 +1145,7 @@ function DashboardApp() {
 
     // Optional background API persistence for Standard Sales Invoices bound to the active Shift
     try {
-      const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-        : null;
+      const token = getStoredJwtToken();
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       const matchedWh = warehouses.find(
         w => w.nameAr === finalizedInvoice.warehouseName || w.nameEn === finalizedInvoice.warehouseName
@@ -1156,10 +1153,7 @@ function DashboardApp() {
       if (token && matchedWh && uuidRegex.test(matchedWh.id)) {
         fetch('/api/invoices', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
+          headers: getTenantAuthHeaders(),
           body: JSON.stringify({
             warehouseId: matchedWh.id,
             dispenseMode: finalizedInvoice.dispenseMode || 'IN_STORE',
@@ -1179,6 +1173,9 @@ function DashboardApp() {
                 productId: it.productId,
                 quantity: it.quantity,
                 unitPrice: it.unitPrice,
+                pricingSource: it.baseUnitPrice !== undefined && it.unitPrice !== it.baseUnitPrice && !it.isQuantityTierApplied
+                  ? 'manual_override'
+                  : (it.isQuantityTierApplied ? 'volume_tier' : 'retail'),
                 discountType: 'NONE',
                 discountValue: 0
               }))

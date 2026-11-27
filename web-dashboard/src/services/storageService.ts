@@ -2072,7 +2072,24 @@ export function getStoredAuthSession(): UserProfile | null {
 
 export function saveStoredAuthSession(user: UserProfile | null): void {
   if (user) {
-    safeSet(KEYS.AUTH_SESSION, user);
+    let payload: any = user;
+    if (typeof window !== 'undefined') {
+      const existingToken =
+        (user as any).token ||
+        localStorage.getItem('zilox_auth_token') ||
+        localStorage.getItem('logistock_erp_jwt_token') ||
+        localStorage.getItem('token') ||
+        localStorage.getItem('zilox_token');
+      if (existingToken && !(user as any).token) {
+        payload = { ...user, token: existingToken };
+      } else if ((user as any).token) {
+        localStorage.setItem('zilox_auth_token', (user as any).token);
+        localStorage.setItem('logistock_erp_jwt_token', (user as any).token);
+        localStorage.setItem('token', (user as any).token);
+        localStorage.setItem('zilox_token', (user as any).token);
+      }
+    }
+    safeSet(KEYS.AUTH_SESSION, payload);
   } else {
     localStorage.removeItem(KEYS.AUTH_SESSION);
   }
@@ -2083,6 +2100,9 @@ export function clearStoredAuthSession(): void {
     localStorage.removeItem(KEYS.AUTH_SESSION);
     localStorage.removeItem('logistock_erp_v3_auth_session');
     localStorage.removeItem('zilox_sys_auth_session');
+    localStorage.removeItem('zilox_auth_session');
+    localStorage.removeItem('zilox_auth_token');
+    localStorage.removeItem('logistock_erp_jwt_token');
     localStorage.removeItem('token');
     localStorage.removeItem('zilox_token');
     localStorage.removeItem('token_expires_at');

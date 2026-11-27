@@ -94,6 +94,27 @@ public class AuditLogsController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var tenantId = _tenantProvider.CurrentTenantId ?? _context.CurrentTenantId;
+        if (!tenantId.HasValue || tenantId.Value == Guid.Empty)
+        {
+            var tenantSlug = _tenantProvider.CurrentTenantSlug
+                ?? User.FindFirst("tenant_slug")?.Value
+                ?? Request.Headers["X-Tenant-Slug"].FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(tenantSlug))
+            {
+                var slugLower = tenantSlug.Trim().ToLowerInvariant();
+                var dbTenantId = await _context.Tenants
+                    .AsNoTracking()
+                    .Where(t => t.Slug.ToLower() == slugLower)
+                    .Select(t => (Guid?)t.Id)
+                    .FirstOrDefaultAsync(ct);
+                if (dbTenantId.HasValue && dbTenantId.Value != Guid.Empty)
+                {
+                    tenantId = dbTenantId;
+                }
+            }
+        }
+
         var baseQuery = _context.AuditLogs
             .AsNoTracking()
             .Where(al => !tenantId.HasValue || al.TenantId == tenantId.Value);

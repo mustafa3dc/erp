@@ -13,7 +13,8 @@ import {
   Loader2,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  AlertCircle
 } from 'lucide-react';
 import { getTranslation } from '../../lib/i18n';
 import { formatLatinDateTime, formatLatinNumber, toLatinDigits } from '../../lib/formatters';
@@ -85,6 +86,7 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
   const [availableUsers, setAvailableUsers] = useState<string[]>([]);
   const [availableActionTypes, setAvailableActionTypes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Filters
   const [userFilter, setUserFilter] = useState('');
@@ -98,9 +100,13 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
   const loadAuditLogs = useCallback(async () => {
     if (!isAuditAllowed) return;
     const token = getAuthToken();
-    if (!token) return;
+    if (!token) {
+      setErrorMsg(t('sessionRequiredError'));
+      return;
+    }
 
     setIsLoading(true);
+    setErrorMsg('');
     try {
       const qs = new URLSearchParams();
       qs.set('page', String(page));
@@ -114,8 +120,19 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
       const res = await fetch(`/api/audit-logs?${qs.toString()}`, {
         headers: getTenantAuthHeaders(),
       });
-      if (!res.ok) return;
       const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 403 && json?.errorCode === 'ERR_PLAN_FEATURE_LOCKED') {
+          openUpgradeModal('Pro', 'AuditLog');
+        }
+        const errCode = json?.errorCode;
+        setErrorMsg(
+          errCode
+            ? getTranslation(lang, `errors.ERR.AUDIT.${errCode}`, getTranslation(lang, `errors.${errCode}`, t('loadError')))
+            : t('loadError')
+        );
+        return;
+      }
       const data: AuditLogPageResponse | undefined = json?.data;
       if (data) {
         setEntries(Array.isArray(data.items) ? data.items : []);
@@ -125,11 +142,11 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
         setAvailableActionTypes(Array.isArray(data.availableActionTypes) ? data.availableActionTypes : []);
       }
     } catch {
-      // handled silently
+      setErrorMsg(t('loadError'));
     } finally {
       setIsLoading(false);
     }
-  }, [isAuditAllowed, page, userFilter, actionFilter, searchTerm, dateFrom, dateTo]);
+  }, [isAuditAllowed, lang, openUpgradeModal, page, userFilter, actionFilter, searchTerm, dateFrom, dateTo]);
 
   useEffect(() => {
     loadAuditLogs();
@@ -346,6 +363,19 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Error Alert Banner */}
+      {errorMsg && (
+        <div className="p-3.5 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={loadAuditLogs} className="h-7 px-2.5 text-[11px]">
+            {t('refreshBtn')}
+          </Button>
+        </div>
+      )}
 
       {/* Audit Table */}
       <div className="bg-card border border-border rounded-xl shadow-xs overflow-hidden">

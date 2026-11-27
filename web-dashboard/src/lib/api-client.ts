@@ -5,6 +5,59 @@ export interface ApiErrorResponse {
   details?: Array<{ field: string; code: string; attemptedValue?: unknown }>;
 }
 
+const JWT_TOKEN_STORAGE_KEYS = [
+  'zilox_auth_token',
+  'logistock_erp_jwt_token',
+  'token',
+  'zilox_token',
+] as const;
+
+const SESSION_STORAGE_KEYS = [
+  'logistock_erp_v3_auth_session',
+  'zilox_sys_auth_session',
+  'zilox_auth_session',
+] as const;
+
+export function getStoredJwtToken(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    for (const key of JWT_TOKEN_STORAGE_KEYS) {
+      const direct = localStorage.getItem(key);
+      if (direct && direct.trim()) {
+        return direct.trim();
+      }
+    }
+
+    for (const key of SESSION_STORAGE_KEYS) {
+      const rawSession = localStorage.getItem(key);
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed && typeof parsed.token === 'string' && parsed.token.trim()) {
+          return parsed.token.trim();
+        }
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  return null;
+}
+
+export function saveStoredJwtToken(token: string | null | undefined): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const cleaned = typeof token === 'string' ? token.trim() : '';
+    if (!cleaned) return;
+    for (const key of JWT_TOKEN_STORAGE_KEYS) {
+      localStorage.setItem(key, cleaned);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export function getTenantAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -12,21 +65,25 @@ export function getTenantAuthHeaders(): Record<string, string> {
 
   try {
     if (typeof window !== 'undefined') {
-      const rawSession = localStorage.getItem('logistock_erp_v3_auth_session') 
-        || localStorage.getItem('zilox_sys_auth_session');
-      if (rawSession) {
-        const session = JSON.parse(rawSession);
-        if (session.token) {
-          headers['Authorization'] = `Bearer ${session.token}`;
-        }
-        if (session.tenantSlug) {
-          headers['X-Tenant-Slug'] = session.tenantSlug;
-        }
-        if (session.tenantId) {
-          headers['X-Tenant-Id'] = session.tenantId;
-        }
-        if (session.role === 'PlatformSuperAdmin') {
-          headers['X-Platform-SuperAdmin'] = 'true';
+      const token = getStoredJwtToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      for (const key of SESSION_STORAGE_KEYS) {
+        const rawSession = localStorage.getItem(key);
+        if (rawSession) {
+          const session = JSON.parse(rawSession);
+          if (session?.tenantSlug && !headers['X-Tenant-Slug']) {
+            headers['X-Tenant-Slug'] = session.tenantSlug;
+          }
+          if (session?.tenantId && !headers['X-Tenant-Id']) {
+            headers['X-Tenant-Id'] = session.tenantId;
+          }
+          if (session?.role === 'PlatformSuperAdmin') {
+            headers['X-Platform-SuperAdmin'] = 'true';
+          }
+          break;
         }
       }
     }

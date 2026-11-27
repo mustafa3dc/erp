@@ -45,6 +45,7 @@ import {
 } from '../../services/storageService';
 import { SalesInvoice } from '../../types/warehouse';
 import { getTranslation } from '../../lib/i18n';
+import { getTenantAuthHeaders } from '../../lib/api-client';
 import InvoiceDetailsModal from '../modals/InvoiceDetailsModal';
 import { 
   formatMovementDate,
@@ -228,12 +229,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
 
     let isCancelled = false;
     const controller = new AbortController();
-    const token = typeof window !== 'undefined'
-      ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-      : null;
-
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = getTenantAuthHeaders();
     if (settings.tenantCountryCode) headers['X-Tenant-Country'] = settings.tenantCountryCode;
 
     fetch(`/api/pos/shifts/${encodeURIComponent(activeShift.id)}/summary`, {
@@ -612,11 +608,7 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
 
     // Sync closure audit record with .NET Core Backend (verifies ShiftId-isolated totals server-side)
     try {
-      const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token'))
-        : null;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getTenantAuthHeaders();
 
       fetch('/api/pos/shifts/close', {
         method: 'POST',

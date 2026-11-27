@@ -546,6 +546,7 @@ using (var scope = app.Services.CreateScope())
                         ADD COLUMN IF NOT EXISTS username VARCHAR(200) NULL,
                         ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45) NULL,
                         ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW();
+                    ALTER TABLE IF EXISTS audit_logs DISABLE ROW LEVEL SECURITY;
                     ALTER TABLE IF EXISTS audit_logs ALTER COLUMN action TYPE VARCHAR(100);
                     ALTER TABLE IF EXISTS audit_logs ALTER COLUMN username TYPE VARCHAR(200);
                     CREATE INDEX IF NOT EXISTS ix_audit_logs_tenant_created ON audit_logs (tenant_id, timestamp DESC);

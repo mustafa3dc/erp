@@ -5,6 +5,7 @@ import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { useSettings } from '../../context/settings-context';
 import { formatShiftDateTime } from '../../utils/dateFormatter';
 import { getTranslation } from '../../lib/i18n';
+import { getTenantAuthHeaders } from '../../lib/api-client';
 import {
   getAvailablePosTerminals,
   getStoredLastPosTerminal,
@@ -281,12 +282,7 @@ export default function OpenShiftModal({
     let resolvedOpenedAt = openedAtIso;
 
     try {
-      const token =
-        typeof window !== 'undefined'
-          ? localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token')
-          : null;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getTenantAuthHeaders();
 
       const response = await fetch('/api/pos/shifts/open', {
         method: 'POST',

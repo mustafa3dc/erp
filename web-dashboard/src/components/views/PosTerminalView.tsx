@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { useSettings, ScaleSettings } from '../../context/settings-context';
 import { toLatinDigits, formatLatinNumber, formatLatinDateTime } from '../../lib/formatters';
+import { getStoredJwtToken, getTenantAuthHeaders } from '../../lib/api-client';
 import { resolveLatinDigitFromKeyboardEvent } from '../../utils/arabicNumeralConverter';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Product, DiscountAuditLog, Warehouse, SalesInvoice } from '../../types/warehouse';
@@ -1186,9 +1187,7 @@ export default function PosTerminalView({
 
       // 4. Background Async API Call to Backend (if online)
       try {
-        const token = localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const headers = getTenantAuthHeaders();
         if (tenantCountryCode) headers['X-Tenant-Country'] = tenantCountryCode;
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1675,10 +1674,10 @@ export default function PosTerminalView({
 
                       // Check Backend POS Serial Lookup if token is active
                       try {
-                        const token = localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
+                        const token = getStoredJwtToken();
                         if (token) {
                           const serialRes = await fetch(`/api/pos/serials/lookup?code=${encodeURIComponent(raw)}`, {
-                            headers: { Authorization: `Bearer ${token}` }
+                            headers: getTenantAuthHeaders()
                           });
                           if (serialRes.ok) {
                             const scanData = await serialRes.json();

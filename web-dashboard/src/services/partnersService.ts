@@ -95,16 +95,14 @@ interface LocalPartnerRecord {
   createdAt: string;
 }
 
+import { getStoredJwtToken, getTenantAuthHeaders } from '../lib/api-client';
+
 function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
+  return getStoredJwtToken();
 }
 
 function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAuthToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
+  return getTenantAuthHeaders();
 }
 
 function isUuid(val?: string | null): boolean {

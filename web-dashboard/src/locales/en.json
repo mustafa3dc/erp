@@ -1907,6 +1907,8 @@
     "prevBtn": "Previous",
     "nextBtn": "Next",
     "proLockedTitle": "System Audit Log is available on Pro and Enterprise plans",
+    "loadError": "Unable to load audit logs from the server. Please try again.",
+    "sessionRequiredError": "Please sign in with an online server session to view the Audit Log.",
     "actions": {
       "PRICE_CHANGE": "Price Change",
       "POS_DISCOUNT": "POS Manual Discount",

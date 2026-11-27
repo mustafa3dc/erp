@@ -24,6 +24,7 @@ import {
 } from '../types/purchases';
 import { getTranslation } from '../lib/i18n';
 import { formatLatinDateTime } from '../lib/formatters';
+import { getStoredJwtToken, getTenantAuthHeaders } from '../lib/api-client';
 
 export interface TreasuryCashBoxOption {
   id: string;
@@ -109,20 +110,11 @@ export interface CreatePurchaseBillApiInput {
 const LOCAL_SUPPLIER_LEDGERS_KEY = 'zilox_supplier_ledgers_v1';
 
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return (
-    localStorage.getItem('zilox_auth_token') ||
-    localStorage.getItem('logistock_erp_jwt_token') ||
-    localStorage.getItem('token') ||
-    localStorage.getItem('zilox_token')
-  );
+  return getStoredJwtToken();
 }
 
 function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAuthToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
+  return getTenantAuthHeaders();
 }
 
 export function isUuid(val?: string | null): boolean {

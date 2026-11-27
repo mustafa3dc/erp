@@ -17,6 +17,7 @@ import { UserAccount, UserProfile, buildUserProfileFromAccount } from '../../typ
 import { getStoredUsers, getAllStoredUsersMaster } from '../../services/storageService';
 import { getStoredTenants, createDefaultFeaturesForPreset } from '../../services/tenantService';
 import { getRoleDefaultNav } from '../../auth/login-handler';
+import { saveStoredJwtToken } from '../../lib/api-client';
 
 interface LoginViewProps {
   onLoginSuccess: (profile: UserProfile, account: UserAccount) => void;
@@ -72,12 +73,12 @@ export default function LoginView({
         const data = await apiRes.json();
         if (data && data.user) {
           if (data.token) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('zilox_token', data.token);
+            saveStoredJwtToken(data.token);
           }
           setIsLoading(false);
           const serverProfile: UserProfile = {
             ...data.user,
+            ...(data.token ? { token: data.token } : {}),
             defaultRoute: getRoleDefaultNav(data.user.role)
           };
           onLoginSuccess(serverProfile, data.user);

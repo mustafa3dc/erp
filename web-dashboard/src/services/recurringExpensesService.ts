@@ -22,6 +22,7 @@ import {
 } from '../types/businessModules';
 import { getTranslation, MESSAGES } from '../lib/i18n';
 import { formatLatinDateTime } from '../lib/formatters';
+import { getStoredJwtToken, getTenantAuthHeaders } from '../lib/api-client';
 import { checkUserHasPermission } from '../config/navigationSchema';
 
 interface LocalStoredRecurringRule {
@@ -44,15 +45,11 @@ interface LocalStoredRecurringRule {
 }
 
 function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('zilox_auth_token') || localStorage.getItem('logistock_erp_jwt_token');
+  return getStoredJwtToken();
 }
 
 function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAuthToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
+  return getTenantAuthHeaders();
 }
 
 function isUuid(val?: string | null): boolean {

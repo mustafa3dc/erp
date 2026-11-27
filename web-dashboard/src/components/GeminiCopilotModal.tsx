@@ -6,6 +6,7 @@ import { askExecutiveCopilot } from '../services/aiService';
 import { getStoredAuthSession } from '../services/storageService';
 import { getStoredTenants } from '../services/tenantService';
 import { useSettings } from '../context/settings-context';
+import { formatLatinTime } from '../lib/formatters';
 import { ModalBackdropPortal } from './ui/dialog';
 
 interface GeminiCopilotModalProps {
@@ -212,7 +213,7 @@ export default function GeminiCopilotModal({
       text: isAr
         ? `أهلاً بك في **المستشار الإداري والتنفيذي الذكي لمنظومة ZiloX Business Suite**.\nأقوم بمتابعة مؤشرات الأرباح اللحظية، وتدقيق الصناديق والورديات، وتحليل المخازن والفروع باللغة الطبيعية. كيف يمكنني إفادتك اليوم؟`
         : `Welcome to the **ZiloX Business Suite Executive AI Copilot**.\nI analyze live profit margins, cash drawer reconciliations, and warehouse turnover via natural language. How can I assist you today?`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: formatLatinTime(new Date(), lang, { hour: '2-digit', minute: '2-digit' })
     }
   ]);
 
@@ -244,7 +245,7 @@ export default function GeminiCopilotModal({
       id: `user-${Date.now()}`,
       sender: 'user',
       text: q,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: formatLatinTime(new Date(), lang, { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg]);
@@ -272,7 +273,7 @@ export default function GeminiCopilotModal({
           id: `gemini-${Date.now()}`,
           sender: 'gemini',
           text: replyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: formatLatinTime(new Date(), lang, { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => [...prev, geminiMsg]);
       } else {
@@ -282,7 +283,7 @@ export default function GeminiCopilotModal({
           text: isAr
             ? `**المستشار الإداري مخصص للباقة الفائقة (Enterprise - 45$):**\n\nتتيح لك الباقة الفائقة:\n* استعلامات SQL تنفيذية باللغة العربية الطبيعية\n* مراقبة أرباح وهوامش كافة الفروع لحظياً\n* رادار كشف العجز والاحتيال في صناديق الكاشير\n* خوارزميات التسكين المخزني الذكي\n\nباقتك الحالية المسجلة: **${effectivePlan === 'Starter' ? 'الأساسية (10$)' : 'المتوسطة (25$)'}**.`
             : `**Executive Copilot is exclusive to Enterprise Tier ($45/mo):**\n\nYour current tier is **${effectivePlan}**.\nUpgrade to unlock Natural Language Arabic querying, branch P&L, cashier fraud radar, and WMS slotting.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: formatLatinTime(new Date(), lang, { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => [...prev, upgradeMsg]);
       }

@@ -33,6 +33,7 @@ import {
 } from '../../services/treasuryService';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDate, formatLatinDateTime, formatLatinNumber } from '../../lib/formatters';
 import { ModalBackdropPortal } from '../ui/dialog';
 import { getStoredAuthSession } from '../../services/storageService';
 import { formatReceiptVoucherWhatsAppMessage, openWhatsAppShare } from '../../utils/whatsappUtils';
@@ -443,7 +444,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
             </div>
             {financialSettings.isMultiCurrencyEnabled && financialSettings.secondaryCurrency && (
               <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, marginTop: '2px' }}>
-                ≈ {convertSecondary(totalLiquidityPrimary).toLocaleString(undefined, {
+                ≈ {formatLatinNumber(convertSecondary(totalLiquidityPrimary), {
                   minimumFractionDigits: financialSettings.secondaryCurrency.decimals,
                   maximumFractionDigits: financialSettings.secondaryCurrency.decimals
                 })} {financialSettings.secondaryCurrency.symbol}
@@ -616,7 +617,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   </div>
                   {financialSettings.isMultiCurrencyEnabled && financialSettings.secondaryCurrency && (
                     <div className="text-[11px] font-mono tabular-nums text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
-                      ≈ {convertSecondary(acc.currentBalance).toLocaleString(undefined, {
+                      ≈ {formatLatinNumber(convertSecondary(acc.currentBalance), {
                         minimumFractionDigits: financialSettings.secondaryCurrency.decimals,
                         maximumFractionDigits: financialSettings.secondaryCurrency.decimals
                       })} {financialSettings.secondaryCurrency.symbol}
@@ -698,8 +699,8 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                         <td className="font-mono tabular-nums text-xs text-muted-foreground">
                           {v.balanceAfter ? formatMoney(v.balanceAfter) : '—'}
                         </td>
-                        <td className="text-xs text-muted-foreground font-mono">
-                          {new Date(v.voucherDate || v.createdAt).toLocaleString()}
+                        <td className="text-xs text-muted-foreground font-mono tabular-nums">
+                          {formatLatinDateTime(v.voucherDate || v.createdAt, lang)}
                         </td>
                         <td className="text-xs text-muted-foreground max-w-[220px] truncate" title={v.notes}>
                           {v.notes || '—'}
@@ -717,7 +718,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                                   voucherNo: v.referenceNumber,
                                   partyName: v.partyName || undefined,
                                   amountFormatted: formatMoney(v.amount),
-                                  dateText: new Date(v.voucherDate || v.createdAt).toLocaleDateString(),
+                                  dateText: formatLatinDate(v.voucherDate || v.createdAt, lang),
                                   accountName: v.cashBoxName || undefined,
                                 });
                                 openWhatsAppShare(undefined, msg);
@@ -808,6 +809,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     min="0.01"
                     step="0.01"
                     required
@@ -817,7 +819,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   />
                   {voucherAmount > 0 && (
                     <div className="text-[11px] font-mono tabular-nums text-primary font-semibold" dir="ltr">
-                      {voucherAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })} {financialSettings.baseCurrency.symbol}
+                      {formatLatinNumber(voucherAmount, { maximumFractionDigits: 2 })} {financialSettings.baseCurrency.symbol}
                     </div>
                   )}
                 </div>
@@ -971,6 +973,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     min="0.01"
                     step="0.01"
                     required
@@ -1100,6 +1103,7 @@ export default function FinanceTreasuryView({ lang, initialTab = 'ACCOUNTS' }: F
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     min="0"
                     step="0.01"
                     value={accInitialBalance || ''}

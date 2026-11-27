@@ -25,11 +25,16 @@ public class ExpenseService : IExpenseService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<ExpenseService> _logger;
+    private readonly IAuditLogService? _auditLogService;
 
-    public ExpenseService(AppDbContext context, ILogger<ExpenseService> logger)
+    public ExpenseService(
+        AppDbContext context,
+        ILogger<ExpenseService> logger,
+        IAuditLogService? auditLogService = null)
     {
         _context = context;
         _logger = logger;
+        _auditLogService = auditLogService;
     }
 
     public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync()
@@ -668,18 +673,33 @@ public class ExpenseService : IExpenseService
             voucher.VoidReason = trimmedReason.Length > 500 ? trimmedReason[..500] : trimmedReason;
             voucher.UpdatedAt = DateTime.UtcNow;
 
-            _context.AuditLogs.Add(new AuditLog
+            if (_auditLogService != null)
             {
-                TenantId = voucher.TenantId,
-                UserId = voidedBy ?? "Admin",
-                Username = voidedBy ?? "Admin",
-                Action = "VOID",
-                EntityName = "expense_vouchers",
-                EntityId = voucher.Id.ToString(),
-                OldValues = System.Text.Json.JsonSerializer.Serialize(new { Status = previousStatus, Amount = voucher.Amount }),
-                NewValues = System.Text.Json.JsonSerializer.Serialize(new { Status = "VOIDED", VoidReason = voucher.VoidReason, RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance }),
-                Timestamp = DateTimeOffset.UtcNow
-            });
+                _auditLogService.QueueLog(
+                    action: "VOID",
+                    entityName: "expense_vouchers",
+                    entityId: voucher.Id.ToString(),
+                    oldValues: new { Status = previousStatus, Amount = voucher.Amount, VoucherNumber = voucher.VoucherNumber },
+                    newValues: new { Status = "VOIDED", VoidReason = voucher.VoidReason, RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance },
+                    tenantIdOverride: voucher.TenantId,
+                    userIdOverride: voidedBy ?? "Admin",
+                    usernameOverride: voidedBy ?? "Admin");
+            }
+            else
+            {
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    TenantId = voucher.TenantId,
+                    UserId = voidedBy ?? "Admin",
+                    Username = voidedBy ?? "Admin",
+                    Action = "VOID",
+                    EntityName = "expense_vouchers",
+                    EntityId = voucher.Id.ToString(),
+                    OldValues = System.Text.Json.JsonSerializer.Serialize(new { Status = previousStatus, Amount = voucher.Amount, VoucherNumber = voucher.VoucherNumber }),
+                    NewValues = System.Text.Json.JsonSerializer.Serialize(new { Status = "VOIDED", VoidReason = voucher.VoidReason, RefundedAmount = refundedAmount, CashBoxBalance = updatedBalance }),
+                    Timestamp = DateTimeOffset.UtcNow
+                });
+            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();

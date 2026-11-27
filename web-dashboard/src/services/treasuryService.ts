@@ -6,6 +6,7 @@ import {
 } from './storageService';
 import { getAuthToken, isUuid } from './purchasesService';
 import { getTranslation } from '../lib/i18n';
+import { formatLatinDateTime } from '../lib/formatters';
 
 export type TreasuryAccountType = 'Cashbox' | 'BankAccount' | 'DigitalWallet';
 
@@ -320,7 +321,7 @@ export async function createReceiptVoucher(input: CreateTreasuryVoucherInput): P
     amount,
     balanceAfter: nextBal,
     currency: target.currency || 'IQD',
-    date: new Date(voucherDate).toLocaleString(),
+    date: formatLatinDateTime(voucherDate, 'ar'),
     voucherDate,
     notes: [input.reference?.trim(), input.notes?.trim()].filter(Boolean).join(' — '),
     createdAt: new Date().toISOString()
@@ -420,7 +421,7 @@ export async function createPaymentVoucher(input: CreateTreasuryVoucherInput): P
     amount,
     balanceAfter: nextBal,
     currency: target.currency || 'IQD',
-    date: new Date(voucherDate).toLocaleString(),
+    date: formatLatinDateTime(voucherDate, 'ar'),
     voucherDate,
     notes: [input.reference?.trim(), input.notes?.trim()].filter(Boolean).join(' — '),
     createdAt: new Date().toISOString()
@@ -504,7 +505,7 @@ export async function transferTreasuryFunds(input: TreasuryTransferInput): Promi
       amount,
       balanceAfter: nextD,
       currency: stored[dIdx].currency || 'IQD',
-      date: new Date(nowIso).toLocaleString(),
+      date: formatLatinDateTime(nowIso, 'ar'),
       voucherDate: nowIso,
       notes: [input.reference?.trim(), input.notes?.trim()].filter(Boolean).join(' — '),
       createdAt: new Date().toISOString()
@@ -520,7 +521,7 @@ export async function transferTreasuryFunds(input: TreasuryTransferInput): Promi
       amount,
       balanceAfter: nextS,
       currency: stored[sIdx].currency || 'IQD',
-      date: new Date(nowIso).toLocaleString(),
+      date: formatLatinDateTime(nowIso, 'ar'),
       voucherDate: nowIso,
       notes: [input.reference?.trim(), input.notes?.trim()].filter(Boolean).join(' — '),
       createdAt: new Date().toISOString()

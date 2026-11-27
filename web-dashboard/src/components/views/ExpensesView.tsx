@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDate } from '../../lib/formatters';
 import { apiClient } from '../../lib/api-client';
 import { 
   getStoredExpenseCategories, 
@@ -472,7 +473,7 @@ export default function ExpensesView({ lang, initialTab = 'VOUCHERS' }: Expenses
                           {formatMoney(rule.amount)}
                         </span>
                         <span>•</span>
-                        <span>{new Date(rule.nextDueDate).toLocaleDateString(isAr ? 'ar-IQ' : 'en-US')}</span>
+                        <span>{formatLatinDate(rule.nextDueDate, isAr ? 'ar' : 'en')}</span>
                       </div>
                     </div>
                     <button

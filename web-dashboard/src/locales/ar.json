@@ -1910,7 +1910,8 @@
     "actions": {
       "PRICE_CHANGE": "تعديل سعر صنف",
       "POS_DISCOUNT": "خصم كاشير يدوي",
-      "POS_PRICE_OVERRIDE": "تجاوز سعر بموافقة مشرف",
+      "POS_INVOICE_DISCOUNT": "خصم على إجمالي الفاتورة",
+      "POS_PRICE_OVERRIDE": "مكاسرة / تعديل سعر يدوي (POS)",
       "STOCK_ADJUSTMENT": "تسوية مخزنية",
       "VOID": "إبطال / حذف سند",
       "SHIFT_CLOSE": "إغلاق وردية (Z-Report)",

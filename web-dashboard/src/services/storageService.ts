@@ -2,6 +2,7 @@ import { Product, SalesInvoice, Warehouse, WarehouseDispatchOrder, DispenseMode,
 import { TransactionDetail } from '../components/TransactionModal';
 import { localizeCategory, localizeUnit, localizeWarehouse } from '../lib/localeHelpers';
 import { parseDateSafely } from '../utils/dateFormatter';
+import { formatLatinDateTime, formatLatinNumber, formatLatinTime } from '../lib/formatters';
 import { UserAccount, DEFAULT_USER_ACCOUNTS, UserProfile, UserRole } from '../types/rbac';
 import { PurchaseInvoice, PurchaseInvoiceItem, PurchaseJournalEntry } from '../types/purchases';
 import { 
@@ -815,7 +816,7 @@ export function deleteWarehouse(id: string): DeleteWarehouseResult {
     return {
       success: false,
       errorCode: 'ERR_CANNOT_DELETE_WAREHOUSE_WITH_STOCK',
-      message: `لا يمكن حذف المستودع "${target.nameAr || target.nameEn}" نهائياً لاحتوائه على (${assignedProducts.length}) صنف برصيد إجمالي (${totalStock.toLocaleString()} قطعة). يرجى إجراء مناقلة للمخزون أو تصفيته بالكامل قبل الحذف.`,
+      message: `لا يمكن حذف المستودع "${target.nameAr || target.nameEn}" نهائياً لاحتوائه على (${assignedProducts.length}) صنف برصيد إجمالي (${formatLatinNumber(totalStock)} قطعة). يرجى إجراء مناقلة للمخزون أو تصفيته بالكامل قبل الحذف.`,
       details: {
         warehouseId: target.id,
         warehouseName: target.nameAr || target.nameEn,
@@ -1113,7 +1114,7 @@ export function executePurchaseInvoiceTransaction(
         amount: paidAmt,
         currency: 'IQD',
         accountName: targetCashAccount.nameAr || targetCashAccount.name || preferredId || 'ACC-01',
-        date: new Date().toLocaleString(),
+        date: formatLatinDateTime(new Date(), 'ar'),
         notes: `${invoice.billNumber} - ${invoice.supplierName}`
       },
       ...existingVouchers
@@ -1342,7 +1343,7 @@ export function cancelLocalPurchaseInvoice(billId: string, reason?: string): Pur
         amount: paid,
         currency: 'IQD',
         accountName: matchedAcc?.nameAr || matchedAcc?.name || accountId,
-        date: new Date().toLocaleString(),
+        date: formatLatinDateTime(new Date(), 'ar'),
         notes: reason?.trim() || target.billNumber
       },
       ...existingVouchers
@@ -1504,7 +1505,7 @@ export function executePosSaleTransaction(
   // 2. Stock Processing & Inventory Movement Generation
   const newTransactions: TransactionDetail[] = [];
   const nowStr = new Date().toISOString().split('T')[0];
-  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const nowTime = formatLatinTime(new Date(), 'ar', { hour: '2-digit', minute: '2-digit' });
 
   if (!isWarehouseDispatch) {
     // IN_STORE: Immediate deduction and outbound record (handles Product Bundles by deducting component SKUs ONLY)
@@ -1761,7 +1762,7 @@ export function approveDispatchOrder(dispatchOrderId: string, fulfilledBy?: stri
   const updatedProducts = [...storedProducts];
   const newTransactions: TransactionDetail[] = [];
   const nowStr = new Date().toISOString().split('T')[0];
-  const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const nowTime = formatLatinTime(new Date(), 'ar', { hour: '2-digit', minute: '2-digit' });
   const keeperName = fulfilledBy || 'أمين المستودع';
 
   // Deduct stock for each item in the dispatch order

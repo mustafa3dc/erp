@@ -63,7 +63,10 @@ public class AuditLogService : IAuditLogService
         var httpContext = _httpContextAccessor.HttpContext;
         var user = httpContext?.User;
 
-        var resolvedTenantId = tenantIdOverride ?? _tenantProvider.CurrentTenantId ?? _context.CurrentTenantId;
+        var claimTenant = Guid.TryParse(user?.FindFirst("tenant_id")?.Value, out var parsedTenant)
+            ? parsedTenant
+            : (Guid?)null;
+        var resolvedTenantId = tenantIdOverride ?? _tenantProvider.CurrentTenantId ?? _context.CurrentTenantId ?? claimTenant;
         var resolvedUserId = !string.IsNullOrWhiteSpace(userIdOverride)
             ? userIdOverride.Trim()
             : user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -91,13 +94,15 @@ public class AuditLogService : IAuditLogService
             ipAddress = ipAddress[..45];
         }
 
+        var normalizedAction = (action ?? "UPDATE").Trim().ToUpperInvariant();
+
         _context.AuditLogs.Add(new AuditLog
         {
             Id = Guid.NewGuid(),
             TenantId = resolvedTenantId,
             UserId = resolvedUserId.Length > 100 ? resolvedUserId[..100] : resolvedUserId,
-            Username = resolvedUsername.Length > 150 ? resolvedUsername[..150] : resolvedUsername,
-            Action = (action ?? "UPDATE").Trim().ToUpperInvariant(),
+            Username = resolvedUsername.Length > 200 ? resolvedUsername[..200] : resolvedUsername,
+            Action = normalizedAction.Length > 100 ? normalizedAction[..100] : normalizedAction,
             EntityName = (entityName ?? "system").Trim(),
             EntityId = string.IsNullOrWhiteSpace(entityId) ? "-" : (entityId.Length > 100 ? entityId[..100] : entityId),
             OldValues = SerializePayload(oldValues),
@@ -125,7 +130,17 @@ public class AuditLogService : IAuditLogService
     private static string? SerializePayload(object? payload)
     {
         if (payload == null) return null;
-        if (payload is string s) return string.IsNullOrWhiteSpace(s) ? null : s;
+        if (payload is string s)
+        {
+            var trimmed = s.Trim();
+            if (string.IsNullOrEmpty(trimmed)) return null;
+            if ((trimmed.StartsWith('{') && trimmed.EndsWith('}')) ||
+                (trimmed.StartsWith('[') && trimmed.EndsWith(']')))
+            {
+                return trimmed;
+            }
+            return JsonSerializer.Serialize(new { value = trimmed }, JsonOptions);
+        }
         return JsonSerializer.Serialize(payload, JsonOptions);
     }
 }

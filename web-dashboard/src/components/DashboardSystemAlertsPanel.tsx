@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BellRing, CheckCircle2, ArrowLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import { RecurringExpenseRule } from '../types/businessModules';
 import { getTranslation } from '../lib/i18n';
+import { formatLatinDate } from '../lib/formatters';
 import { useSettings } from '../context/settings-context';
 import ConfirmRecurringExpenseModal from './ConfirmRecurringExpenseModal';
 
@@ -75,7 +76,7 @@ export default function DashboardSystemAlertsPanel({
                   <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums" dir="ltr">
                     <span className="font-semibold text-foreground">{formatMoney(rule.amount)}</span>
                     <span>•</span>
-                    <span>{new Date(rule.nextDueDate).toLocaleDateString(isAr ? 'ar-IQ' : 'en-US')}</span>
+                    <span>{formatLatinDate(rule.nextDueDate, isAr ? 'ar' : 'en')}</span>
                   </div>
                 </div>
               </div>

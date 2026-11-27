@@ -13,6 +13,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { DiscountAuditLog } from '../../types/warehouse';
+import { formatLatinTime } from '../../lib/formatters';
 import { ModalBackdropPortal } from '../ui/dialog';
 
 interface DiscountAuditTrailModalProps {
@@ -240,7 +241,7 @@ export default function DiscountAuditTrailModal({
                     </td>
                     <td style={{ padding: '10px 8px', color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>
                       <Clock size={11} style={{ display: 'inline', marginLeft: isAr ? '4px' : '0', marginRight: isAr ? '0' : '4px' }} />
-                      {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatLatinTime(log.createdAt, lang, { hour: '2-digit', minute: '2-digit' })}
                     </td>
                   </tr>
                 ))}

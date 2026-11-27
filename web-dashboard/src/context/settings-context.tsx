@@ -4,6 +4,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { toast } from 'sonner';
 import { PaymentMethodDef, isPaymentMethodAllowedForCountry, getAllowedPaymentMethodsForCountry } from '../config/paymentRegistry';
 import { getTranslation, setLocaleCookie } from '../lib/i18n';
+import { toLatinDigits } from '../lib/formatters';
+import { initializeGlobalNumeralConverter } from '../utils/arabicNumeralConverter';
 import { getStoredLang, saveStoredLang } from '../services/storageService';
 import { 
   CurrencyConfig, 
@@ -474,6 +476,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await syncWithServer(updated, newEffectiveLang);
   }, [settings, applyDomUpdates]);
 
+  useEffect(() => {
+    return initializeGlobalNumeralConverter();
+  }, []);
+
   const exchangeRate = useMemo(() => {
     return Number(settings.exchangeRateUsdToIqd) || 1520;
   }, [settings.exchangeRateUsdToIqd]);
@@ -526,10 +532,13 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    const formatted = num.toLocaleString('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals
-    });
+    const formatted = toLatinDigits(
+      num.toLocaleString('en-US', {
+        numberingSystem: 'latn',
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      })
+    );
     return isAr ? `${formatted} ${sym}` : `${sym} ${formatted}`;
   }, [settings.baseCurrency, isAr, currentCurrencyMeta]);
 
@@ -626,7 +635,7 @@ const fallbackContextValue: SettingsContextType = {
       if (Math.abs(num) >= 1_000) return `${(num / 1_000).toFixed(1)}k ${sym}`;
     }
     const decimals = defaultFinancialSettings.baseCurrency.decimals;
-    return `${num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${sym}`;
+    return `${toLatinDigits(num.toLocaleString('en-US', { numberingSystem: 'latn', minimumFractionDigits: decimals, maximumFractionDigits: decimals }))} ${sym}`;
   },
   convertFromUsd: (val: number) => val,
   updateSetting: async () => {},

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { QrCode, X, Search, CheckCircle, AlertCircle, Plus, Minus, MapPin, Tag, DollarSign, Package, Scale, Lock } from 'lucide-react';
+import { toLatinDigits } from '../lib/formatters';
+import { resolveLatinDigitFromKeyboardEvent } from '../utils/arabicNumeralConverter';
 import { Product } from '../types/warehouse';
 import { useSettings } from '../context/settings-context';
 import { ModalBackdropPortal } from './ui/dialog';
@@ -33,7 +35,7 @@ export default function BarcodeScannerModal({
   );
 
   const handleScanLookup = (code: string) => {
-    const trimmed = code.trim();
+    const trimmed = toLatinDigits(code).trim();
     setBarcodeInput(trimmed);
     const found = products.find(
       p => p.barcode.toLowerCase() === trimmed.toLowerCase() || 
@@ -92,11 +94,22 @@ export default function BarcodeScannerModal({
             <QrCode size={18} className="scanner-input-icon text-muted" />
             <input 
               type="text" 
-              className="scanner-code-input"
+              dir="ltr"
+              inputMode="text"
+              className="scanner-code-input tabular-nums"
               placeholder={isAr ? 'أدخل أو امسح الباركود هنا (مثال: 8806091234567)...' : 'Scan or type barcode / SKU...'}
               value={barcodeInput}
               onChange={(e) => handleScanLookup(e.target.value)}
               onKeyDown={(e) => {
+                const asciiDigit = resolveLatinDigitFromKeyboardEvent(e.nativeEvent, e.currentTarget);
+                if (asciiDigit !== null) {
+                  e.preventDefault();
+                  const start = e.currentTarget.selectionStart ?? barcodeInput.length;
+                  const end = e.currentTarget.selectionEnd ?? barcodeInput.length;
+                  const next = barcodeInput.slice(0, start) + asciiDigit + barcodeInput.slice(end);
+                  handleScanLookup(next);
+                  return;
+                }
                 if (e.key === 'Enter') handleScanLookup(barcodeInput);
               }}
               autoFocus

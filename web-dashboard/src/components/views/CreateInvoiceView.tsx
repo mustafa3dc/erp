@@ -1131,6 +1131,7 @@ export default function CreateInvoiceView({
                         {isAr ? 'هاتف الكفيل' : 'Guarantor Phone'}
                       </Label>
                       <Input
+                        inputMode="numeric"
                         value={guarantorPhone}
                         onChange={(e) => setGuarantorPhone(e.target.value)}
                         placeholder="07xxxxxxxxx"

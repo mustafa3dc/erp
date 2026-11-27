@@ -15,6 +15,7 @@ namespace ERP.Warehouse.Api.Controllers;
 [ApiController]
 [Route("api/invoices")]
 [Route("api/v1/invoices")]
+[Route("api/sales")]
 public class InvoicesController : ControllerBase
 {
     private readonly AppDbContext _context;

@@ -15,6 +15,7 @@ import RewardsStorePanel from './RewardsStorePanel';
 import { syncCustomersToBackend } from '../../services/loyaltyRewardsService';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDateTime } from '../../lib/formatters';
 import { ModalBackdropPortal } from '../ui/dialog';
 import {
   Users,
@@ -594,7 +595,7 @@ export default function CustomersLoyaltyView({ lang }: CustomersLoyaltyViewProps
                     return (
                       <tr key={tx.id}>
                         <td className="text-xs font-mono tabular-nums text-muted-foreground" dir="ltr">
-                          {new Date(tx.createdAt).toLocaleString()}
+                          {formatLatinDateTime(tx.createdAt, lang)}
                         </td>
                         <td className="font-bold text-foreground text-sm">
                           <span dir="auto">{tx.customerName}</span>

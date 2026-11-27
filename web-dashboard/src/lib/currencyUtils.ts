@@ -1,3 +1,5 @@
+import { toLatinDigits } from './formatters';
+
 export interface CurrencyConfig {
   code: string;       // e.g. "IQD", "USD", "SAR", "AED", "EUR"
   symbol: string;     // e.g. "د.ع", "$", "ر.س", "€"
@@ -144,9 +146,12 @@ export function formatCurrencyAmount(
   locale: string = 'en-US'
 ): string {
   const val = Number(amount) || 0;
-  return val.toLocaleString(locale, {
-    minimumFractionDigits: currency.decimals,
-    maximumFractionDigits: currency.decimals
-  });
+  return toLatinDigits(
+    val.toLocaleString(locale, {
+      numberingSystem: 'latn',
+      minimumFractionDigits: currency.decimals,
+      maximumFractionDigits: currency.decimals
+    })
+  );
 }
 

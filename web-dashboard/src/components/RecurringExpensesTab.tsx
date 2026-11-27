@@ -20,6 +20,7 @@ import {
   RecurringExecutionMode
 } from '../types/businessModules';
 import { getTranslation, MESSAGES } from '../lib/i18n';
+import { formatLatinDate } from '../lib/formatters';
 import { useSettings } from '../context/settings-context';
 import {
   fetchRecurringExpenses,
@@ -293,7 +294,7 @@ export default function RecurringExpensesTab({
                       {formatMoney(rule.amount)}
                     </span>
                     <span>•</span>
-                    <span>{new Date(rule.nextDueDate).toLocaleDateString(isAr ? 'ar-IQ' : 'en-US')}</span>
+                    <span>{formatLatinDate(rule.nextDueDate, isAr ? 'ar' : 'en')}</span>
                   </div>
                 </div>
                 <button
@@ -438,7 +439,7 @@ export default function RecurringExpensesTab({
                     </td>
                     <td className="py-3.5 px-4 text-xs tabular-nums" dir="ltr">
                       <span className={rule.isDue ? 'font-bold text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
-                        {new Date(rule.nextDueDate).toLocaleDateString(isAr ? 'ar-IQ' : 'en-US')}
+                        {formatLatinDate(rule.nextDueDate, isAr ? 'ar' : 'en')}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-center">

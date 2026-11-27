@@ -269,15 +269,15 @@ public class ProductImportService : IProductImportService
 
             var rowNumber = i + 1;
             var name = GetCell(cells, headerMap, "name").Trim();
-            var sku = GetCell(cells, headerMap, "sku").Trim();
-            var barcode = NullIfEmpty(GetCell(cells, headerMap, "barcode"));
+            var sku = DigitNormalizer.ToLatinDigits(GetCell(cells, headerMap, "sku")).Trim();
+            var barcode = DigitNormalizer.ToLatinDigitsOrNull(NullIfEmpty(GetCell(cells, headerMap, "barcode")));
             var categoryName = NullIfEmpty(GetCell(cells, headerMap, "category"));
-            var costRaw = GetCell(cells, headerMap, "costprice").Trim();
-            var saleRaw = GetCell(cells, headerMap, "saleprice").Trim();
-            var minSaleRaw = GetCell(cells, headerMap, "minsaleprice").Trim();
-            var qtyRaw = GetCell(cells, headerMap, "openingquantity").Trim();
-            var warehouseCode = NullIfEmpty(GetCell(cells, headerMap, "warehousecode"));
-            var shelfCode = NullIfEmpty(GetCell(cells, headerMap, "shelfcode"));
+            var costRaw = DigitNormalizer.ToLatinDigits(GetCell(cells, headerMap, "costprice")).Trim();
+            var saleRaw = DigitNormalizer.ToLatinDigits(GetCell(cells, headerMap, "saleprice")).Trim();
+            var minSaleRaw = DigitNormalizer.ToLatinDigits(GetCell(cells, headerMap, "minsaleprice")).Trim();
+            var qtyRaw = DigitNormalizer.ToLatinDigits(GetCell(cells, headerMap, "openingquantity")).Trim();
+            var warehouseCode = DigitNormalizer.ToLatinDigitsOrNull(NullIfEmpty(GetCell(cells, headerMap, "warehousecode")));
+            var shelfCode = DigitNormalizer.ToLatinDigitsOrNull(NullIfEmpty(GetCell(cells, headerMap, "shelfcode")));
 
             decimal costPrice = 0m;
             decimal salePrice = 0m;

@@ -169,7 +169,8 @@ export const formatExpiryDate = (dateString: string, isAr: boolean = true) => {
     return new Intl.DateTimeFormat(isAr ? 'ar-IQ' : 'en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      numberingSystem: 'latn'
     }).format(date); // e.g. 23 شباط 2027
   } catch {
     return dateString;

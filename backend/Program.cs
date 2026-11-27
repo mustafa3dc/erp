@@ -19,7 +19,10 @@ if (!string.IsNullOrEmpty(port))
 }
 
 // Add Controllers and Swagger
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<NormalizeDigitsActionFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -527,18 +530,25 @@ using (var scope = app.Services.CreateScope())
 
                     CREATE TABLE IF NOT EXISTS audit_logs (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-                        user_id VARCHAR(100),
-                        username VARCHAR(150),
-                        action VARCHAR(40) NOT NULL,
+                        tenant_id UUID NULL,
+                        user_id VARCHAR(100) NULL,
+                        username VARCHAR(200) NOT NULL DEFAULT '',
+                        action VARCHAR(100) NOT NULL,
                         entity_name VARCHAR(100) NOT NULL,
                         entity_id VARCHAR(100) NOT NULL,
-                        old_values JSONB,
-                        new_values JSONB,
-                        ip_address VARCHAR(45),
-                        timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        old_values JSONB NULL,
+                        new_values JSONB NULL,
+                        ip_address VARCHAR(45) NULL,
+                        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     );
-                    ALTER TABLE IF EXISTS audit_logs ALTER COLUMN action TYPE VARCHAR(40);
+                    ALTER TABLE IF EXISTS audit_logs
+                        ADD COLUMN IF NOT EXISTS tenant_id UUID NULL,
+                        ADD COLUMN IF NOT EXISTS username VARCHAR(200) NULL,
+                        ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45) NULL,
+                        ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW();
+                    ALTER TABLE IF EXISTS audit_logs ALTER COLUMN action TYPE VARCHAR(100);
+                    ALTER TABLE IF EXISTS audit_logs ALTER COLUMN username TYPE VARCHAR(200);
+                    CREATE INDEX IF NOT EXISTS ix_audit_logs_tenant_created ON audit_logs (tenant_id, timestamp DESC);
                     CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_entity ON audit_logs(tenant_id, entity_name, entity_id);
                     CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
                 ");

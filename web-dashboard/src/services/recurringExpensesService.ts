@@ -21,6 +21,7 @@ import {
   ConfirmRecurringExpensePayload
 } from '../types/businessModules';
 import { getTranslation, MESSAGES } from '../lib/i18n';
+import { formatLatinDateTime } from '../lib/formatters';
 import { checkUserHasPermission } from '../config/navigationSchema';
 
 interface LocalStoredRecurringRule {
@@ -298,7 +299,7 @@ function postLocalExpenseVoucher(
       currency: 'IQD',
       accountName: cashSafe.nameAr || cashSafe.name || 'ACC-01',
       expenseVoucherId: voucher.id,
-      date: new Date().toLocaleString(),
+      date: formatLatinDateTime(new Date(), 'ar'),
       notes: voucher.notes || rule.title
     },
     ...existingTreasuryVouchers
@@ -716,7 +717,7 @@ export async function voidExpenseVoucher(voucherId: string, reason: string): Pro
         amount: target.amount,
         currency: 'IQD',
         accountName: target.treasuryAccountName || 'ACC-01',
-        date: new Date().toLocaleString(),
+        date: formatLatinDateTime(new Date(), 'ar'),
         notes: trimmedReason
       },
       ...treasuryVouchers

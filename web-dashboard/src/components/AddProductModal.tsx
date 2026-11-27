@@ -629,6 +629,7 @@ export default function AddProductModal({
                       </label>
                       <input 
                         type="number" 
+                        inputMode="decimal"
                         step="0.01" 
                         min="0"
                         value={costPrice}
@@ -659,6 +660,7 @@ export default function AddProductModal({
                       </label>
                       <input 
                         type="number" 
+                        inputMode="decimal"
                         step="0.01" 
                         min="0"
                         value={sellingPrice}
@@ -695,6 +697,7 @@ export default function AddProductModal({
                       </label>
                       <input 
                         type="number" 
+                        inputMode="decimal"
                         step="0.01" 
                         min="0"
                         value={minSellingPrice}
@@ -757,6 +760,7 @@ export default function AddProductModal({
                     <label>{isAr ? 'الكمية الافتتاحية الحالية' : 'Initial Stock'}</label>
                     <input 
                       type="number" 
+                      inputMode="numeric"
                       min="0"
                       value={currentStock}
                       onChange={(e) => setCurrentStock(Number(e.target.value))}
@@ -768,6 +772,7 @@ export default function AddProductModal({
                     <label>{isAr ? 'حد التنبيه وإعادة الطلب' : 'Safety Reorder Alert'}</label>
                     <input 
                       type="number" 
+                      inputMode="numeric"
                       min="1"
                       value={minStockAlert}
                       onChange={(e) => setMinStockAlert(Number(e.target.value))}

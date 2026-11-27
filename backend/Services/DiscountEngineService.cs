@@ -478,6 +478,12 @@ public class DiscountEngineService : IDiscountEngineService
             var soldSerialsToUpdate = new List<(ProductSerial Serial, SalesInvoiceItem Item, Product Product, decimal FinalUnitPrice)>();
             var seenInvoiceSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var auditLogs = new List<DiscountAuditLog>();
+            var manualOverrideAuditItems = new List<(
+                string ItemName,
+                decimal OriginalPrice,
+                decimal CustomPrice,
+                int Qty,
+                string Sku)>();
             var dispatchItemsSnapshot = new List<object>();
 
             foreach (var itemReq in request.Items)
@@ -571,16 +577,20 @@ public class DiscountEngineService : IDiscountEngineService
                 }
 
                 // Automatic Quantity Tier Resolution
+                decimal catalogSalePrice = product.SellingPrice;
                 var matchedTier = MatchActiveQuantityTier(product, itemReq.Quantity);
 
-                decimal resolvedUnitBasePrice = matchedTier != null ? matchedTier.UnitPrice : product.SellingPrice;
+                decimal resolvedUnitBasePrice = matchedTier != null ? matchedTier.UnitPrice : catalogSalePrice;
 
                 decimal discountAmountPerUnit;
                 decimal discountPercent;
                 decimal finalUnitPrice;
 
+                bool hasManualOverrideSource = string.Equals(itemReq.PricingSource, "manual_override", StringComparison.OrdinalIgnoreCase);
                 bool isExplicitUnitPrice = itemReq.UnitPrice.HasValue && itemReq.UnitPrice.Value >= 0 &&
-                    (string.Equals(itemReq.DiscountType, "NONE", StringComparison.OrdinalIgnoreCase) || itemReq.DiscountValue == 0);
+                    (hasManualOverrideSource ||
+                     string.Equals(itemReq.DiscountType, "NONE", StringComparison.OrdinalIgnoreCase) ||
+                     itemReq.DiscountValue == 0);
 
                 if (isExplicitUnitPrice)
                 {
@@ -599,8 +609,9 @@ public class DiscountEngineService : IDiscountEngineService
 
                 // Official Volume Pricing Tiers are owner-approved bulk prices and exempt from single-unit MinSellingPrice floor checks.
                 bool isOfficialVolumeTier = matchedTier != null
-                    && finalUnitPrice >= matchedTier.UnitPrice
-                    && !string.Equals(itemReq.PricingSource, "manual_override", StringComparison.OrdinalIgnoreCase);
+                    && finalUnitPrice == matchedTier.UnitPrice
+                    && !hasManualOverrideSource
+                    && (string.Equals(itemReq.DiscountType, "NONE", StringComparison.OrdinalIgnoreCase) || itemReq.DiscountValue == 0m);
 
                 bool wasOverride = false;
                 string? approvedManagerId = null;
@@ -613,6 +624,21 @@ public class DiscountEngineService : IDiscountEngineService
                     {
                         throw new ApplicationException($"ERR_DISCOUNT_LIMIT_EXCEEDED: {GenericExceededMessageAr}");
                     }
+                }
+
+                // Log every manual unit price override / custom bargaining price (UnitPrice != CatalogSalePrice and not an automatic volume tier)
+                bool isManualPriceOverride = !isOfficialVolumeTier &&
+                    (finalUnitPrice != catalogSalePrice || hasManualOverrideSource || discountAmountPerUnit > 0m);
+                if (isManualPriceOverride)
+                {
+                    overriddenCount++;
+                    wasOverride = hasManualOverrideSource || finalUnitPrice != resolvedUnitBasePrice;
+                    manualOverrideAuditItems.Add((
+                        product.Name,
+                        catalogSalePrice,
+                        finalUnitPrice,
+                        itemReq.Quantity,
+                        product.Sku));
                 }
 
                 // If item has an explicit manual cashier discount on top of resolved tier/base price
@@ -797,31 +823,58 @@ public class DiscountEngineService : IDiscountEngineService
                 _context.DiscountAuditLogs.AddRange(auditLogs);
             }
 
-            if (_auditLogService != null && (auditLogs.Any() || invoiceLevelDiscount > 0m))
+            if (_auditLogService != null)
             {
-                _auditLogService.QueueLog(
-                    action: overriddenCount > 0 ? "POS_PRICE_OVERRIDE" : "POS_DISCOUNT",
-                    entityName: "sales_invoices",
-                    entityId: salesInvoice.InvoiceNumber,
-                    oldValues: new
-                    {
-                        Subtotal = calculatedSubtotal,
-                        ItemsCount = invoiceItems.Count
-                    },
-                    newValues: new
-                    {
-                        InvoiceNumber = salesInvoice.InvoiceNumber,
-                        ItemDiscountsTotal = calculatedTotalDiscount,
-                        InvoiceLevelDiscount = invoiceLevelDiscount,
-                        TotalDiscount = salesInvoice.DiscountAmount,
-                        TotalAmount = salesInvoice.TotalAmount,
-                        DiscountedItemsCount = discountedCount,
-                        OverriddenItemsCount = overriddenCount,
-                        ShiftId = salesInvoice.ShiftId
-                    },
-                    tenantIdOverride: salesInvoice.TenantId,
-                    userIdOverride: request.CashierId,
-                    usernameOverride: actorName);
+                var auditTenantId = salesInvoice.TenantId ?? _context.CurrentTenantId;
+
+                foreach (var ov in manualOverrideAuditItems)
+                {
+                    _auditLogService.QueueLog(
+                        action: "POS_PRICE_OVERRIDE",
+                        entityName: "sales_invoice_items",
+                        entityId: salesInvoice.InvoiceNumber,
+                        oldValues: new
+                        {
+                            itemName = ov.ItemName,
+                            originalPrice = ov.OriginalPrice,
+                            qty = ov.Qty
+                        },
+                        newValues: new
+                        {
+                            itemName = ov.ItemName,
+                            customPrice = ov.CustomPrice,
+                            qty = ov.Qty,
+                            sku = ov.Sku
+                        },
+                        tenantIdOverride: auditTenantId,
+                        userIdOverride: request.CashierId,
+                        usernameOverride: actorName);
+                }
+
+                if (invoiceLevelDiscount > 0m || (salesInvoice.DiscountAmount > 0m && manualOverrideAuditItems.Count == 0))
+                {
+                    _auditLogService.QueueLog(
+                        action: "POS_INVOICE_DISCOUNT",
+                        entityName: "sales_invoices",
+                        entityId: salesInvoice.InvoiceNumber,
+                        oldValues: new
+                        {
+                            subtotal = calculatedSubtotal,
+                            totalBeforeDiscount = subtotalAfterItemDiscounts,
+                            itemsCount = invoiceItems.Count
+                        },
+                        newValues: new
+                        {
+                            invoiceDiscountAmount = invoiceLevelDiscount,
+                            loyaltyDiscountAmount = loyaltyResult.LoyaltyDiscountAmount,
+                            discountAmount = salesInvoice.DiscountAmount,
+                            totalAfterDiscount = salesInvoice.TotalAmount,
+                            shiftId = salesInvoice.ShiftId
+                        },
+                        tenantIdOverride: auditTenantId,
+                        userIdOverride: request.CashierId,
+                        usernameOverride: actorName);
+                }
             }
 
             await _context.SaveChangesAsync();

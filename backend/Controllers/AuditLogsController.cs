@@ -137,7 +137,7 @@ public class AuditLogsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim().ToLower();
+            var s = DigitNormalizer.ToLatinDigits(search).Trim().ToLower();
             query = query.Where(al =>
                 al.EntityId.ToLower().Contains(s) ||
                 al.EntityName.ToLower().Contains(s) ||
@@ -150,14 +150,14 @@ public class AuditLogsController : ControllerBase
 
         if (dateFrom.HasValue)
         {
-            var utcFrom = dateFrom.Value.ToUniversalTime();
+            var utcFrom = new DateTimeOffset(dateFrom.Value.Date, TimeSpan.Zero);
             query = query.Where(al => al.Timestamp >= utcFrom);
         }
 
         if (dateTo.HasValue)
         {
-            var utcTo = dateTo.Value.ToUniversalTime();
-            query = query.Where(al => al.Timestamp <= utcTo);
+            var utcToExclusive = new DateTimeOffset(dateTo.Value.Date.AddDays(1), TimeSpan.Zero);
+            query = query.Where(al => al.Timestamp < utcToExclusive);
         }
 
         var totalCount = await query.CountAsync(ct);

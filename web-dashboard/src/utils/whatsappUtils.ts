@@ -1,4 +1,5 @@
 import { getTranslation } from '../lib/i18n';
+import { toLatinDigits } from '../lib/formatters';
 
 /**
  * Normalizes local/Iraqi and international phone numbers for WhatsApp `wa.me` links.
@@ -10,7 +11,7 @@ import { getTranslation } from '../lib/i18n';
  */
 export function normalizePhoneForWhatsApp(rawPhone?: string | null): string {
   if (!rawPhone) return '';
-  let digits = rawPhone.replace(/[^\d+]/g, '');
+  let digits = toLatinDigits(rawPhone).replace(/[^\d+]/g, '');
   if (!digits) return '';
 
   if (digits.startsWith('+')) {
@@ -79,7 +80,7 @@ export function formatInvoiceWhatsAppMessage(params: {
     t('invoiceFooter'),
   ].filter((line, idx, arr) => line !== '' || (idx > 0 && arr[idx - 1] !== ''));
 
-  return lines.join('\n');
+  return toLatinDigits(lines.join('\n'));
 }
 
 export function formatReceiptVoucherWhatsAppMessage(params: {
@@ -103,7 +104,7 @@ export function formatReceiptVoucherWhatsAppMessage(params: {
     t('invoiceFooter'),
   ].filter((line, idx, arr) => line !== '' || (idx > 0 && arr[idx - 1] !== ''));
 
-  return lines.join('\n');
+  return toLatinDigits(lines.join('\n'));
 }
 
 export function formatInstallmentReminderWhatsAppMessage(params: {
@@ -131,5 +132,5 @@ export function formatInstallmentReminderWhatsAppMessage(params: {
     t('installmentFooter'),
   ].filter((line, idx, arr) => line !== '' || (idx > 0 && arr[idx - 1] !== ''));
 
-  return lines.join('\n');
+  return toLatinDigits(lines.join('\n'));
 }

@@ -16,6 +16,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDateTime, formatLatinNumber, toLatinDigits } from '../../lib/formatters';
 import { getTenantAuthHeaders } from '../../lib/api-client';
 import { getAuthToken } from '../../services/purchasesService';
 import { useTenantPlan } from '../../hooks/useTenantPlan';
@@ -65,10 +66,10 @@ function safeParseJsonObject(raw?: string | null): Record<string, unknown> | nul
 
 function formatDiffVal(val: unknown): string {
   if (val === null || val === undefined) return '—';
-  if (typeof val === 'number') return val.toLocaleString();
+  if (typeof val === 'number') return formatLatinNumber(val);
   if (typeof val === 'boolean') return val ? 'true' : 'false';
-  if (typeof val === 'object') return JSON.stringify(val);
-  return String(val);
+  if (typeof val === 'object') return toLatinDigits(JSON.stringify(val));
+  return toLatinDigits(String(val));
 }
 
 export default function AuditLogView({ lang }: AuditLogViewProps) {
@@ -107,8 +108,8 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
       if (userFilter) qs.set('userId', userFilter);
       if (actionFilter && actionFilter !== 'ALL') qs.set('actionType', actionFilter);
       if (searchTerm.trim()) qs.set('search', searchTerm.trim());
-      if (dateFrom) qs.set('dateFrom', new Date(`${dateFrom}T00:00:00Z`).toISOString());
-      if (dateTo) qs.set('dateTo', new Date(`${dateTo}T23:59:59Z`).toISOString());
+      if (dateFrom) qs.set('dateFrom', dateFrom);
+      if (dateTo) qs.set('dateTo', dateTo);
 
       const res = await fetch(`/api/audit-logs?${qs.toString()}`, {
         headers: getTenantAuthHeaders(),
@@ -380,7 +381,7 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
                     <td className="py-3 px-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-1.5 font-mono text-foreground tabular-nums" dir="ltr">
                         <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span>{new Date(entry.createdAt).toLocaleString(isAr ? 'ar-IQ' : 'en-US')}</span>
+                        <span>{formatLatinDateTime(entry.createdAt, isAr ? 'ar' : 'en')}</span>
                       </div>
                       {entry.ipAddress && (
                         <span className="text-[10px] text-muted-foreground font-mono block mt-0.5 tabular-nums" dir="ltr">

@@ -26,6 +26,7 @@ import {
   getStoredDispatchOrders, 
   approveDispatchOrder 
 } from '../../services/storageService';
+import { formatLatinTime } from '../../lib/formatters';
 
 interface WarehouseDispatchQueueViewProps {
   lang: 'ar' | 'en';
@@ -409,7 +410,7 @@ export default function WarehouseDispatchQueueView({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Clock size={13} />
-                      <span>{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>{formatLatinTime(order.createdAt, isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
 
                     <span style={{

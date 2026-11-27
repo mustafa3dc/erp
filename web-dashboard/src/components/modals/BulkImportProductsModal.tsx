@@ -14,6 +14,7 @@ import {
 import { ModalBackdropPortal } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { getTranslation } from '../../lib/i18n';
+import { toLatinDigits } from '../../lib/formatters';
 import { getTenantAuthHeaders } from '../../lib/api-client';
 import { getAuthToken } from '../../services/purchasesService';
 import { Product, Warehouse } from '../../types/warehouse';
@@ -187,7 +188,7 @@ export default function BulkImportProductsModal({
       const cells = parseCsvLine(lines[i]);
       const getVal = (k: string) => {
         const pos = idx(k);
-        return pos >= 0 && pos < cells.length ? (cells[pos] || '').trim() : '';
+        return pos >= 0 && pos < cells.length ? toLatinDigits((cells[pos] || '').trim()) : '';
       };
 
       const name = getVal('name');

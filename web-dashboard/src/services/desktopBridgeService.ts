@@ -74,7 +74,16 @@ export async function printReceiptNative(payload: DesktopReceiptPayload): Promis
   }
 
   try {
-    const jsonStr = JSON.stringify(payload);
+    const sanitizedPayload: DesktopReceiptPayload = {
+      ...payload,
+      invoiceDate: payload.invoiceDate
+        ? payload.invoiceDate.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => {
+            const c = ch.charCodeAt(0);
+            return c >= 0x06f0 ? String.fromCharCode(48 + c - 0x06f0) : String.fromCharCode(48 + c - 0x0660);
+          })
+        : payload.invoiceDate,
+    };
+    const jsonStr = JSON.stringify(sanitizedPayload);
     const success = await bridge.PrintReceipt(jsonStr);
     return Boolean(success);
   } catch (err) {

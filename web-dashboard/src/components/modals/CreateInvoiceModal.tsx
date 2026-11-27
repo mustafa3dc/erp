@@ -947,6 +947,7 @@ export default function CreateInvoiceModal({
                                 <span style={{ color: '#94a3b8', fontSize: '11px', marginInlineEnd: 2 }}>{currencySymbol}</span>
                                 <input
                                   type="number"
+                                  inputMode="decimal"
                                   step="0.01"
                                   min="0"
                                   value={item.unitPrice}
@@ -1037,6 +1038,7 @@ export default function CreateInvoiceModal({
                     <span className="currency-sign">{currencySymbol}</span>
                     <input 
                       type="number" 
+                      inputMode="decimal"
                       min="0" 
                       max={subtotal > 0 ? subtotal : undefined}
                       step="0.01"

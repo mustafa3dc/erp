@@ -30,6 +30,7 @@ import {
 import { useSettings } from '../../context/settings-context';
 import { useTenantPlan } from '../../hooks/useTenantPlan';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDate, formatLatinDateTime } from '../../lib/formatters';
 import { 
   InstallmentContract, 
   InstallmentScheduleItem, 
@@ -463,7 +464,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
             <div className="text-center border-b border-border/60 pb-2">
               <strong className="text-sm block text-foreground">{isAr ? 'سند قبض قسط مالي رسمي' : 'Official Installment Receipt'}</strong>
               <span className="text-[11px] text-primary font-mono font-bold block">{issuedReceiptVoucher.receiptNumber}</span>
-              <span className="text-[10px] text-muted-foreground font-mono">{new Date(issuedReceiptVoucher.date).toLocaleString()}</span>
+              <span className="text-[10px] text-muted-foreground font-mono tabular-nums">{formatLatinDateTime(issuedReceiptVoucher.date, isAr ? 'ar' : 'en')}</span>
             </div>
 
             <div className="space-y-1.5">
@@ -509,7 +510,7 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                   voucherNo: issuedReceiptVoucher.receiptNumber,
                   partyName: issuedReceiptVoucher.customerName,
                   amountFormatted: formatMoney(issuedReceiptVoucher.amount),
-                  dateText: new Date(issuedReceiptVoucher.date).toLocaleDateString(),
+                  dateText: formatLatinDate(issuedReceiptVoucher.date, isAr ? 'ar' : 'en'),
                   accountName: issuedReceiptVoucher.contractNumber
                 });
                 openWhatsAppShare(issuedReceiptVoucher.customerPhone, msg);
@@ -750,8 +751,8 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                             <span className="font-mono text-xs font-bold text-primary block">
                               {item.receiptVoucherNumber}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono">
-                              {item.paidDate ? new Date(item.paidDate).toLocaleDateString() : ''}
+                            <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                              {item.paidDate ? formatLatinDate(item.paidDate, isAr ? 'ar' : 'en') : ''}
                             </span>
                           </div>
                         ) : (
@@ -1424,8 +1425,8 @@ export default function InstallmentsView({ lang }: InstallmentsViewProps) {
                                                 <span className="font-mono text-xs font-bold text-primary block">
                                                   {item.receiptVoucherNumber}
                                                 </span>
-                                                <span className="text-[10px] text-muted-foreground font-mono">
-                                                  {item.paidDate ? new Date(item.paidDate).toLocaleDateString() : ''}
+                                                <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                                                  {item.paidDate ? formatLatinDate(item.paidDate, isAr ? 'ar' : 'en') : ''}
                                                 </span>
                                               </div>
                                             ) : (

@@ -53,6 +53,7 @@ import {
   LoyaltySettings,
 } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDateTime } from '../../lib/formatters';
 import { getTenantAuthHeaders } from '../../lib/api-client';
 import { getAuthToken } from '../../services/purchasesService';
 import {
@@ -2128,7 +2129,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                     </span>
                     <div className="text-sm font-bold text-foreground font-mono tabular-nums" dir="ltr">
                       {lastBackupAt
-                        ? new Date(lastBackupAt).toLocaleString(isAr ? 'ar-IQ' : 'en-US')
+                        ? formatLatinDateTime(lastBackupAt, isAr ? 'ar' : 'en')
                         : getTranslation(settingsLang, 'backup.neverBackedUp')}
                     </div>
                   </div>
@@ -2211,7 +2212,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
                         </span>
                         <strong className="font-mono text-foreground tabular-nums" dir="ltr">
                           {restorePreviewMeta.exportedAtUtc
-                            ? new Date(restorePreviewMeta.exportedAtUtc).toLocaleString()
+                            ? formatLatinDateTime(restorePreviewMeta.exportedAtUtc, isAr ? 'ar' : 'en')
                             : '—'}
                         </strong>
                       </div>

@@ -21,6 +21,7 @@ import QrCodeSvg from '../QrCodeSvg';
 import BarcodeSvg from '../BarcodeSvg';
 import { ModalBackdropPortal } from '../ui/dialog';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDate, formatLatinNumber } from '../../lib/formatters';
 import { useSettings } from '../../context/settings-context';
 import {
   PublicLoyaltyCardData,
@@ -640,7 +641,7 @@ export default function PublicLoyaltyCardPage({
                           <div className="min-w-0">
                             <div className="text-xs font-bold text-foreground truncate">{meta.label}</div>
                             <div className="text-[10px] text-muted-foreground truncate" dir="auto">
-                              {tx.notes || new Date(tx.createdAt).toLocaleDateString()}
+                              {tx.notes || formatLatinDate(tx.createdAt, lang)}
                             </div>
                           </div>
                         </div>
@@ -650,7 +651,7 @@ export default function PublicLoyaltyCardPage({
                             positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                           }`}
                         >
-                          {positive ? `+${tx.pointsChange.toLocaleString('en-US')}` : tx.pointsChange.toLocaleString('en-US')}
+                          {positive ? `+${formatLatinNumber(tx.pointsChange)}` : formatLatinNumber(tx.pointsChange)}
                         </div>
                       </div>
                     );

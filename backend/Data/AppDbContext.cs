@@ -71,6 +71,14 @@ public class AppDbContext : DbContext
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State == EntityState.Added || entry.State == EntityState.Modified)
+            {
+                DigitNormalizer.NormalizeTargetProperties(entry.Entity);
+            }
+        }
+
         var tenantId = CurrentTenantId;
         if (tenantId.HasValue && tenantId.Value != Guid.Empty)
         {

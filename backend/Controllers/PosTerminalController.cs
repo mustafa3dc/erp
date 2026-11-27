@@ -419,6 +419,7 @@ public class PosTerminalController : ControllerBase
         var zReportNumber = request.ZReportNumber ?? $"Z-{DateTime.UtcNow.Year}-{Random.Shared.Next(1000, 9999)}";
 
         // Transfer net shift drawer cash (actual counted cash or expected cash net of float) to Main Safe upon Z-Report closure
+        await using var shiftTx = await _context.Database.BeginTransactionAsync();
         var drawerTransferAmount = Math.Max(0m, request.ActualCash > 0m ? request.ActualCash - request.OpeningFloat : cashSales - pettyExpenses);
         if (drawerTransferAmount > 0m)
         {
@@ -427,7 +428,6 @@ public class PosTerminalController : ControllerBase
             {
                 mainSafe.CurrentBalance += drawerTransferAmount;
                 mainSafe.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
             }
         }
 
@@ -454,12 +454,7 @@ public class PosTerminalController : ControllerBase
             Status = "CLOSED"
         };
 
-        lock (_shiftLock)
-        {
-            _shiftAuditTrail.Insert(0, closedRecord);
-        }
-
-        await _auditLogService.LogAndSaveAsync(
+        _auditLogService.QueueLog(
             action: "SHIFT_CLOSE",
             entityName: "pos_shifts",
             entityId: shiftId,
@@ -483,6 +478,14 @@ public class PosTerminalController : ControllerBase
                 ClosedAt = closedAt
             },
             usernameOverride: request.CashierName);
+
+        await _context.SaveChangesAsync();
+        await shiftTx.CommitAsync();
+
+        lock (_shiftLock)
+        {
+            _shiftAuditTrail.Insert(0, closedRecord);
+        }
 
         _logger.LogInformation("POS Shift closed with Z-Report {ZReport} at {CloseTime}. Duration: {Duration}",
             closedRecord.ZReportNumber, closedRecord.EndTime, closedRecord.Duration);

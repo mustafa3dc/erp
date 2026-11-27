@@ -40,6 +40,8 @@ import {
   Gift
 } from 'lucide-react';
 import { useSettings, ScaleSettings } from '../../context/settings-context';
+import { toLatinDigits, formatLatinNumber, formatLatinDateTime } from '../../lib/formatters';
+import { resolveLatinDigitFromKeyboardEvent } from '../../utils/arabicNumeralConverter';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Product, DiscountAuditLog, Warehouse, SalesInvoice } from '../../types/warehouse';
 import DiscountAuditTrailModal from '../modals/DiscountAuditTrailModal';
@@ -1131,7 +1133,7 @@ export default function PosTerminalView({
         totalDiscount,
         total: grandTotal,
         paymentMethod: method,
-        timestamp: new Date().toLocaleString(),
+        timestamp: formatLatinDateTime(new Date(), isAr ? 'ar' : 'en'),
         cashierName: effectiveCashierName,
         warehouseName: selectedWarehouse?.nameAr || selectedWarehouse?.nameEn || selectedWarehouse?.code || 'WH-01',
         dispenseMode,
@@ -1561,12 +1563,23 @@ export default function PosTerminalView({
               <input
                 ref={barcodeInputRef}
                 type="text"
+                inputMode="text"
+                className="tabular-nums"
                 placeholder={isAr ? 'امسح الباركود بقارئ الليزر أو ابحث... [F1]' : 'Scan barcode or search... [F1]'}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(toLatinDigits(e.target.value))}
                 onKeyDown={async (e) => {
+                  const asciiDigit = resolveLatinDigitFromKeyboardEvent(e.nativeEvent, e.currentTarget);
+                  if (asciiDigit !== null) {
+                    e.preventDefault();
+                    const start = e.currentTarget.selectionStart ?? searchQuery.length;
+                    const end = e.currentTarget.selectionEnd ?? searchQuery.length;
+                    const nextVal = toLatinDigits(searchQuery.slice(0, start) + asciiDigit + searchQuery.slice(end));
+                    setSearchQuery(nextVal);
+                    return;
+                  }
                   if (e.key === 'Enter') {
-                    const raw = searchQuery.trim();
+                    const raw = toLatinDigits(searchQuery).trim();
                     if (!raw) return;
 
                     // 0A. Auto-detect LOY- Loyalty Member Card Barcode
@@ -2193,12 +2206,14 @@ export default function PosTerminalView({
                             <div className="flex items-center gap-1.5">
                               <input
                                 type="text"
+                                dir="ltr"
+                                inputMode="text"
                                 value={cartSerialInputs[item.product.id] || ''}
-                                onChange={(e) => setCartSerialInputs(prev => ({ ...prev, [item.product.id]: e.target.value }))}
+                                onChange={(e) => setCartSerialInputs(prev => ({ ...prev, [item.product.id]: toLatinDigits(e.target.value) }))}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
-                                    const snVal = (cartSerialInputs[item.product.id] || '').trim();
+                                    const snVal = toLatinDigits(cartSerialInputs[item.product.id] || '').trim();
                                     if (!snVal) return;
                                     const storedMatch = getStoredProductSerials().find(
                                       s => s.serialNumber.trim().toLowerCase() === snVal.toLowerCase()
@@ -2220,7 +2235,6 @@ export default function PosTerminalView({
                                   }
                                 }}
                                 placeholder={getTranslation(lang, 'serialTracking.serialRequiredForPos')}
-                                dir="ltr"
                                 className="h-7 flex-1 px-2 rounded border border-border bg-background text-foreground font-mono text-[11px] outline-none focus:border-primary"
                               />
                             </div>
@@ -2424,16 +2438,18 @@ export default function PosTerminalView({
                               <span style={{ position: 'absolute', left: isAr ? undefined : '8px', right: isAr ? '8px' : undefined, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>{currencySymbol}</span>
                               <input
                                 type="number"
+                                inputMode="decimal"
                                 step="0.01"
                                 placeholder={isAr ? `اكتب السعر مثلا: ${Math.round(item.product.sellingPrice * 0.9)}` : 'Enter negotiated price'}
                                 value={bargainInputPrice}
-                                onChange={(e) => setBargainInputPrice(e.target.value)}
+                                onChange={(e) => setBargainInputPrice(toLatinDigits(e.target.value))}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
-                                    const val = parseFloat(bargainInputPrice);
+                                    const val = parseFloat(toLatinDigits(bargainInputPrice));
                                     if (!isNaN(val)) handleSetItemPrice(item, val);
                                   }
                                 }}
+                                className="tabular-nums"
                                 style={{
                                   width: '100%',
                                   padding: isAr ? '6px 22px 6px 8px' : '6px 8px 6px 22px',
@@ -2535,7 +2551,7 @@ export default function PosTerminalView({
 
             {loyaltyDiscountAmount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#d97706', marginBottom: '4px', fontWeight: 700 }}>
-                <span className="tabular-nums">{getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', redeemPoints.toLocaleString('en-US'))}:</span>
+                <span className="tabular-nums">{getTranslation(lang, 'ui.loyalty.redeemDiscountApplied').replace('{points}', formatLatinNumber(redeemPoints))}:</span>
                 <span className="tabular-nums">-{formatMoney(loyaltyDiscountAmount)}</span>
               </div>
             )}
@@ -2544,7 +2560,7 @@ export default function PosTerminalView({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: '#059669', marginBottom: '4px', fontWeight: 700 }}>
                 <span>{getTranslation(lang, 'ui.loyalty.pointsEarnedSummary')}:</span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 tabular-nums">
-                  {getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', estimatedEarnedPoints.toLocaleString('en-US'))}
+                  {getTranslation(lang, 'ui.loyalty.pointsEarnedBadge').replace('{points}', formatLatinNumber(estimatedEarnedPoints))}
                 </span>
               </div>
             )}
@@ -2562,7 +2578,7 @@ export default function PosTerminalView({
                 <span className="tabular-nums" style={{ fontSize: '18px', fontWeight: 900, color: '#059669' }}>{formatMoney(grandTotal)}</span>
                 {settings.multiCurrencyEnabled && grandTotal > 0 && (
                   <div style={{ fontSize: '11px', color: 'var(--muted-foreground)', fontWeight: 600, marginTop: '2px', fontFamily: 'monospace' }}>
-                    <span>~ {isIqdBase ? `$ ${(currentExchangeRate > 0 ? (grandTotal / currentExchangeRate).toFixed(2) : '0.00')}` : `${Math.round(grandTotal * currentExchangeRate).toLocaleString('en-US')} د.ع`}</span>
+                    <span>~ {isIqdBase ? `$ ${(currentExchangeRate > 0 ? (grandTotal / currentExchangeRate).toFixed(2) : '0.00')}` : `${formatLatinNumber(Math.round(grandTotal * currentExchangeRate))} د.ع`}</span>
                   </div>
                 )}
               </div>
@@ -2956,7 +2972,7 @@ export default function PosTerminalView({
                       companyPhone: (settings as any)?.phone || '',
                       companyAddress: (settings as any)?.address || '',
                       invoiceNumber: lastCompletedOrder.orderNumber,
-                      invoiceDate: lastCompletedOrder.timestamp || new Date().toLocaleString(),
+                      invoiceDate: toLatinDigits(lastCompletedOrder.timestamp || formatLatinDateTime(new Date(), isAr ? 'ar' : 'en')),
                       cashierName: lastCompletedOrder.cashierName,
                       customerName: (lastCompletedOrder as any).customerName || lastCompletedOrder.installmentDetails?.guarantorName || '',
                       items: (lastCompletedOrder.items || []).map((it: any) => ({
@@ -3116,10 +3132,11 @@ export default function PosTerminalView({
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     min={0}
                     max={Math.max(0, grandTotal - 1)}
                     value={posDownPayment === 0 ? '' : posDownPayment}
-                    onChange={(e) => setPosDownPayment(Math.max(0, parseFloat(e.target.value) || 0))}
+                    onChange={(e) => setPosDownPayment(Math.max(0, parseFloat(toLatinDigits(e.target.value)) || 0))}
                     placeholder="0"
                     className="tabular-nums"
                     style={{
@@ -3256,8 +3273,11 @@ export default function PosTerminalView({
                   </label>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    dir="ltr"
+                    className="tabular-nums"
                     value={posGuarantorPhone}
-                    onChange={(e) => setPosGuarantorPhone(e.target.value)}
+                    onChange={(e) => setPosGuarantorPhone(toLatinDigits(e.target.value))}
                     placeholder="07xxxxxxxxx"
                     style={{
                       width: '100%',

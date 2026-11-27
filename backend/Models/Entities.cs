@@ -2350,14 +2350,14 @@ public class AuditLog : ITenantEntity
     [Column("user_id")]
     public string UserId { get; set; } = string.Empty;
 
-    [MaxLength(150)]
+    [MaxLength(200)]
     [Column("username")]
     public string? Username { get; set; }
 
     [Required]
-    [MaxLength(40)]
+    [MaxLength(100)]
     [Column("action")]
-    public string Action { get; set; } = string.Empty; // INSERT, UPDATE, DELETE, APPROVE, REJECT, CONVERT, PRICE_CHANGE, POS_DISCOUNT, STOCK_ADJUSTMENT, SHIFT_CLOSE, VOID
+    public string Action { get; set; } = string.Empty; // INSERT, UPDATE, DELETE, APPROVE, REJECT, CONVERT, PRICE_CHANGE, POS_DISCOUNT, POS_PRICE_OVERRIDE, POS_INVOICE_DISCOUNT, STOCK_ADJUSTMENT, SHIFT_CLOSE, VOID
 
     [Required]
     [MaxLength(100)]

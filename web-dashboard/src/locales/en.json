@@ -1910,7 +1910,8 @@
     "actions": {
       "PRICE_CHANGE": "Price Change",
       "POS_DISCOUNT": "POS Manual Discount",
-      "POS_PRICE_OVERRIDE": "POS Price Override",
+      "POS_INVOICE_DISCOUNT": "POS Invoice Discount",
+      "POS_PRICE_OVERRIDE": "POS Manual Price Override",
       "STOCK_ADJUSTMENT": "Stock Adjustment",
       "VOID": "Voucher Void / Delete",
       "SHIFT_CLOSE": "Shift Closure (Z-Report)",

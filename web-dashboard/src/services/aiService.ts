@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { PlanTierId, getTierById } from '../lib/pricing-tiers';
+import { formatLatinNumber } from '../lib/formatters';
 import { 
  getStoredProducts, 
  getStoredInvoices, 
@@ -757,11 +758,11 @@ export async function askExecutiveCopilot(
  } catch {}
 
  const fmt = (val: number) => {
- return `${Math.round(val).toLocaleString()} ${activeSym}`;
+ return `${formatLatinNumber(Math.round(val))} ${activeSym}`;
  };
 
  const fmtDec = (val: number) => {
- return `${Number(val.toFixed(2)).toLocaleString()} ${activeSym}`;
+ return `${formatLatinNumber(Number(val.toFixed(2)))} ${activeSym}`;
  };
 
  // ── 3. Pull Live System Data ───────────────────────────────────────────────
@@ -1215,7 +1216,7 @@ export async function askExecutiveCopilot(
  else if (/كم صنف|عدد الاصناف|كم منتج|عدد المنتجات|كم ماده|عدد المواد/.test(normQuery)) {
  answer = `### إحصائية المخزون والمنتجات المسجلة\n\n` +
  `* **إجمالي عدد الأصناف المعرفة في المنظومة:** **${realProducts.length} صنف مسجل**\n` +
- `* **إجمالي عدد الوحدات والقطع المخزنة فعلياً:** **${totalStockUnits.toLocaleString()} قطعة**\n` +
+ `* **إجمالي عدد الوحدات والقطع المخزنة فعلياً:** **${formatLatinNumber(totalStockUnits)} قطعة**\n` +
  `* **عدد المستودعات والفروع النشطة:** **${realWarehouses.length} مستودعات**\n` +
  `* **إجمالي القيمة المالية للمخزون (بسعر التكلفة):** **${fmt(totalStockCostValue)}**\n` +
  `* **القيمة السوقية المتوقعة (بسعر البيع):** **${fmt(totalStockRetailValue)}**\n\n` +
@@ -1350,7 +1351,7 @@ export async function askExecutiveCopilot(
  `* **إجمالي قيمة المخزون بسعر التكلفة (Book Value):** **${fmt(totalStockCostValue)}**\n` +
  `* **القيمة التقديرية للبضاعة بسعر البيع (Market Value):** **${fmt(totalStockRetailValue)}**\n` +
  `* **الأرباح المتوقعة عند تمام تصريف المخزون:** **${fmt(expectedGrossProfit)}**\n` +
- `* **إجمالي الوحدات والقطع المخزنة:** **${totalStockUnits.toLocaleString()} قطعة** موزعة على **${realProducts.length} صنف**.\n\n` +
+ `* **إجمالي الوحدات والقطع المخزنة:** **${formatLatinNumber(totalStockUnits)} قطعة** موزعة على **${realProducts.length} صنف**.\n\n` +
  `#### الرؤية الإدارية:\n` +
  `يمثل المخزون أكبر أصل رأسمالي للمنشأة؛ الحفاظ على نسبة دوران لا تقل عن 4 إلى 6 دورات سنوياً يضمن سيولة نقدية عالية.`;
 
@@ -1411,7 +1412,7 @@ export async function askExecutiveCopilot(
  // Clean helpful fallback showing actual available data in their system
  answer = `أهلاً بك يا فندم! أنا المستشار التنفيذي والمالي لمنشأة "**${companyName}**".\n\n` +
  `قاعدة البيانات الحالية تحتوي على:\n` +
- `• **${realProducts.length} صنف مسجل** بإجمالي **${totalStockUnits.toLocaleString()} قطعة** وقيمة **${fmt(totalStockCostValue)}**.\n` +
+ `• **${realProducts.length} صنف مسجل** بإجمالي **${formatLatinNumber(totalStockUnits)} قطعة** وقيمة **${fmt(totalStockCostValue)}**.\n` +
  `• **${realInvoices.length} فاتورة مبيعات** بإجمالي إيرادات **${fmt(totalSales)}**.\n` +
  `• **${realWarehouses.length} مستودع وفروع نشطة**.\n\n` +
  `يمكنك سؤالي فوراً باللغة الطبيعية عن:\n` +

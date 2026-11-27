@@ -23,6 +23,7 @@ import {
   PurchasePaymentType
 } from '../types/purchases';
 import { getTranslation } from '../lib/i18n';
+import { formatLatinDateTime } from '../lib/formatters';
 
 export interface TreasuryCashBoxOption {
   id: string;
@@ -626,7 +627,7 @@ export async function settleSupplierDebt(
       amount,
       currency: 'IQD',
       accountName: cashAcc.nameAr || cashAcc.name || cashAcc.id,
-      date: new Date().toLocaleString(),
+      date: formatLatinDateTime(new Date(), 'ar'),
       notes: payload.notes?.trim() || `${voucherNo} - ${suppliers[sIdx].company}`
     },
     ...existingVouchers

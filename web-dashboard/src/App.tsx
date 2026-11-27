@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 import { SettingsProvider, useSettings } from './context/settings-context';
 import { getTranslation } from './lib/i18n';
+import { toLatinDigits, formatLatinNumber } from './lib/formatters';
 import CommandPaletteModal from './components/modals/CommandPaletteModal';
 import MiniSparkline from './components/ui/MiniSparkline';
 import { parseDateSafely } from './utils/dateFormatter';
@@ -870,7 +871,8 @@ function DashboardApp() {
 
   // Automatic barcode scan detection handler
   const handleBarcodeSearch = (val: string) => {
-    const term = val.trim().toLowerCase();
+    const normalizedVal = toLatinDigits(val);
+    const term = normalizedVal.trim().toLowerCase();
     if (!term) return;
     const matched = products.find(p => 
       p.barcode?.toLowerCase() === term ||
@@ -1176,6 +1178,7 @@ function DashboardApp() {
               .map(it => ({
                 productId: it.productId,
                 quantity: it.quantity,
+                unitPrice: it.unitPrice,
                 discountType: 'NONE',
                 discountValue: 0
               }))
@@ -2124,7 +2127,7 @@ function DashboardApp() {
                 </div>
                 <div className="kpi-card-footer text-muted mt-1">
                   <span className="tabular-nums">
-                    {effectiveInvoicesCount.toLocaleString()} {getTranslation(lang, 'ui.dashboard.invoiceUnit')}
+                    {formatLatinNumber(effectiveInvoicesCount)} {getTranslation(lang, 'ui.dashboard.invoiceUnit')}
                   </span>
                 </div>
               </div>

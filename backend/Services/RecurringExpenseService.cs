@@ -29,6 +29,7 @@ public class RecurringExpenseService : IRecurringExpenseService
 
     private readonly AppDbContext _context;
     private readonly IConnectionMultiplexer? _redis;
+    private readonly IAuditLogService? _auditLogService;
     private readonly ILogger<RecurringExpenseService> _logger;
 
     public RecurringExpenseService(
@@ -38,6 +39,7 @@ public class RecurringExpenseService : IRecurringExpenseService
     {
         _context = context;
         _redis = serviceProvider.GetService<IConnectionMultiplexer>();
+        _auditLogService = serviceProvider.GetService<IAuditLogService>();
         _logger = logger;
     }
 
@@ -261,6 +263,15 @@ public class RecurringExpenseService : IRecurringExpenseService
         entity.IsDeleted = true;
         entity.IsActive = false;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _auditLogService?.QueueLog(
+            action: "VOID",
+            entityName: "recurring_expenses",
+            entityId: entity.Id.ToString(),
+            oldValues: new { Title = entity.Title, Amount = entity.Amount, IsDeleted = false },
+            newValues: new { Title = entity.Title, Amount = entity.Amount, IsDeleted = true },
+            tenantIdOverride: entity.TenantId);
+
         await _context.SaveChangesAsync(ct);
 
         return ApiResponse<bool>.Ok(true);

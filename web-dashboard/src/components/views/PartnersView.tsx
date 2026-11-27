@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTranslation } from '../../lib/i18n';
+import { formatLatinDateTime } from '../../lib/formatters';
 import { useSettings } from '../../context/settings-context';
 import { getStoredActiveShift } from '../../services/storageService';
 import {
@@ -971,7 +972,7 @@ export default function PartnersView({ lang }: PartnersViewProps) {
                       {statementData.items.map(tx => (
                         <tr key={tx.id} className="hover:bg-muted/30">
                           <td className="py-2.5 px-3 text-xs text-muted-foreground tabular-nums" dir="ltr">
-                            {new Date(tx.createdAt).toLocaleString(isAr ? 'ar-IQ' : 'en-US')}
+                            {formatLatinDateTime(tx.createdAt, isAr ? 'ar' : 'en')}
                           </td>
                           <td className="py-2.5 px-3">
                             <StatusBadge

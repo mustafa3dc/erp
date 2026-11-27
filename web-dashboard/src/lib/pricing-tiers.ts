@@ -1,4 +1,5 @@
 // ============================================================================
+import { formatLatinNumber } from './formatters';
 // ZiloX Enterprise Suite - Global Commercial Geo-Pricing Architecture
 // Enterprise Multi-Region Standard (Shopify/Stripe Pattern)
 // Continuous Instant Cloud Backup is standard across ALL tiers.
@@ -284,7 +285,7 @@ export function getTierGeoPricing(
 
   return {
     amount,
-    formattedAmount: amount.toLocaleString(),
+    formattedAmount: formatLatinNumber(amount),
     currencyCode: region.currencyCode,
     currencySymbol: region.currencySymbolAr,
     secondaryAmount: isYearly ? tierPrice.secondaryYearly : tierPrice.secondaryMonthly,

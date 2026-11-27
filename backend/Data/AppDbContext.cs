@@ -107,7 +107,12 @@ public class AppDbContext : DbContext
 
         // Composite key for WarehouseStock
         modelBuilder.Entity<WarehouseStock>()
+            .ToTable("warehouse_stock")
             .HasKey(ws => new { ws.WarehouseId, ws.ProductId });
+
+        modelBuilder.Entity<WarehouseStock>()
+            .Property(ws => ws.ShelfId)
+            .HasColumnName("shelf_id");
 
         modelBuilder.Entity<WarehouseStock>()
             .HasOne(ws => ws.Warehouse)
@@ -125,11 +130,25 @@ public class AppDbContext : DbContext
             .HasForeignKey(ws => ws.ShelfId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        modelBuilder.Entity<WarehouseShelf>()
-            .HasOne(s => s.Warehouse)
-            .WithMany()
-            .HasForeignKey(s => s.WarehouseId)
-            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<WarehouseShelf>(entity =>
+        {
+            entity.ToTable("warehouse_shelves");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).HasColumnName("id");
+            entity.Property(s => s.TenantId).HasColumnName("tenant_id");
+            entity.Property(s => s.WarehouseId).HasColumnName("warehouse_id");
+            entity.Property(s => s.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+            entity.Property(s => s.Code).HasColumnName("code").HasMaxLength(50);
+            entity.Property(s => s.Notes).HasColumnName("notes");
+            entity.Property(s => s.MaxCapacity).HasColumnName("max_capacity");
+            entity.Property(s => s.IsActive).HasColumnName("is_active");
+            entity.Property(s => s.CreatedAt).HasColumnName("created_at");
+            entity.Property(s => s.UpdatedAt).HasColumnName("updated_at");
+            entity.HasOne(s => s.Warehouse)
+                .WithMany()
+                .HasForeignKey(s => s.WarehouseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
 
         // Movement items relation
         modelBuilder.Entity<StockMovementItem>()

@@ -277,11 +277,38 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("Verifying PostgreSQL database schema connectivity...");
         if (dbContext.Database.CanConnect())
         {
-            using var conn = dbContext.Database.GetDbConnection();
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'warehouses';";
-            var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            int count;
+            using (var conn = dbContext.Database.GetDbConnection())
+            {
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'warehouses';";
+                count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            }
+
+            try
+            {
+                dbContext.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE IF NOT EXISTS warehouse_shelves (
+                        id uuid PRIMARY KEY,
+                        tenant_id uuid NULL,
+                        warehouse_id uuid NOT NULL,
+                        name varchar(200) NOT NULL,
+                        code varchar(50) NULL,
+                        notes text NULL,
+                        max_capacity int NULL,
+                        is_active boolean NOT NULL DEFAULT true,
+                        created_at timestamptz NOT NULL DEFAULT NOW(),
+                        updated_at timestamptz NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);
+                    ALTER TABLE IF EXISTS warehouse_stock ADD COLUMN IF NOT EXISTS shelf_id uuid NULL;
+                ");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Warehouse shelves startup DDL check warning.");
+            }
 
             if (count == 0)
             {

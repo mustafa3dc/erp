@@ -1065,7 +1065,7 @@ public class Tenant
     public string BillingCycle { get; set; } = "yearly";
 
     [Column("billing_cycle_type")]
-    public BillingCycle BillingCycleType { get; set; } = ERP.Warehouse.Api.Models.BillingCycle.Monthly;
+    public ERP.Warehouse.Api.Models.BillingCycle BillingCycleType { get; set; } = ERP.Warehouse.Api.Models.BillingCycle.Monthly;
 
     [MaxLength(150)]
     [Column("contact_info")]

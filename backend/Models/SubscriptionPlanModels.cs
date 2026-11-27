@@ -110,7 +110,7 @@ public class TenantSubscriptionDto
     public string Plan { get; set; } = nameof(SubscriptionPlan.Pro);
     public SubscriptionPlan PlanType { get; set; } = SubscriptionPlan.Pro;
     public string BillingCycle { get; set; } = nameof(ERP.Warehouse.Api.Models.BillingCycle.Monthly);
-    public BillingCycle BillingCycleType { get; set; } = ERP.Warehouse.Api.Models.BillingCycle.Monthly;
+    public ERP.Warehouse.Api.Models.BillingCycle BillingCycleType { get; set; } = ERP.Warehouse.Api.Models.BillingCycle.Monthly;
     public DateTime? ExpiresAt { get; set; }
     public bool IsExpired { get; set; }
     public TenantSubscriptionUsageDto Usage { get; set; } = new();

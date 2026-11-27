@@ -68,8 +68,8 @@ public class TenantSubscriptionController : ControllerBase
                 TenantSlug = "platform",
                 Plan = nameof(SubscriptionPlan.Enterprise),
                 PlanType = SubscriptionPlan.Enterprise,
-                BillingCycle = nameof(BillingCycle.Lifetime),
-                BillingCycleType = BillingCycle.Lifetime,
+                BillingCycle = nameof(ERP.Warehouse.Api.Models.BillingCycle.Lifetime),
+                BillingCycleType = ERP.Warehouse.Api.Models.BillingCycle.Lifetime,
                 ExpiresAt = null,
                 IsExpired = false,
                 Usage = new TenantSubscriptionUsageDto
@@ -94,8 +94,8 @@ public class TenantSubscriptionController : ControllerBase
                     TenantSlug = inMemoryTenant.Slug,
                     Plan = plan.ToString(),
                     PlanType = plan,
-                    BillingCycle = nameof(BillingCycle.Monthly),
-                    BillingCycleType = BillingCycle.Monthly,
+                    BillingCycle = nameof(ERP.Warehouse.Api.Models.BillingCycle.Monthly),
+                    BillingCycleType = ERP.Warehouse.Api.Models.BillingCycle.Monthly,
                     ExpiresAt = inMemoryTenant.ExpiresAt,
                     IsExpired = inMemoryTenant.ExpiresAt < DateTime.UtcNow,
                     Usage = new TenantSubscriptionUsageDto

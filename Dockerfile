@@ -42,8 +42,9 @@ COPY --from=backend-builder /app/publish ./
 # Copy built frontend assets directly into backend's static wwwroot directory
 COPY --from=frontend-builder /build/frontend/dist ./wwwroot
 
-# Copy SQL initialization schema for auto-bootstrapping
+# Copy SQL initialization schema and incremental migration scripts for auto-bootstrapping
 COPY database/render_full_init.sql ./database/render_full_init.sql
+COPY database/scripts ./database/scripts
 
 # Production Environment Variables for Render
 ENV ASPNETCORE_ENVIRONMENT=Production

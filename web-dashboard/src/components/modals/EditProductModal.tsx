@@ -1,27 +1,22 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Package, 
-  CheckCircle2, 
-  AlertTriangle, 
-  AlertCircle, 
-  List, 
-  SlidersHorizontal, 
-  CreditCard, 
-  ShieldCheck, 
-  ShieldAlert, 
-  Lock, 
-  Tag, 
-  Boxes, 
-  MapPin, 
-  TrendingUp,
+import {
+  X,
+  Package,
+  CheckCircle2,
+  AlertCircle,
+  List,
+  SlidersHorizontal,
+  Lock,
+  Boxes,
+  MapPin,
   RefreshCw,
   Layers,
   Plus,
   Trash2,
-  ChevronDown
+  ShieldAlert,
+  CreditCard
 } from 'lucide-react';
 import { DialogPortal, DialogOverlay, DialogContent } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -51,6 +46,14 @@ interface EditProductModalProps {
   onOpenAdjustment?: (product: Product) => void;
 }
 
+type ModalTab = 'GENERAL' | 'STOCK' | 'TIERS';
+
+interface ShelfOption {
+  id: string;
+  name: string;
+  code?: string | null;
+}
+
 export default function EditProductModal({
   product,
   isOpen,
@@ -59,16 +62,18 @@ export default function EditProductModal({
   onSave,
   onOpenAdjustment
 }: EditProductModalProps) {
-  // 1. Mandatory Unconditional Hooks (Must run in identical order on EVERY render)
+  // 1. Mandatory Unconditional Hooks
   const isAr = lang === 'ar';
   const localeKey: 'ar' | 'en' = lang === 'en' ? 'en' : 'ar';
-  const { financialSettings } = useSettings();
+  const t = (key: string) => getTranslation(localeKey, key);
+  const { financialSettings, formatMoney } = useSettings();
   const { isFeatureEnabled } = useTenantFeatures();
   const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
   const effectiveCurrencySymbol = financialSettings.baseCurrency.symbol;
 
   const warehouses = getStoredWarehouses();
   const [categoriesList, setCategoriesList] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<ModalTab>('GENERAL');
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -80,17 +85,19 @@ export default function EditProductModal({
   const [minSellingPrice, setMinSellingPrice] = useState(0);
   const [minStockAlert, setMinStockAlert] = useState(5);
   const [shelf, setShelf] = useState('A-01');
+  const [warehouseShelves, setWarehouseShelves] = useState<ShelfOption[]>([]);
+  const [isCustomShelf, setIsCustomShelf] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
   const [unit, setUnit] = useState('قطعة');
   const [requiresSerialNumber, setRequiresSerialNumber] = useState(false);
   const [warrantyMonths, setWarrantyMonths] = useState(0);
-  const [isTiersOpen, setIsTiersOpen] = useState(false);
   const [tierDrafts, setTierDrafts] = useState<Array<{ id?: string; minQty: string; maxQty: string; unitPrice: string }>>([]);
   const [tierError, setTierError] = useState('');
 
-  // Synchronize state ONLY when modal opens or a different product is loaded
+  // Synchronize state when modal opens or a different product is loaded
   useEffect(() => {
     if (product && isOpen) {
+      setActiveTab('GENERAL');
       setName(product.nameAr || product.nameEn || '');
       setSku(product.sku || '');
       setBarcode(product.barcode || '');
@@ -99,16 +106,17 @@ export default function EditProductModal({
       setCostPrice(Number(product.costPrice) || 0);
       setSellingPrice(Number(product.sellingPrice) || 0);
       setMinSellingPrice(
-        product.minSellingPrice !== undefined 
-          ? Number(product.minSellingPrice) 
+        product.minSellingPrice !== undefined
+          ? Number(product.minSellingPrice)
           : Math.round((Number(product.sellingPrice) || 0) * 0.88)
       );
       setMinStockAlert(Number(product.minStockAlert) || 5);
       setShelf(product.shelf || 'A-01');
-      setWarehouseId(product.warehouseId || '');
+      setIsCustomShelf(false);
+      setWarehouseId(product.warehouseId || warehouses[0]?.id || '');
       setRequiresSerialNumber(Boolean(product.requiresSerialNumber));
       setWarrantyMonths(Math.max(0, Number(product.warrantyMonths) || 0));
-      
+
       const loadedCats = getStoredCategories();
       setCategoriesList(loadedCats);
       const inStored = loadedCats.some(c => c.name === product.category);
@@ -116,19 +124,57 @@ export default function EditProductModal({
 
       const existingTiers = getProductQuantityTiers(product.id, product);
       setTierDrafts(
-        existingTiers.map(t => ({
-          id: t.id,
-          minQty: String(t.minQty),
-          maxQty: t.maxQty != null ? String(t.maxQty) : '',
-          unitPrice: String(t.unitPrice),
+        existingTiers.map(tier => ({
+          id: tier.id,
+          minQty: String(tier.minQty),
+          maxQty: tier.maxQty != null ? String(tier.maxQty) : '',
+          unitPrice: String(tier.unitPrice),
         }))
       );
-      setIsTiersOpen(existingTiers.length > 0);
       setTierError('');
     }
   }, [product?.id, isOpen]);
 
-  // Helper generators
+  // Load shelves for the selected warehouse so the shelf picker displays live warehouse shelves
+  useEffect(() => {
+    if (!isOpen || !warehouseId) {
+      setWarehouseShelves([]);
+      return;
+    }
+
+    let cancelled = false;
+    apiClient
+      .get(`/api/warehouses/${encodeURIComponent(warehouseId)}/shelves`)
+      .then((res: any) => {
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+        const mapped: ShelfOption[] = list
+          .filter((s: any) => s && (s.name || s.code))
+          .map((s: any) => ({
+            id: String(s.id || s.code || s.name),
+            name: String(s.name || s.code || ''),
+            code: s.code ? String(s.code) : null,
+          }));
+        setWarehouseShelves(mapped);
+
+        if (mapped.length > 0 && shelf) {
+          const matchesShelf = mapped.some(
+            s => s.code === shelf || s.name === shelf
+          );
+          if (!matchesShelf) {
+            setIsCustomShelf(true);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWarehouseShelves([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, warehouseId]);
+
   const handleGenerateSku = () => {
     const code = Math.floor(1000 + Math.random() * 9000);
     setSku(`PRD-${code}`);
@@ -146,33 +192,33 @@ export default function EditProductModal({
     minSellingPrice: Number(minSellingPrice) || 0
   }, lang);
 
-  // Real-time violation states
   const hasPricingViolation = !pricingValidation.isValid;
   const isCostPriceInvalid = hasPricingViolation && (costPrice > sellingPrice || costPrice > minSellingPrice);
   const isSellingPriceInvalid = hasPricingViolation && (sellingPrice < costPrice || sellingPrice < minSellingPrice);
   const isMinPriceInvalid = hasPricingViolation && (minSellingPrice < costPrice || minSellingPrice > sellingPrice);
 
-  // Stock alert calculation: compare current stock with safety threshold
+  // Stock & Margin metrics
   const currentStockVal = Number(product?.currentStock ?? 0);
   const alertThreshold = Number(minStockAlert) || 0;
   const isBelowSafety = currentStockVal <= alertThreshold;
   const isOutOfStock = currentStockVal <= 0;
 
-  // Margin calculation helpers
   const unitProfit = sellingPrice - costPrice;
-  const marginPercent = costPrice > 0 ? ((unitProfit / costPrice) * 100).toFixed(1) : '0';
+  const marginPercent = costPrice > 0 ? ((unitProfit / costPrice) * 100).toFixed(1) : '0.0';
   const discountBuffer = Math.max(0, sellingPrice - minSellingPrice);
 
-  // 2. Safe Early Return ONLY after all hooks are evaluated
+  // 2. Safe Early Return after all hooks
   if (!isOpen || !product) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const cleanName = name.trim();
-    if (!cleanName) return;
+    if (!cleanName) {
+      setActiveTab('GENERAL');
+      return;
+    }
 
-    // Strict Pricing Validation check
     const validation = validateProductPricing({
       costPrice: Number(costPrice) || 0,
       sellingPrice: Number(sellingPrice) || 0,
@@ -180,6 +226,7 @@ export default function EditProductModal({
     }, lang);
 
     if (!validation.isValid) {
+      setActiveTab('GENERAL');
       return;
     }
 
@@ -187,37 +234,36 @@ export default function EditProductModal({
     const localizedWhName = selectedWh?.nameAr ? localizeWarehouse(selectedWh.nameAr, lang) : product.warehouseName;
     const localizedWhNameEn = selectedWh?.nameEn ? localizeWarehouse(selectedWh.nameEn, 'en') : (product.warehouseNameEn || product.warehouseName);
 
-    const finalCategory = category.trim() || (isAr ? 'عام' : 'General');
+    const finalCategory = category.trim() || t('editProduct.defaultCategory');
     if (finalCategory) {
       const currentStored = getStoredCategories();
       if (!currentStored.some(c => c.name.toLowerCase() === finalCategory.toLowerCase())) {
-        const nextCats = [
+        saveStoredCategories([
           ...currentStored,
           {
             id: `CAT-${Date.now()}`,
             name: finalCategory,
             code: `CAT-${currentStored.length + 1}`
           }
-        ];
-        saveStoredCategories(nextCats);
+        ]);
       }
     }
 
     const parsedTiers = tierDrafts
-      .filter(t => t.minQty.trim() !== '' || t.unitPrice.trim() !== '')
-      .map(t => ({
-        id: t.id,
-        minQty: Number(t.minQty),
-        maxQty: t.maxQty.trim() !== '' ? Number(t.maxQty) : null,
-        unitPrice: Number(t.unitPrice),
+      .filter(tier => tier.minQty.trim() !== '' || tier.unitPrice.trim() !== '')
+      .map(tier => ({
+        id: tier.id,
+        minQty: Number(tier.minQty),
+        maxQty: tier.maxQty.trim() !== '' ? Number(tier.maxQty) : null,
+        unitPrice: Number(tier.unitPrice),
       }));
 
     if (parsedTiers.length > 0) {
       const check = validateQuantityTierRanges(parsedTiers);
       if (!check.valid) {
         const errKey = check.errorCode ? `errors.${check.errorCode}` : 'errors.ERR_INVALID_QTY_RANGE';
-        setTierError(getTranslation(lang === 'en' ? 'en' : 'ar', errKey));
-        setIsTiersOpen(true);
+        setTierError(t(errKey));
+        setActiveTab('TIERS');
         return;
       }
     }
@@ -230,7 +276,7 @@ export default function EditProductModal({
 
     apiClient.put('/api/quantity-tiers', {
       productId: product.id,
-      tiers: parsedTiers.map(t => ({ minQty: t.minQty, maxQty: t.maxQty, unitPrice: t.unitPrice })),
+      tiers: parsedTiers.map(tier => ({ minQty: tier.minQty, maxQty: tier.maxQty, unitPrice: tier.unitPrice })),
     }).catch(() => {});
 
     const updated: Product = {
@@ -240,7 +286,7 @@ export default function EditProductModal({
       sku: sku.trim() || product.sku,
       barcode: barcode.trim() || product.barcode,
       category: finalCategory,
-      unit: unit || product.unit || (isAr ? 'قطعة' : 'Unit'),
+      unit: unit || product.unit || t('editProduct.unitPiece'),
       unitEn: localizeUnit(unit || product.unit || 'قطعة', 'en'),
       costPrice: Number(costPrice) || 0,
       sellingPrice: Number(sellingPrice) || 0,
@@ -266,47 +312,39 @@ export default function EditProductModal({
     onClose();
   };
 
+  const displayUnit = localizeUnit(unit || product.unit || 'قطعة', localeKey);
+
   return (
     <DialogPortal>
       <DialogOverlay onClick={onClose} />
       <DialogContent
-        className="w-full max-w-4xl bg-card border border-border/80 shadow-2xl rounded-2xl p-0 text-foreground overflow-hidden flex flex-col my-auto"
+        className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl p-0 text-foreground overflow-hidden flex flex-col my-auto"
         style={{
-          maxWidth: '860px',
+          maxWidth: '42rem',
           width: '95%',
-          maxHeight: '92vh',
+          maxHeight: '90vh',
           padding: 0,
           borderRadius: '1rem',
           backgroundColor: 'var(--card)',
           color: 'var(--foreground)',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
         }}
         dir={isAr ? 'rtl' : 'ltr'}
       >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-muted/40 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shadow-xs shrink-0">
-              <Package className="w-5 h-5" />
+        {/* Clean Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-foreground m-0 leading-tight">
-                  {isAr ? 'تعديل بيانات الصنف المخزني' : 'Edit Product Details'}
-                </h3>
-                <span 
-                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20"
-                  dir="ltr"
-                >
-                  SKU: {sku || product.sku}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground m-0 mt-0.5 leading-normal">
-                {isAr
-                  ? 'إدارة بيانات المادة، تسعير البيع والتكلفة، وحدود الأمان والموقع المخزني'
-                  : 'Manage product identity, multi-tier pricing, safety reorder limits, and bin location'}
-              </p>
-            </div>
+            <h3 className="text-base font-bold text-foreground m-0 truncate">
+              {t('editProduct.title')}
+            </h3>
+            <span
+              dir="ltr"
+              className="inline-flex items-center px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border text-xs font-mono font-semibold shrink-0"
+            >
+              {sku || product.sku}
+            </span>
           </div>
 
           <Button
@@ -314,686 +352,694 @@ export default function EditProductModal({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-            title={isAr ? 'إغلاق' : 'Close'}
+            className="w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+            title={t('editProduct.close')}
           >
             <X className="w-4 h-4" />
           </Button>
         </div>
 
-        {/* Wide Two-Column Form Body (Balanced Zero-Dead-Space Layout) */}
+        {/* Clean 3-Tab Navigation */}
+        <div
+          className="px-6 pt-3 pb-0 border-b border-border bg-muted/50 shrink-0"
+          style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 40%, transparent)' }}
+        >
+          <div className="flex items-center gap-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setActiveTab('GENERAL')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer bg-transparent ${
+                activeTab === 'GENERAL'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>{t('editProduct.tabGeneralPricing')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('STOCK')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer bg-transparent ${
+                activeTab === 'STOCK'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>{t('editProduct.tabStockLocation')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('TIERS')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer bg-transparent ${
+                activeTab === 'TIERS'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>{t('editProduct.tabVolumePricing')}</span>
+              {tierDrafts.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono tabular-nums bg-muted text-foreground border border-border">
+                  {tierDrafts.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Single-Column Form Body */}
         <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-5 overflow-y-auto max-h-[calc(92vh-125px)] space-y-3.5">
+          <div className="p-6 overflow-y-auto flex-1 space-y-5">
             {/* Real-time Pricing Validation Banner */}
             {hasPricingViolation && (
-              <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold shadow-2xs">
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg bg-red-500/10 border border-red-500/25 text-destructive text-xs font-semibold">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{pricingValidation.errorMessage}</span>
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              {/* Column 1: Product Identity, Categorization & Storage */}
-              <div className="space-y-3.5">
-                {/* Card 1: Basic Identity & Category */}
-                <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs">
-                  <div className="flex items-center gap-2 text-xs font-bold text-foreground/90 pb-1 border-b border-border/50">
-                    <Package className="w-3.5 h-3.5 text-primary" />
-                    <span>{isAr ? 'البيانات الأساسية والتصنيف' : 'Basic Identity & Category'}</span>
+            {/* TAB 1: General & Pricing */}
+            {activeTab === 'GENERAL' && (
+              <div className="space-y-5">
+                {/* Basic Info Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Product Name (Full Width) */}
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground block">
+                      {t('editProduct.productName')} *
+                    </label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      dir="auto"
+                      placeholder={t('editProduct.productNamePlaceholder')}
+                      className="h-9 bg-background border-border text-sm font-medium"
+                    />
                   </div>
 
-                  <div className="space-y-2.5">
-                    {/* Product Name */}
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-foreground/80 block">
-                        {isAr ? 'اسم الصنف / المنتج' : 'Product Name'} *
-                      </span>
-                      <div className="relative">
-                        <Input
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          required
-                          dir="auto"
-                          placeholder={isAr ? 'أدخل اسم الصنف أو المنتج...' : 'e.g. Dell Latitude 5420...'}
-                          className="h-9 bg-background border-border/80 px-2.5 text-xs font-medium"
-                        />
-                        <Package className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
-                      </div>
+                  {/* SKU + Inline Generate */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        {t('editProduct.sku')} *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateSku}
+                        title={t('editProduct.generateSkuTooltip')}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{t('editProduct.generate')}</span>
+                      </button>
                     </div>
+                    <Input
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      required
+                      dir="ltr"
+                      placeholder={t('editProduct.skuPlaceholder')}
+                      className="h-9 bg-background border-border font-mono text-xs font-semibold"
+                    />
+                  </div>
 
-                    {/* SKU & Barcode Row */}
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {/* SKU Field with Auto-Generate */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-foreground/80 block">
-                            {isAr ? 'رمز الصنف (SKU)' : 'SKU Code'} *
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleGenerateSku}
-                            className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline font-semibold cursor-pointer"
-                            title={isAr ? 'توليد كود SKU تلقائي' : 'Auto Generate SKU'}
+                  {/* Barcode + Inline Generate */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        {t('editProduct.barcode')}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateBarcode}
+                        title={t('editProduct.generateBarcodeTooltip')}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{t('editProduct.generate')}</span>
+                      </button>
+                    </div>
+                    <Input
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                      dir="ltr"
+                      placeholder={t('editProduct.barcodePlaceholder')}
+                      className="h-9 bg-background border-border font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* Category Picker */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground block">
+                      {t('editProduct.category')}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        {isCustomCategory ? (
+                          <Input
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            placeholder={t('editProduct.customCategoryPlaceholder')}
+                            required
+                            className="h-9 bg-background border-border text-xs"
+                          />
+                        ) : (
+                          <select
+                            value={category}
+                            onChange={(e) => {
+                              if (e.target.value === '__custom__') {
+                                setIsCustomCategory(true);
+                                setCategory('');
+                              } else {
+                                setCategory(e.target.value);
+                              }
+                            }}
+                            className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer"
                           >
-                            <RefreshCw className="w-3 h-3" />
-                            <span>{isAr ? 'توليد' : 'Generate'}</span>
-                          </button>
-                        </div>
-                        <Input
-                          value={sku}
-                          onChange={(e) => setSku(e.target.value)}
-                          required
-                          dir="ltr"
-                          placeholder="PRD-1001"
-                          className="h-9 bg-background border-border/80 px-2.5 font-mono text-xs font-bold text-foreground"
-                        />
-                      </div>
-
-                      {/* Barcode Field with Auto-Generate */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-foreground/80 block">
-                            {isAr ? 'الباركود الدولي' : 'Barcode'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleGenerateBarcode}
-                            className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline font-semibold cursor-pointer"
-                            title={isAr ? 'توليد باركود دولي' : 'Auto Generate Barcode'}
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            <span>{isAr ? 'توليد' : 'Generate'}</span>
-                          </button>
-                        </div>
-                        <Input
-                          value={barcode}
-                          onChange={(e) => setBarcode(e.target.value)}
-                          dir="ltr"
-                          placeholder="628100..."
-                          className="h-9 bg-background border-border/80 px-2.5 font-mono text-xs font-medium text-foreground"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Category Selection with Custom Toggle */}
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-foreground/80 block">
-                        {isAr ? 'التصنيف / العائلة المخزنية' : 'Category'} *
-                      </span>
-                      <div className="flex gap-2 items-center">
-                        <div className="flex-1 min-w-0">
-                          {isCustomCategory ? (
-                            <Input
-                              value={category}
-                              onChange={(e) => setCategory(e.target.value)}
-                              placeholder={isAr ? 'أدخل اسم التصنيف الجديد...' : 'Category name...'}
-                              required
-                              className="h-9 bg-background border-border/80 px-2.5 text-xs font-medium"
-                            />
-                          ) : (
-                            <select
-                              value={category}
-                              onChange={(e) => {
-                                if (e.target.value === '__custom__') {
-                                  setIsCustomCategory(true);
-                                  setCategory('');
-                                } else {
-                                  setCategory(e.target.value);
-                                }
-                              }}
-                              className="w-full h-9 rounded-lg border border-border/80 bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
-                            >
-                              {categoriesList.map((c) => (
-                                <option key={c.id || c.name} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                              <option value="__custom__">{isAr ? '+ تصنيف مخصص...' : '+ Custom Category...'}</option>
-                            </select>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setIsCustomCategory(!isCustomCategory);
-                            if (isCustomCategory && categoriesList.length > 0) {
-                              setCategory(categoriesList[0].name);
-                            }
-                          }}
-                          className="h-9 px-2.5 text-xs font-semibold shrink-0 gap-1.5"
-                        >
-                          <List className="w-3.5 h-3.5" />
-                          <span>{isCustomCategory ? (isAr ? 'من القائمة' : 'From List') : (isAr ? 'مخصص' : 'Custom')}</span>
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Unit of Measure & Primary Warehouse Grid */}
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {/* Unit of Measure */}
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-semibold text-foreground/80 block">
-                          {isAr ? 'وحدة القياس' : 'Unit'} *
-                        </span>
-                        <select
-                          value={unit}
-                          onChange={(e) => setUnit(e.target.value)}
-                          className="w-full h-9 rounded-lg border border-border/80 bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
-                        >
-                          <option value="قطعة">{isAr ? 'قطعة (Piece)' : 'Piece'}</option>
-                          <option value="كجم">{isAr ? 'كجم (كيلوغرام)' : 'Kg (Scale)'}</option>
-                          <option value="غرام">{isAr ? 'غرام (Gram)' : 'Gram'}</option>
-                          <option value="صندوق">{isAr ? 'صندوق (Box)' : 'Box'}</option>
-                          <option value="طرد">{isAr ? 'طرد (Package)' : 'Package'}</option>
-                          <option value="بكرة">{isAr ? 'بكرة (Roll)' : 'Roll'}</option>
-                          <option value="متر">{isAr ? 'متر (Meter)' : 'Meter'}</option>
-                        </select>
-                      </div>
-
-                      {/* Primary Warehouse */}
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-semibold text-foreground/80 block">
-                          {isAr ? 'المستودع المعتمد' : 'Warehouse'}
-                        </span>
-                        <select
-                          value={warehouseId}
-                          onChange={(e) => setWarehouseId(e.target.value)}
-                          className="w-full h-9 rounded-lg border border-border/80 bg-background px-2 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors cursor-pointer"
-                        >
-                          {warehouses.length === 0 ? (
-                            <option value="">{isAr ? 'لا توجد مستودعات' : 'No warehouses'}</option>
-                          ) : (
-                            warehouses.map((w) => (
-                              <option key={w.id} value={w.id}>
-                                {localizeWarehouse(w.nameAr || w.id, lang)}
+                            {categoriesList.map((c) => (
+                              <option key={c.id || c.name} value={c.name}>
+                                {c.name}
                               </option>
-                            ))
-                          )}
-                        </select>
+                            ))}
+                            <option value="__custom__">{t('editProduct.customCategoryOption')}</option>
+                          </select>
+                        )}
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsCustomCategory(!isCustomCategory);
+                          if (isCustomCategory && categoriesList.length > 0) {
+                            setCategory(categoriesList[0].name);
+                          }
+                        }}
+                        className="h-9 px-2.5 text-xs font-medium shrink-0 gap-1"
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        <span>{isCustomCategory ? t('editProduct.fromList') : t('editProduct.custom')}</span>
+                      </Button>
                     </div>
+                  </div>
+
+                  {/* Unit of Measure */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground block">
+                      {t('editProduct.unit')}
+                    </label>
+                    <select
+                      value={unit}
+                      onChange={(e) => setUnit(e.target.value)}
+                      className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer"
+                    >
+                      <option value="قطعة">{t('editProduct.unitPiece')}</option>
+                      <option value="كجم">{t('editProduct.unitKg')}</option>
+                      <option value="غرام">{t('editProduct.unitGram')}</option>
+                      <option value="صندوق">{t('editProduct.unitBox')}</option>
+                      <option value="طرد">{t('editProduct.unitPackage')}</option>
+                      <option value="بكرة">{t('editProduct.unitRoll')}</option>
+                      <option value="متر">{t('editProduct.unitMeter')}</option>
+                    </select>
                   </div>
                 </div>
 
-                {/* Card 2: Stock Balance & Bin Location */}
-                <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs">
-                  <div className="flex items-center gap-2 text-xs font-bold text-foreground/90 pb-1 border-b border-border/50">
-                    <Boxes className="w-3.5 h-3.5 text-primary" />
-                    <span>{isAr ? 'المخزون الفعلي والموقع' : 'Stock & Location'}</span>
+                {/* Clean 3-Column Pricing Strip */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  {/* Cost Price with subtle lock icon tooltip */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <span>{t('editProduct.costPrice')} *</span>
+                        <span
+                          title={t('editProduct.costPriceHiddenTooltip')}
+                          className="inline-flex items-center text-muted-foreground cursor-help"
+                        >
+                          <Lock className="w-3 h-3" />
+                        </span>
+                      </label>
+                      <span className="text-[11px] font-mono text-muted-foreground">{effectiveCurrencySymbol}</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={costPrice || ''}
+                      onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
+                      required
+                      dir="ltr"
+                      className={`h-9 font-mono text-xs font-semibold tabular-nums ${
+                        isCostPriceInvalid
+                          ? 'border-destructive bg-red-500/5 text-destructive ring-1 ring-destructive'
+                          : 'bg-background border-border text-foreground'
+                      }`}
+                    />
                   </div>
 
-                  {/* Physical Stock Snapshot with Safety Alerts */}
-                  <div className={`p-2.5 rounded-lg border transition-all ${
-                    isBelowSafety 
-                      ? (isOutOfStock ? 'bg-destructive/10 border-destructive/30' : 'bg-amber-500/10 border-amber-500/30') 
-                      : 'bg-muted/40 border-border/70'
-                  }`}>
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-foreground">
-                          {isAr ? 'رصيد المخزون الفعلي' : 'On-Hand Stock'}
-                        </span>
-                        <span className="text-[10px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 px-1.5 py-0.2 rounded">
-                          {isAr ? 'للقراءة فقط' : 'Read-only'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-background border border-border/80 shadow-2xs">
-                        <span className={`text-xs font-mono font-bold ${isBelowSafety ? (isOutOfStock ? 'text-destructive' : 'text-amber-600 dark:text-amber-400') : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {currentStockVal}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-medium">
-                          {product.unit || (isAr ? 'قطعة' : 'Unit')}
-                        </span>
-                      </div>
+                  {/* Selling Price */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        {t('editProduct.sellingPrice')} *
+                      </label>
+                      <span className="text-[11px] font-mono text-muted-foreground">{effectiveCurrencySymbol}</span>
                     </div>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={sellingPrice || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSellingPrice(val);
+                        if (minSellingPrice === Math.round(sellingPrice * 0.88) || minSellingPrice === 0) {
+                          setMinSellingPrice(Math.round(val * 0.88));
+                        }
+                      }}
+                      required
+                      dir="ltr"
+                      className={`h-9 font-mono text-xs font-semibold tabular-nums ${
+                        isSellingPriceInvalid
+                          ? 'border-destructive bg-red-500/5 text-destructive ring-1 ring-destructive'
+                          : 'bg-background border-border text-foreground'
+                      }`}
+                    />
+                  </div>
 
-                    {isBelowSafety && (
-                      <div className={`flex items-center gap-1.5 text-[10.5px] font-bold py-1 px-2 rounded mb-1.5 ${
-                        isOutOfStock ? 'bg-destructive/15 text-destructive' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                      }`}>
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                        <span>
-                          {isOutOfStock 
-                            ? (isAr ? 'نفاد تام من المخزون (0 رصيد) - يتطلب توريداً' : 'Out of stock - Reorder urgently')
-                            : (isAr ? 'المخزون تحت حد الأمان - يتطلب إعادة طلب' : 'Stock below safety reorder threshold')}
-                        </span>
-                      </div>
-                    )}
+                  {/* Min Selling Price */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        {t('editProduct.minSellingPrice')} *
+                      </label>
+                      <span className="text-[11px] font-mono text-muted-foreground">{effectiveCurrencySymbol}</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={minSellingPrice || ''}
+                      onChange={(e) => setMinSellingPrice(parseFloat(e.target.value) || 0)}
+                      required
+                      dir="ltr"
+                      className={`h-9 font-mono text-xs font-semibold tabular-nums ${
+                        isMinPriceInvalid
+                          ? 'border-destructive bg-red-500/5 text-destructive ring-1 ring-destructive'
+                          : 'bg-background border-border text-foreground'
+                      }`}
+                    />
+                  </div>
+                </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] text-muted-foreground m-0 leading-tight">
-                        {isAr 
-                          ? 'التعديل المباشر مقفول نظامياً لضمان سلامة التدقيق.' 
-                          : 'Locked for ledger audit integrity.'}
-                      </p>
-                      {onOpenAdjustment && (
-                        <Button
+                {/* Compact 1-Line Profit Summary Bar */}
+                <div
+                  className="bg-muted/50 border border-border rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-sm"
+                  style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 50%, transparent)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('editProduct.netProfit')}
+                    </span>
+                    <span
+                      className={`font-mono font-bold tabular-nums ${
+                        unitProfit < 0
+                          ? 'text-destructive'
+                          : 'text-foreground'
+                      }`}
+                    >
+                      {formatMoney(unitProfit)}
+                    </span>
+                    <span
+                      dir="ltr"
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-bold tabular-nums ${
+                        unitProfit < 0
+                          ? 'bg-red-500/10 text-destructive'
+                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      {unitProfit >= 0 ? `+${marginPercent}%` : `${marginPercent}%`}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('editProduct.discountCeiling')}
+                    </span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">
+                      {formatMoney(discountBuffer)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: Stock & Location */}
+            {activeTab === 'STOCK' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Warehouse Dropdown */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground block">
+                      {t('editProduct.warehouse')}
+                    </label>
+                    <select
+                      value={warehouseId}
+                      onChange={(e) => setWarehouseId(e.target.value)}
+                      className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer"
+                    >
+                      {warehouses.length === 0 ? (
+                        <option value="">{t('editProduct.noWarehouses')}</option>
+                      ) : (
+                        warehouses.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {localizeWarehouse(w.nameAr || w.id, lang)}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Shelf Selector */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">
+                        {t('editProduct.shelfLocation')}
+                      </label>
+                      {warehouseShelves.length > 0 && (
+                        <button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onOpenAdjustment(product)}
-                          className="h-7 px-2 text-[11px] font-bold text-primary border-primary/30 bg-primary/5 hover:bg-primary/10 gap-1 shrink-0"
+                          onClick={() => {
+                            const nextCustom = !isCustomShelf;
+                            setIsCustomShelf(nextCustom);
+                            if (!nextCustom && warehouseShelves.length > 0) {
+                              const first = warehouseShelves[0];
+                              setShelf(first.code || first.name);
+                            }
+                          }}
+                          className="text-[11px] font-medium text-primary hover:underline bg-transparent border-0 p-0 cursor-pointer"
                         >
-                          <SlidersHorizontal className="w-3 h-3" />
-                          <span>{isAr ? 'تسوية مخزنية' : 'Adjustment'}</span>
-                        </Button>
+                          {isCustomShelf ? t('editProduct.fromList') : t('editProduct.custom')}
+                        </button>
                       )}
                     </div>
-                  </div>
 
-                  {/* Safety Alert & Shelf Grid */}
-                  <div className="grid grid-cols-2 gap-3 pt-0.5">
-                    {/* Safety Reorder Point */}
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-foreground/80 block">
-                        {isAr ? 'حد تنبيه الأمان' : 'Safety Alert'}
-                      </span>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          value={minStockAlert}
-                          onChange={(e) => setMinStockAlert(parseInt(e.target.value) || 0)}
-                          className="font-mono font-bold text-xs h-9 bg-background border-border/80 px-2.5"
-                        />
-                        <ShieldAlert className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
-                      </div>
-                    </div>
-
-                    {/* Shelf Location */}
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-foreground/80 block">
-                        {isAr ? 'الموقع والرف' : 'Shelf & Bin'}
-                      </span>
+                    {warehouseShelves.length > 0 && !isCustomShelf ? (
+                      <select
+                        value={shelf}
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            setIsCustomShelf(true);
+                          } else {
+                            setShelf(e.target.value);
+                          }
+                        }}
+                        className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer"
+                      >
+                        {warehouseShelves.map((s) => {
+                          const val = s.code || s.name;
+                          const label = s.code && s.name && s.code !== s.name
+                            ? `${s.name} (${s.code})`
+                            : val;
+                          return (
+                            <option key={s.id} value={val}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                        <option value="__custom__">{t('editProduct.customShelfOption')}</option>
+                      </select>
+                    ) : (
                       <div className="relative">
                         <Input
                           type="text"
                           value={shelf}
                           onChange={(e) => setShelf(e.target.value)}
-                          placeholder="A-01, B-03..."
-                          className="font-mono font-bold text-xs h-9 bg-background border-border/80 px-2.5"
+                          placeholder={t('editProduct.shelfPlaceholder')}
+                          dir="ltr"
+                          className="h-9 bg-background border-border font-mono text-xs font-semibold"
                         />
                         <MapPin className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Conditional Serial & Warranty Fields (Shown ONLY when EnableSerialTrackingModule is active) */}
-                  {isSerialModuleEnabled && (
-                    <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-2.5 mt-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <span className="text-xs font-bold text-foreground block">
-                            {getTranslation(localeKey, 'serialTracking.requiresSerialTracking')}
-                          </span>
-                          <span className="text-[10.5px] text-muted-foreground block">
-                            {getTranslation(localeKey, 'serialTracking.warrantyStartsOnSaleHint')}
-                          </span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={requiresSerialNumber}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setRequiresSerialNumber(checked);
-                            if (checked && warrantyMonths === 0) {
-                              setWarrantyMonths(12);
-                            }
-                          }}
-                          className="h-4 w-4 accent-primary cursor-pointer"
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex-1 min-w-[120px] space-y-1">
-                          <span className="text-[11px] font-semibold text-foreground/80 block">
-                            {getTranslation(localeKey, 'serialTracking.warrantyMonthsLabel')}
-                          </span>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="120"
-                            value={warrantyMonths}
-                            onChange={(e) => setWarrantyMonths(Math.max(0, Number(e.target.value) || 0))}
-                            className="font-mono font-bold text-xs h-8 bg-background border-border/80 px-2.5"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1 pt-4">
-                          {[0, 6, 12, 24].map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => setWarrantyMonths(m)}
-                              className={`px-2 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-colors ${
-                                warrantyMonths === m
-                                  ? 'bg-primary text-primary-foreground border-primary'
-                                  : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                              }`}
-                            >
-                              {m === 0
-                                ? getTranslation(localeKey, 'serialTracking.noWarranty')
-                                : `${m} ${getTranslation(localeKey, 'serialTracking.monthUnit')}`}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Column 2: 3-Tier Pricing Architecture & Margin Analysis */}
-              <div className="space-y-3.5">
-                {/* Card 1: 3-Tier Pricing Architecture */}
-                <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-3 shadow-2xs">
-                  <div className="flex items-center justify-between text-xs font-bold text-foreground/90 pb-1 border-b border-border/50">
-                    <div className="flex items-center gap-1.5">
-                      <CreditCard className="w-3.5 h-3.5 text-primary" />
-                      <span>{isAr ? 'نظام التسعير وحماية الهامش' : '3-Tier Pricing & Margin Safety'}</span>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                      <ShieldCheck className="w-3 h-3" />
-                      {isAr ? 'محجوب عن الكاشير' : 'Secret from Cashier'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {/* 1. Cost Price (Secret) */}
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold flex items-center justify-between text-destructive">
-                        <span>{isAr ? '1. سعر التكلفة (سري)' : '1. Cost Price (Secret)'} *</span>
-                        <span className="text-[10px] font-bold font-mono">{effectiveCurrencySymbol}</span>
-                      </span>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={costPrice || ''}
-                          onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                          required
-                          className={`font-mono font-bold text-xs h-9 px-2.5 ${
-                            isCostPriceInvalid
-                              ? 'border-destructive bg-destructive/5 text-destructive ring-1 ring-destructive'
-                              : 'bg-background border-border/80 text-foreground'
-                          }`}
-                        />
-                        <Lock className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
-                      </div>
-                      <span className="text-[10px] text-muted-foreground block">
-                        {isAr ? 'محمي تماماً ومحجوب عن موظفي المبيعات' : 'Never exposed to sales or cashiers'}
-                      </span>
-                    </div>
-
-                    {/* Pricing Grid: Retail & Floor Price */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* 2. Official Retail Price */}
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-semibold flex items-center justify-between text-emerald-600 dark:text-emerald-400">
-                          <span>{isAr ? '2. سعر البيع الرسمي' : '2. Retail Price'} *</span>
-                          <span className="text-[10px] font-bold font-mono">{effectiveCurrencySymbol}</span>
-                        </span>
-                        <div className="relative">
-                          <Input
-                            type="number"
-                            step="any"
-                            min="0"
-                            value={sellingPrice || ''}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setSellingPrice(val);
-                              if (minSellingPrice === Math.round(sellingPrice * 0.88) || minSellingPrice === 0) {
-                                setMinSellingPrice(Math.round(val * 0.88));
-                              }
-                            }}
-                            required
-                            className={`font-mono font-bold text-xs h-9 px-2.5 ${
-                              isSellingPriceInvalid
-                                ? 'border-destructive bg-destructive/5 text-destructive ring-1 ring-destructive'
-                                : 'bg-background border-border/80 text-foreground'
-                            }`}
-                          />
-                          <Tag className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
-                        </div>
-                        <span className={`text-[10px] block ${isSellingPriceInvalid ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-                          {isSellingPriceInvalid
-                            ? (isAr ? 'أقل من التكلفة' : 'Below cost')
-                            : (isAr ? 'السعر الافتراضي للزبون' : 'Default customer price')}
-                        </span>
-                      </div>
-
-                      {/* 3. Floor Price */}
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-semibold flex items-center justify-between text-amber-600 dark:text-amber-400">
-                          <span>{isAr ? '3. أقل سعر مسموح' : '3. Floor Price'} *</span>
-                          <span className="text-[10px] font-bold font-mono">{effectiveCurrencySymbol}</span>
-                        </span>
-                        <div className="relative">
-                          <Input
-                            type="number"
-                            step="any"
-                            min="0"
-                            value={minSellingPrice || ''}
-                            onChange={(e) => setMinSellingPrice(parseFloat(e.target.value) || 0)}
-                            required
-                            className={`font-mono font-bold text-xs h-9 px-2.5 ${
-                              isMinPriceInvalid
-                                ? 'border-destructive bg-destructive/5 text-destructive ring-1 ring-destructive'
-                                : 'bg-background border-border/80 text-foreground'
-                            }`}
-                          />
-                          <ShieldCheck className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
-                        </div>
-                        <span className={`text-[10px] block ${isMinPriceInvalid ? 'text-destructive font-semibold' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {isMinPriceInvalid
-                            ? (isAr ? 'أقل من التكلفة' : 'Below cost')
-                            : (isAr ? 'سقف المكاسرة للكاشير' : 'Cashier floor limit')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card 2: Estimated Margin & Profitability Metrics */}
-                <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2.5 shadow-2xs">
-                  <div className="flex items-center justify-between text-xs font-bold text-foreground/90 pb-1 border-b border-border/50">
-                    <div className="flex items-center gap-1.5">
-                      <TrendingUp className="w-3.5 h-3.5 text-primary" />
-                      <span>{isAr ? 'مؤشرات الهامش والربحية التقديرية' : 'Estimated Margin & Profitability'}</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {/* Unit Profit */}
-                    <div className="p-2.5 rounded-lg bg-muted/30 border border-border/70 flex flex-col justify-between">
-                      <span className="text-[10.5px] font-semibold text-muted-foreground">
-                        {isAr ? 'هامش الربح الاسمي للقطعة' : 'Nominal Unit Profit'}
-                      </span>
-                      <div className="flex items-baseline justify-between mt-1">
-                        <span className={`text-xs font-mono font-extrabold ${costPrice >= sellingPrice ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {(sellingPrice - costPrice).toLocaleString()} {effectiveCurrencySymbol}
-                        </span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${costPrice >= sellingPrice ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
-                          %{marginPercent}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Cashier Discount Buffer */}
-                    <div className="p-2.5 rounded-lg bg-muted/30 border border-border/70 flex flex-col justify-between">
-                      <span className="text-[10.5px] font-semibold text-muted-foreground">
-                        {isAr ? 'سقف خصم الكاشير المتاح' : 'Cashier Discount Buffer'}
-                      </span>
-                      <div className="flex items-baseline justify-between mt-1">
-                        <span className="text-xs font-mono font-extrabold text-amber-600 dark:text-amber-400">
-                          {discountBuffer.toLocaleString()} {effectiveCurrencySymbol}
-                        </span>
-                        <span className="text-[10px] font-semibold text-muted-foreground">
-                          {isAr ? 'حد التفاوض' : 'Limit'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Profit Balance Indicator */}
-                  <div className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border/60">
-                    <span className="text-muted-foreground font-medium">
-                      {isAr ? 'حالة التوازن المالي للصنف:' : 'Financial Health:'}
-                    </span>
-                    {hasPricingViolation ? (
-                      <span className="text-destructive font-bold flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        {isAr ? 'خلل تسعيري حرج' : 'Critical Pricing Flaw'}
-                      </span>
-                    ) : (sellingPrice - costPrice) / (costPrice || 1) >= 0.2 ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        {isAr ? 'هامش ربح صحي ومستقر' : 'Healthy Profit Margin'}
-                      </span>
-                    ) : (
-                      <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
-                        <ShieldAlert className="w-3 h-3" />
-                        {isAr ? 'هامش ربح منخفض' : 'Low Margin Warning'}
-                      </span>
                     )}
                   </div>
+
+                  {/* Reorder Level */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-xs font-semibold text-foreground block">
+                      {t('editProduct.reorderLevel')}
+                    </label>
+                    <div className="relative sm:max-w-[calc(50%-0.5rem)]">
+                      <Input
+                        type="number"
+                        min="0"
+                        value={minStockAlert}
+                        onChange={(e) => setMinStockAlert(parseInt(e.target.value) || 0)}
+                        dir="ltr"
+                        className="h-9 bg-background border-border font-mono text-xs font-semibold tabular-nums"
+                      />
+                      <ShieldAlert className="w-3.5 h-3.5 absolute end-2.5 top-2.5 text-muted-foreground pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Collapsible Card 3: Quantity Pricing Tiers */}
-                <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !isTiersOpen;
-                      setIsTiersOpen(next);
-                      if (next && tierDrafts.length === 0) {
-                        setTierDrafts([{ minQty: '2', maxQty: '', unitPrice: sellingPrice > 0 ? String(Math.round(sellingPrice * 0.9 * 100) / 100) : '' }]);
-                      }
-                    }}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-bold text-foreground bg-transparent border-0 cursor-pointer hover:bg-muted/30 transition-colors"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-primary" />
-                      <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionTitle')}</span>
-                      {tierDrafts.length > 0 && (
-                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-primary/10 text-primary">
-                          {tierDrafts.length}
-                        </span>
-                      )}
+                {/* Clean Read-Only Stock Status Row */}
+                <div
+                  className="bg-muted/50 border border-border rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3"
+                  style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 50%, transparent)' }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('editProduct.currentStockLabel')}:
                     </span>
-                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isTiersOpen ? 'rotate-180' : ''}`} />
-                  </button>
+                    <span
+                      className={`text-sm font-mono font-bold tabular-nums ${
+                        isBelowSafety
+                          ? (isOutOfStock ? 'text-destructive' : 'text-amber-600 dark:text-amber-400')
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      {currentStockVal} {displayUnit}
+                    </span>
+                  </div>
 
-                  {isTiersOpen && (
-                    <div className="px-3.5 pb-3.5 pt-2 border-t border-border/50 space-y-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10.5px] text-muted-foreground">
-                          {getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.sectionHint')}
+                  {onOpenAdjustment && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onOpenAdjustment(product)}
+                      className="h-8 px-3 text-xs font-semibold gap-1.5"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span>{t('editProduct.stockAdjustment')}</span>
+                    </Button>
+                  )}
+                </div>
+
+                {/* Conditional Serial & Warranty Fields (Shown ONLY when EnableSerialTrackingModule is active) */}
+                {isSerialModuleEnabled && (
+                  <div
+                    className="rounded-lg border border-border bg-muted/50 p-3.5 space-y-3"
+                    style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 35%, transparent)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-semibold text-foreground block">
+                          {t('serialTracking.requiresSerialTracking')}
                         </span>
+                        <span className="text-[11px] text-muted-foreground block">
+                          {t('serialTracking.warrantyStartsOnSaleHint')}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={requiresSerialNumber}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setRequiresSerialNumber(checked);
+                          if (checked && warrantyMonths === 0) {
+                            setWarrantyMonths(12);
+                          }
+                        }}
+                        className="h-4 w-4 accent-primary cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="flex-1 min-w-[120px] space-y-1">
+                        <label className="text-xs font-semibold text-foreground block">
+                          {t('serialTracking.warrantyMonthsLabel')}
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={warrantyMonths}
+                          onChange={(e) => setWarrantyMonths(Math.max(0, Number(e.target.value) || 0))}
+                          dir="ltr"
+                          className="font-mono font-semibold text-xs h-8 bg-background border-border tabular-nums"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[0, 6, 12, 24].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setWarrantyMonths(m)}
+                            className={`px-2 py-1 rounded text-[11px] font-mono font-semibold border cursor-pointer transition-colors ${
+                              warrantyMonths === m
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                            }`}
+                          >
+                            {m === 0
+                              ? t('serialTracking.noWarranty')
+                              : `${m} ${t('serialTracking.monthUnit')}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: Volume Pricing */}
+            {activeTab === 'TIERS' && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {t('quantityPricing.sectionHint')}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (tierDrafts.length === 0) {
+                        setTierDrafts([
+                          {
+                            minQty: '2',
+                            maxQty: '',
+                            unitPrice: sellingPrice > 0 ? String(Math.round(sellingPrice * 0.9 * 100) / 100) : ''
+                          }
+                        ]);
+                      } else {
+                        const last = tierDrafts[tierDrafts.length - 1];
+                        const lastMax = last?.maxQty ? Number(last.maxQty) : 0;
+                        const lastMin = last?.minQty ? Number(last.minQty) : 2;
+                        const nextMin = lastMax >= lastMin ? lastMax + 1 : lastMin + 5;
+                        setTierDrafts([...tierDrafts, { minQty: String(nextMin), maxQty: '', unitPrice: '' }]);
+                      }
+                      setTierError('');
+                    }}
+                    className="h-8 px-3 text-xs font-semibold gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t('quantityPricing.addTierRange')}</span>
+                  </Button>
+                </div>
+
+                {tierDrafts.length === 0 ? (
+                  <div
+                    className="bg-muted/50 border border-border rounded-lg px-4 py-8 text-center text-xs text-muted-foreground"
+                    style={{ backgroundColor: 'color-mix(in oklch, var(--muted) 40%, transparent)' }}
+                  >
+                    {t('editProduct.volumePricingEmpty')}
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-[1fr_1fr_1.15fr_32px] gap-2 text-xs font-semibold text-muted-foreground px-0.5">
+                      <span>{t('quantityPricing.fromQty')}</span>
+                      <span>{t('quantityPricing.toQty')}</span>
+                      <span>{t('quantityPricing.unitPrice')}</span>
+                      <span />
+                    </div>
+
+                    {tierDrafts.map((row, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_1.15fr_32px] gap-2 items-center">
+                        <Input
+                          type="number"
+                          min="2"
+                          step="1"
+                          value={row.minQty}
+                          onChange={e => {
+                            const next = [...tierDrafts];
+                            next[idx].minQty = e.target.value;
+                            setTierDrafts(next);
+                            setTierError('');
+                          }}
+                          dir="ltr"
+                          className="font-mono font-semibold text-xs h-9 bg-background border-border tabular-nums"
+                        />
+                        <Input
+                          type="number"
+                          min={Number(row.minQty) || 2}
+                          step="1"
+                          placeholder={t('quantityPricing.toQtyOptional')}
+                          value={row.maxQty}
+                          onChange={e => {
+                            const next = [...tierDrafts];
+                            next[idx].maxQty = e.target.value;
+                            setTierDrafts(next);
+                            setTierError('');
+                          }}
+                          dir="ltr"
+                          className="font-mono text-xs h-9 bg-background border-border tabular-nums"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={row.unitPrice}
+                          onChange={e => {
+                            const next = [...tierDrafts];
+                            next[idx].unitPrice = e.target.value;
+                            setTierDrafts(next);
+                            setTierError('');
+                          }}
+                          dir="ltr"
+                          className="font-mono font-semibold text-xs h-9 bg-background border-border tabular-nums"
+                        />
                         <button
                           type="button"
                           onClick={() => {
-                            const last = tierDrafts[tierDrafts.length - 1];
-                            const lastMax = last?.maxQty ? Number(last.maxQty) : 0;
-                            const lastMin = last?.minQty ? Number(last.minQty) : 2;
-                            const nextMin = lastMax >= lastMin ? lastMax + 1 : lastMin + 5;
-                            setTierDrafts([...tierDrafts, { minQty: String(nextMin), maxQty: '', unitPrice: '' }]);
+                            setTierDrafts(tierDrafts.filter((_, i) => i !== idx));
+                            setTierError('');
                           }}
-                          className="btn-clean-secondary py-1 px-2 text-[10.5px]"
+                          className="w-8 h-9 flex items-center justify-center rounded-lg bg-transparent border border-transparent text-destructive hover:bg-red-500/10 cursor-pointer transition-colors"
                         >
-                          <Plus size={11} />
-                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.addTierRange')}</span>
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
+                    ))}
+                  </div>
+                )}
 
-                      {tierDrafts.length > 0 && (
-                        <div className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-1.5 text-[10px] font-semibold text-muted-foreground">
-                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.fromQty')}</span>
-                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQty')}</span>
-                          <span>{getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.unitPrice')}</span>
-                          <span />
-                        </div>
-                      )}
-
-                      {tierDrafts.map((row, idx) => (
-                        <div key={idx} className="grid grid-cols-[1fr_1fr_1.1fr_28px] gap-1.5 items-center">
-                          <Input
-                            type="number"
-                            min="2"
-                            step="1"
-                            value={row.minQty}
-                            onChange={e => {
-                              const next = [...tierDrafts];
-                              next[idx].minQty = e.target.value;
-                              setTierDrafts(next);
-                              setTierError('');
-                            }}
-                            className="font-mono font-bold text-xs h-8 px-2 tabular-nums"
-                          />
-                          <Input
-                            type="number"
-                            min={Number(row.minQty) || 2}
-                            step="1"
-                            placeholder={getTranslation(lang === 'en' ? 'en' : 'ar', 'quantityPricing.toQtyOptional')}
-                            value={row.maxQty}
-                            onChange={e => {
-                              const next = [...tierDrafts];
-                              next[idx].maxQty = e.target.value;
-                              setTierDrafts(next);
-                              setTierError('');
-                            }}
-                            className="font-mono text-xs h-8 px-2 tabular-nums"
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={row.unitPrice}
-                            onChange={e => {
-                              const next = [...tierDrafts];
-                              next[idx].unitPrice = e.target.value;
-                              setTierDrafts(next);
-                              setTierError('');
-                            }}
-                            className="font-mono font-bold text-xs h-8 px-2 tabular-nums"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTierDrafts(tierDrafts.filter((_, i) => i !== idx));
-                              setTierError('');
-                            }}
-                            className="w-7 h-8 flex items-center justify-center rounded bg-transparent border-0 text-destructive hover:bg-destructive/10 cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))}
-
-                      {tierError && (
-                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-[11px] font-medium">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>{tierError}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {tierError && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/25 text-destructive text-xs font-medium">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tierError}</span>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Modal Action Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-border bg-muted/30 shrink-0">
+          {/* Sticky Modal Footer */}
+          <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-border bg-card shrink-0">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
               className="h-9 px-4 text-xs font-semibold"
             >
-              {isAr ? 'إلغاء' : 'Cancel'}
+              {t('editProduct.cancel')}
             </Button>
 
             <Button
@@ -1002,7 +1048,7 @@ export default function EditProductModal({
               className="h-9 px-5 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm flex items-center gap-2"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isAr ? 'حفظ التعديلات في النظام' : 'Save Changes'}</span>
+              <span>{t('editProduct.saveChanges')}</span>
             </Button>
           </div>
         </form>

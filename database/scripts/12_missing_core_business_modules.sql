@@ -492,7 +492,7 @@ END $$;
 -- 9. Register Granular Permissions in permissions table
 -- ----------------------------------------------------------------------------
 
-INSERT INTO permissions (id, code, module, name_ar, name_en, description_ar, description_en)
+INSERT INTO permissions (id, code, group_name, name_ar, name_en, description_ar, description_en)
 VALUES
     -- Operational Expenses
     (gen_random_uuid(), 'treasury.expenses.view', 'Treasury & Cash Management', 'عرض المصروفات التشغيلية', 'View Operational Expenses', 'عرض سندات وقوائم وتصنيفات المصروفات التشغيلية', 'View operational expense vouchers and categories'),

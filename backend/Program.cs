@@ -40,6 +40,35 @@ var rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
 
 var connectionString = ParsePostgreSqlConnectionString(rawConnectionString);
 
+const string EntityAlignmentScript = "24_entity_model_alignment.sql";
+
+// Adds tables/columns the entity model maps but older scripts never created. Idempotent.
+void RunEntityAlignmentScript(ILogger logger)
+{
+    var path = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "database", "scripts", EntityAlignmentScript),
+        Path.Combine(AppContext.BaseDirectory, "..", "database", "scripts", EntityAlignmentScript),
+        Path.Combine(Directory.GetCurrentDirectory(), "database", "scripts", EntityAlignmentScript),
+        Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "scripts", EntityAlignmentScript)
+    }.FirstOrDefault(File.Exists);
+    if (path == null) return;
+    try { ExecRaw(File.ReadAllText(path)); }
+    catch (Exception ex) { logger.LogWarning(ex, "Entity model alignment script failed."); }
+}
+
+// Runs raw SQL scripts directly through Npgsql. EF's ExecuteSqlRaw treats '{' and '}'
+// as format placeholders, which breaks scripts containing JSON literals or braces.
+void ExecRaw(string sql)
+{
+    using var conn = new Npgsql.NpgsqlConnection(connectionString);
+    conn.Open();
+    using var cmd = conn.CreateCommand();
+    cmd.CommandText = sql;
+    cmd.CommandTimeout = 300;
+    cmd.ExecuteNonQuery();
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
@@ -295,7 +324,7 @@ using (var scope = app.Services.CreateScope())
 
             try
             {
-                dbContext.Database.ExecuteSqlRaw(@"
+                ExecRaw(@"
                     CREATE TABLE IF NOT EXISTS warehouse_shelves (
                         id uuid PRIMARY KEY,
                         tenant_id uuid NULL,
@@ -319,21 +348,45 @@ using (var scope = app.Services.CreateScope())
 
             if (count == 0)
             {
-                logger.LogInformation("Database tables not found. Executing automatic initialization script...");
-                string[] searchPaths = 
+                logger.LogInformation("Database tables not found. Executing automatic initialization scripts...");
+                string? databaseDir = new[]
                 {
-                    Path.Combine(AppContext.BaseDirectory, "database", "render_full_init.sql"),
-                    Path.Combine(AppContext.BaseDirectory, "..", "database", "render_full_init.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "database", "render_full_init.sql"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database", "render_full_init.sql")
-                };
+                    Path.Combine(AppContext.BaseDirectory, "database"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "database"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "database"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "..", "database")
+                }.FirstOrDefault(d => File.Exists(Path.Combine(d, "render_full_init.sql")));
 
-                var foundPath = searchPaths.FirstOrDefault(File.Exists);
-                if (foundPath != null)
+                if (databaseDir != null)
                 {
-                    var sql = File.ReadAllText(foundPath);
-                    dbContext.Database.ExecuteSqlRaw(sql);
-                    logger.LogInformation("Database schema initialized successfully from {Path}!", foundPath);
+                    // Numbered migrations first, then the consolidated script. Some numbered
+                    // scripts depend on tables only the consolidated script creates, so any
+                    // script that fails on the first pass is retried once at the end.
+                    var scriptsDir = Path.Combine(databaseDir, "scripts");
+                    var ordered = (Directory.Exists(scriptsDir)
+                            ? Directory.GetFiles(scriptsDir, "*.sql")
+                                .Where(f => !f.EndsWith(EntityAlignmentScript, StringComparison.Ordinal))
+                                .OrderBy(f => f, StringComparer.Ordinal)
+                            : Enumerable.Empty<string>())
+                        .Append(Path.Combine(databaseDir, "render_full_init.sql"))
+                        .ToList();
+
+                    var failed = new List<string>();
+                    foreach (var file in ordered)
+                    {
+                        try { ExecRaw(File.ReadAllText(file)); }
+                        catch { failed.Add(file); }
+                    }
+                    foreach (var file in failed)
+                    {
+                        try { ExecRaw(File.ReadAllText(file)); }
+                        catch (Exception retryEx)
+                        {
+                            logger.LogWarning(retryEx, "Initialization script {Script} failed.", Path.GetFileName(file));
+                        }
+                    }
+                    RunEntityAlignmentScript(logger);
+                    logger.LogInformation("Database schema initialized from {Dir}.", databaseDir);
                 }
                 else
                 {
@@ -343,8 +396,9 @@ using (var scope = app.Services.CreateScope())
             else
             {
                 logger.LogInformation("Database schema is already initialized ({Count} tables verified).", count);
+                RunEntityAlignmentScript(logger);
                 // Idempotently ensure incremental columns exist on existing databases
-                dbContext.Database.ExecuteSqlRaw(@"
+                ExecRaw(@"
                     ALTER TABLE IF EXISTS warehouses
                         ADD COLUMN IF NOT EXISTS storage_type VARCHAR(30) NOT NULL DEFAULT 'Standard';
                     ALTER TABLE IF EXISTS products
@@ -354,11 +408,13 @@ using (var scope = app.Services.CreateScope())
                     ALTER TABLE IF EXISTS customers
                         ADD COLUMN IF NOT EXISTS tenant_id UUID,
                         ADD COLUMN IF NOT EXISTS price_list_id UUID;
+                    ALTER TABLE IF EXISTS users
+                        ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255) NULL;
                 ");
 
                 try
                 {
-                    dbContext.Database.ExecuteSqlRaw(@"
+                    ExecRaw(@"
                         CREATE TABLE IF NOT EXISTS warehouse_shelves (
                             id UUID PRIMARY KEY,
                             tenant_id UUID NULL,
@@ -412,7 +468,7 @@ using (var scope = app.Services.CreateScope())
                     logger.LogWarning(ex, "Warehouse shelves startup DDL reconciliation warning.");
                 }
 
-                dbContext.Database.ExecuteSqlRaw(@"
+                ExecRaw(@"
                     CREATE TABLE IF NOT EXISTS recurring_expenses (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         tenant_id UUID NULL,
@@ -449,7 +505,7 @@ using (var scope = app.Services.CreateScope())
                     if (scriptPath == null) return;
                     try
                     {
-                        dbContext.Database.ExecuteSqlRaw(File.ReadAllText(scriptPath));
+                        ExecRaw(File.ReadAllText(scriptPath));
                     }
                     catch (Exception scriptEx)
                     {
@@ -482,11 +538,11 @@ using (var scope = app.Services.CreateScope())
                 var recScriptPath = recScriptPaths.FirstOrDefault(File.Exists);
                 if (recScriptPath != null)
                 {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(recScriptPath));
+                    ExecRaw(File.ReadAllText(recScriptPath));
                 }
                 else
                 {
-                    dbContext.Database.ExecuteSqlRaw(@"
+                    ExecRaw(@"
                         CREATE TABLE IF NOT EXISTS recurring_expenses (
                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                             tenant_id UUID NULL,
@@ -521,7 +577,7 @@ using (var scope = app.Services.CreateScope())
             // Always ensure tenant subscription & backup columns + immutable audit_logs exist
             try
             {
-                dbContext.Database.ExecuteSqlRaw(@"
+                ExecRaw(@"
                     ALTER TABLE IF EXISTS tenants
                         ADD COLUMN IF NOT EXISTS plan_type INT NOT NULL DEFAULT 2,
                         ADD COLUMN IF NOT EXISTS billing_cycle_type INT NOT NULL DEFAULT 1,
@@ -572,12 +628,12 @@ using (var scope = app.Services.CreateScope())
                 var wsScriptPath2 = wsScriptPaths2.FirstOrDefault(File.Exists);
                 if (wsScriptPath2 != null)
                 {
-                    dbContext.Database.ExecuteSqlRaw(File.ReadAllText(wsScriptPath2));
+                    ExecRaw(File.ReadAllText(wsScriptPath2));
                 }
                 else
                 {
                     // Fallback: inline SQL if script file not found (e.g. on Render.com after publish)
-                    dbContext.Database.ExecuteSqlRaw(@"
+                    ExecRaw(@"
                         -- Fix warehouse_stock: add product_id, tenant_id, shelf_id columns
                         ALTER TABLE IF EXISTS warehouse_stock
                             ADD COLUMN IF NOT EXISTS product_id      UUID          NULL,

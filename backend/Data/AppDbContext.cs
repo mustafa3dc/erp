@@ -212,6 +212,12 @@ public class AppDbContext : DbContext
                 .HasColumnType("jsonb");
         });
 
+        // users.role is VARCHAR in the database (e.g. 'PlatformSuperAdmin'), so store the enum by name.
+        modelBuilder.Entity<User>()
+            .Property(u => u.Role)
+            .HasConversion<string>()
+            .HasMaxLength(50);
+
         modelBuilder.Entity<User>()
             .HasOne(u => u.Tenant)
             .WithMany(t => t.Users)

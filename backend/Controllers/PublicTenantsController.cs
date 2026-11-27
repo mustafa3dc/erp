@@ -171,6 +171,9 @@ public class PublicTenantsController : ControllerBase
             };
 
             await _dbContext.Tenants.AddAsync(tenant);
+            // Persist the tenant first: warehouses/cash_boxes have DB foreign keys to tenants
+            // that the EF model doesn't know about, so EF can't order these inserts itself.
+            await _dbContext.SaveChangesAsync();
 
             // Create Default Main Warehouse
             var warehouse = new ERP.Warehouse.Api.Models.Warehouse
@@ -188,6 +191,7 @@ public class PublicTenantsController : ControllerBase
             };
 
             await _dbContext.Warehouses.AddAsync(warehouse);
+            await _dbContext.SaveChangesAsync();
 
             // Create Default Cash Box
             var cashBox = new CashBox

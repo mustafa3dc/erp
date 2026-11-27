@@ -3,6 +3,8 @@ global using Permissions = ERP.Warehouse.Api.Domain.Constants.Permissions;
 namespace ERP.Warehouse.Api.Models;
 
 
+// The web dashboard compares roles as strings ('SuperAdmin', 'Cashier', ...).
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
 public enum UserRole
 {
     PlatformSuperAdmin,

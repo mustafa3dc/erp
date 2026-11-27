@@ -1952,7 +1952,7 @@ END $$;
 -- 9. Register Granular Permissions in permissions table
 -- ----------------------------------------------------------------------------
 
-INSERT INTO permissions (id, code, module, name_ar, name_en, description_ar, description_en)
+INSERT INTO permissions (id, code, group_name, name_ar, name_en, description_ar, description_en)
 VALUES
     -- Operational Expenses
     (gen_random_uuid(), 'treasury.expenses.view', 'Treasury & Cash Management', 'عرض المصروفات التشغيلية', 'View Operational Expenses', 'عرض سندات وقوائم وتصنيفات المصروفات التشغيلية', 'View operational expense vouchers and categories'),
@@ -2252,3 +2252,6 @@ CREATE INDEX IF NOT EXISTS ix_treasury_transactions_purchase_bill
 
 CREATE INDEX IF NOT EXISTS ix_treasury_transactions_supplier
     ON treasury_transactions (supplier_id);
+
+-- User avatar (mapped by User.AvatarUrl)
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(255) NULL;

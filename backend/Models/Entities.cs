@@ -1057,7 +1057,7 @@ public class Tenant
     [Column("features", TypeName = "jsonb")]
     public CompanyFeatures Features { get; set; } = new();
 
-    [Column("features_enabled")]
+    [Column("features_enabled", TypeName = "jsonb")]
     public string FeaturesEnabled { get; set; } = "{\"wms\": false, \"pos\": true}";
 
     [MaxLength(20)]
@@ -1386,7 +1386,7 @@ public class WarehouseDispatchOrder : ITenantEntity
     public string? CashierName { get; set; }
 
     [Required]
-    [Column("items_snapshot")]
+    [Column("items_snapshot", TypeName = "jsonb")]
     public string ItemsSnapshot { get; set; } = "[]";
 
     [Column("total_quantity")]

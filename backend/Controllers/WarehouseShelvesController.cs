@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 
@@ -26,6 +27,7 @@ public class AssignShelfItemsRequest
 
 public record ApiErrorResponse(bool Success, string ErrorCode, object? Details = null);
 
+[RequiresPlanFeature(PlanFeatureKeys.ShelvesOrganizer)]
 [ApiController]
 [Route("api/warehouses/{warehouseIdOrCode}/shelves")]
 [Route("api/v1/warehouses/{warehouseIdOrCode}/shelves")]

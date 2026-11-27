@@ -7,6 +7,8 @@ import { getStockForecastAnalytics, StockForecastPayload } from '../../services/
 import { getStoredAuthSession, getStoredProducts } from '../../services/storageService';
 import { getStoredTenants } from '../../services/tenantService';
 import { useSettings } from '../../context/settings-context';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
+import { getTranslation } from '../../lib/i18n';
 
 interface ReportsViewProps {
   lang: 'en' | 'ar';
@@ -54,15 +56,18 @@ const cleanDisplayText = (text?: string): string => {
 export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: ReportsViewProps) {
   const isAr = lang === 'ar';
   const { formatMoney, currencySymbol } = useSettings();
+  const { plan: contextPlan, canAccess, openUpgradeModal } = useTenantPlan();
 
   // Determine current effective tenant plan
-  const [effectivePlan, setEffectivePlan] = useState<'Starter' | 'Pro' | 'Enterprise'>('Pro');
+  const [effectivePlan, setEffectivePlan] = useState<'Starter' | 'Pro' | 'Enterprise'>(contextPlan);
   const [forecastData, setForecastData] = useState<StockForecastPayload | null>(null);
   const [loadingForecast, setLoadingForecast] = useState(false);
 
   useEffect(() => {
     if (tenantPlan) {
       setEffectivePlan(tenantPlan);
+    } else if (contextPlan) {
+      setEffectivePlan(contextPlan);
     } else {
       const session = getStoredAuthSession();
       const allTenants = getStoredTenants();
@@ -75,7 +80,7 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
         setEffectivePlan('Pro');
       }
     }
-  }, [tenantPlan]);
+  }, [tenantPlan, contextPlan]);
 
   useEffect(() => {
     if (effectivePlan === 'Pro' || effectivePlan === 'Enterprise') {
@@ -192,7 +197,13 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
         {onOpenAiAssistant && (
           <button 
             type="button" 
-            onClick={onOpenAiAssistant}
+            onClick={() => {
+              if (!canAccess('AiExecutiveAdvisor')) {
+                openUpgradeModal('Pro', 'AiExecutiveAdvisor');
+                return;
+              }
+              onOpenAiAssistant();
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 transition-all shadow-xs cursor-pointer select-none"
           >
             <Bot size={16} />
@@ -215,13 +226,14 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
               ? 'أنت تعمل حالياً على الباقة الأساسية. تتطلب ميزة التنبؤ بالطلب ورادار رأس المال المجمد الترقية إلى الباقة المتقدمة أو الفائقة.' 
               : 'You are currently on the Starter tier. AI demand prediction and stagnant inventory alerts require the Pro or Enterprise tier.'}
           </p>
-          <a
-            href="/pricing"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold transition-all shadow-xs"
+          <button
+            type="button"
+            onClick={() => openUpgradeModal('Pro', 'AiExecutiveAdvisor')}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <Sparkles size={14} />
             <span>{isAr ? 'ترقية الباقة وتفعيل رادار المخزون' : 'Upgrade Plan'}</span>
-          </a>
+          </button>
         </div>
       ) : (
         <div className="mb-7">
@@ -448,11 +460,22 @@ export default function ReportsView({ lang, onOpenAiAssistant, tenantPlan }: Rep
               <button 
                 type="button" 
                 className="btn-secondary-flat shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all cursor-pointer shadow-2xs" 
-                onClick={() => handleDownloadReport(r.title)}
+                onClick={() => {
+                  if (!canAccess('OfficialExportReports')) {
+                    openUpgradeModal('Enterprise', 'OfficialExportReports');
+                    return;
+                  }
+                  handleDownloadReport(r.title);
+                }}
                 title={isAr ? 'تنزيل ملف التقرير المعتمد' : 'Download CSV Report'}
               >
-                <Download size={14} />
+                {!canAccess('OfficialExportReports') ? <Lock size={13} /> : <Download size={14} />}
                 <span>{isAr ? 'تحميل التقرير (CSV)' : 'Download (CSV)'}</span>
+                {!canAccess('OfficialExportReports') && (
+                  <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-bold text-muted-foreground border border-border">
+                    {getTranslation(isAr ? 'ar' : 'en', 'ui.plans.pillEnterprise')}
+                  </span>
+                )}
               </button>
             </div>
           ))}

@@ -5,12 +5,14 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 using Erp.Application.Sales.Commands;
 
 namespace ERP.Warehouse.Api.Controllers;
 
+[RequiresPlanFeature(PlanFeatureKeys.Installments)]
 [ApiController]
 [Route("api/installments")]
 [Route("api/v1/installments")]

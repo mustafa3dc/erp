@@ -9,6 +9,7 @@ using ERP.Warehouse.Api.Services;
 namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.PartnersAndProfitShare)]
 [HasPermission(Permissions.Treasury.PartnersManage)]
 [ApiController]
 [Route("api/partners")]

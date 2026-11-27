@@ -15,11 +15,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Lock
 } from 'lucide-react';
 import { NavGroupDef, NAVIGATION_GROUPS, MAIN_DASHBOARD_ITEM, isFeatureAllowed } from '../../config/navigationSchema';
 import { UserProfile } from '../../types/rbac';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
 import { getStoredTransfers } from '../../services/storageService';
 import { getTranslation } from '../../lib/i18n';
 
@@ -74,6 +76,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 }) => {
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions(currentUser);
+  const { canAccess, getRequiredPlan, openUpgradeModal } = useTenantPlan();
   const [hoveredGroupKey, setHoveredGroupKey] = useState<string | null>(null);
   const [pinnedGroupKey, setPinnedGroupKey] = useState<string | null>(null);
   const pinnedGroupKeyRef = useRef<string | null>(null);
@@ -160,11 +163,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     const permittedGroups = NAVIGATION_GROUPS
       .filter(group => isFeatureAllowed(currentUser?.features, group.requiredFeature))
       .map(group => {
-        const permittedItems = group.items.filter(
-          item =>
-            isFeatureAllowed(currentUser?.features, item.requiredFeature) &&
-            hasPermission(item.requiredPermission)
-        );
+        const permittedItems = group.items.filter(item => {
+          if (!hasPermission(item.requiredPermission)) return false;
+          // Keep plan-gated items visible in sidebar even when tenant preset flags are false
+          if (item.planFeature) return true;
+          // Keep Warehouses & Racks visible so user can manage primary warehouse
+          if (item.id === 'Warehouses & Racks') return true;
+          return isFeatureAllowed(currentUser?.features, item.requiredFeature);
+        });
         return {
           ...group,
           items: permittedItems
@@ -328,8 +334,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 <div className="mt-1 space-y-0.5 relative before:content-[''] before:absolute before:top-1.5 before:bottom-1.5 before:start-3.5 before:w-px before:bg-border/70">
                   {group.items.map(item => {
                     const isItemActive = activeNav === item.id || activeNav === item.path;
+                    const isPlanLocked = Boolean(item.planFeature && !canAccess(item.planFeature));
+                    const reqPlan = item.requiredPlan || (item.planFeature ? getRequiredPlan(item.planFeature) : 'Pro');
+                    const planPillLabel =
+                      reqPlan === 'Enterprise'
+                        ? getTranslation(lang, 'ui.plans.pillEnterprise')
+                        : getTranslation(lang, 'ui.plans.pillPro');
+
                     const badgeContent =
-                      item.id === 'Transfers & In-Transit'
+                      item.id === 'Transfers & In-Transit' && !isPlanLocked
                         ? inTransitTransfersCount > 0
                           ? String(inTransitTransfersCount)
                           : null
@@ -342,27 +355,40 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                         key={item.id}
                         type="button"
                         className={`group w-full flex items-center justify-between gap-2 ps-7 pe-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
-                          isItemActive
-                            ? 'bg-primary/10 text-primary font-semibold'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
+                          isPlanLocked
+                            ? 'text-muted-foreground/75 hover:text-foreground hover:bg-muted/40 font-medium'
+                            : isItemActive
+                              ? 'bg-primary/10 text-primary font-semibold'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
                         }`}
-                        onClick={() => setActiveNav(item.id)}
+                        onClick={() => {
+                          if (isPlanLocked && item.planFeature) {
+                            openUpgradeModal(reqPlan, item.planFeature);
+                            return;
+                          }
+                          setActiveNav(item.id);
+                        }}
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <span
                             className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                              isItemActive
+                              isItemActive && !isPlanLocked
                                 ? 'bg-primary'
                                 : 'bg-muted-foreground/45 group-hover:bg-foreground/60'
                             }`}
                           />
                           <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
                         </span>
-                        {badgeContent && (
+                        {isPlanLocked ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border shrink-0">
+                            <Lock size={10} className="shrink-0" />
+                            <span>{planPillLabel}</span>
+                          </span>
+                        ) : badgeContent ? (
                           <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
                             {badgeContent}
                           </span>
-                        )}
+                        ) : null}
                       </button>
                     );
                   })}
@@ -381,8 +407,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                     <div className="flex flex-col gap-0.5">
                       {group.items.map(item => {
                         const isItemActive = activeNav === item.id || activeNav === item.path;
+                        const isPlanLocked = Boolean(item.planFeature && !canAccess(item.planFeature));
+                        const reqPlan = item.requiredPlan || (item.planFeature ? getRequiredPlan(item.planFeature) : 'Pro');
+                        const planPillLabel =
+                          reqPlan === 'Enterprise'
+                            ? getTranslation(lang, 'ui.plans.pillEnterprise')
+                            : getTranslation(lang, 'ui.plans.pillPro');
+
                         const badgeContent =
-                          item.id === 'Transfers & In-Transit'
+                          item.id === 'Transfers & In-Transit' && !isPlanLocked
                             ? inTransitTransfersCount > 0
                               ? String(inTransitTransfersCount)
                               : null
@@ -395,11 +428,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                             key={item.id}
                             type="button"
                             className={`group w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[13px] transition-all text-start cursor-pointer ${
-                              isItemActive
-                                ? 'bg-primary/10 text-primary font-semibold'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
+                              isPlanLocked
+                                ? 'text-muted-foreground/75 hover:text-foreground hover:bg-muted/40 font-medium'
+                                : isItemActive
+                                  ? 'bg-primary/10 text-primary font-semibold'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium'
                             }`}
                             onClick={() => {
+                              if (isPlanLocked && item.planFeature) {
+                                openUpgradeModal(reqPlan, item.planFeature);
+                                closeAllFlyouts();
+                                return;
+                              }
                               setActiveNav(item.id);
                               closeAllFlyouts();
                             }}
@@ -407,16 +447,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                             <span className="flex items-center gap-2 min-w-0">
                               <span
                                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                  isItemActive ? 'bg-primary' : 'bg-muted-foreground/45'
+                                  isItemActive && !isPlanLocked ? 'bg-primary' : 'bg-muted-foreground/45'
                                 }`}
                               />
                               <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
                             </span>
-                            {badgeContent && (
+                            {isPlanLocked ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border shrink-0">
+                                <Lock size={10} className="shrink-0" />
+                                <span>{planPillLabel}</span>
+                              </span>
+                            ) : badgeContent ? (
                               <span className={`nav-sub-badge ${item.badgeClass || ''}`}>
                                 {badgeContent}
                               </span>
-                            )}
+                            ) : null}
                           </button>
                         );
                       })}

@@ -72,6 +72,8 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
   const [editingFeaturesTenant, setEditingFeaturesTenant] = useState<Tenant | null>(null);
   const [planModalTenant, setPlanModalTenant] = useState<Tenant | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'Starter' | 'Pro' | 'Enterprise'>('Pro');
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'Monthly' | 'Annual' | 'Lifetime'>('Monthly');
+  const [selectedExpiresAt, setSelectedExpiresAt] = useState<string>('');
   const [deleteConfirmTenant, setDeleteConfirmTenant] = useState<Tenant | null>(null);
 
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'danger' } | null>(null);
@@ -124,7 +126,13 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
 
   const handleSavePlan = () => {
     if (!planModalTenant) return;
-    const res = updateTenantPlan(planModalTenant.id, selectedPlan);
+    const expiryIso =
+      selectedBillingCycle === 'Lifetime'
+        ? null
+        : selectedExpiresAt
+        ? new Date(selectedExpiresAt).toISOString()
+        : null;
+    const res = updateTenantPlan(planModalTenant.id, selectedPlan, selectedBillingCycle, expiryIso);
     refreshTenants();
     setPlanModalTenant(null);
     setActionNotice({
@@ -145,19 +153,31 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
     setTimeout(() => setActionNotice(null), 4000);
   };
 
-  const renderPlanBadge = (plan: 'Starter' | 'Pro' | 'Enterprise') => {
+  const renderPlanBadge = (plan: 'Starter' | 'Pro' | 'Enterprise', cycle?: 'Monthly' | 'Annual' | 'Lifetime') => {
     let label = '';
     if (plan === 'Enterprise') {
-      label = isAr ? 'مؤسسات (Enterprise)' : 'Enterprise';
+      label = isAr ? 'الفروع والشركات (Enterprise)' : 'Enterprise';
     } else if (plan === 'Pro') {
-      label = isAr ? 'احترافية (Pro)' : 'Pro';
+      label = isAr ? 'التجار (Pro)' : 'Pro';
     } else if (plan === 'Starter') {
-      label = isAr ? 'أساسية (Starter)' : 'Starter';
+      label = isAr ? 'الانطلاقة (Starter)' : 'Starter';
     }
 
+    const cycleLabel =
+      cycle === 'Annual'
+        ? (isAr ? 'سنوي' : 'Annual')
+        : cycle === 'Lifetime'
+        ? (isAr ? 'مدى الحياة' : 'Lifetime')
+        : (isAr ? 'شهري' : 'Monthly');
+
     return (
-      <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700">
-        {label}
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700">
+        <span>{label}</span>
+        {cycle && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-700/70">
+            {cycleLabel}
+          </span>
+        )}
       </span>
     );
   };
@@ -535,7 +555,7 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
                       {/* Plan & Expiry */}
                       <td style={{ padding: '1rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          {renderPlanBadge(t.plan)}
+                          {renderPlanBadge(t.plan, t.billingCycle)}
                           {t.businessPresetName && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                               <Sparkles size={10} />
@@ -673,6 +693,9 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
                                 onClick={() => {
                                   setPlanModalTenant(t);
                                   setSelectedPlan(t.plan);
+                                  setSelectedBillingCycle(t.billingCycle || 'Monthly');
+                                  const rawExp = t.expiresAt ? new Date(t.expiresAt) : new Date(Date.now() + 30 * 86400000);
+                                  setSelectedExpiresAt(!isNaN(rawExp.getTime()) ? rawExp.toISOString().slice(0, 10) : '');
                                 }}
                                 className="flex items-center gap-2.5 p-2 rounded-lg text-xs cursor-pointer hover:bg-zinc-800 font-medium text-zinc-100 transition-colors"
                               >
@@ -921,7 +944,7 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
               {isAr ? `اختيار باقة الاشتراك لمنشأة "${planModalTenant.name}":` : `Select new subscription tier for "${planModalTenant.name}":`}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
               {/* Starter */}
               <div
                 onClick={() => setSelectedPlan('Starter')}
@@ -939,10 +962,10 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
               >
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#f4f4f5' }}>
-                    {isAr ? 'أساسية (Starter)' : 'Starter Tier'}
+                    {isAr ? 'باقة الانطلاقة (Starter)' : 'Starter Tier'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '2px' }}>
-                    {isAr ? 'فرع واحد • حتى 5 مستخدمين' : '1 Branch • Up to 5 Users'}
+                    {isAr ? 'فرع 1 • مستودع 1 • 2 مستخدمين • 10,000 د.ع/شهرياً' : '1 Branch • 1 Warehouse • 2 Users • 10,000 IQD/mo'}
                   </div>
                 </div>
                 {selectedPlan === 'Starter' && <Check size={18} style={{ color: '#10b981' }} />}
@@ -965,10 +988,10 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
               >
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#f4f4f5' }}>
-                    {isAr ? 'احترافية (Pro)' : 'Pro Tier'}
+                    {isAr ? 'باقة التجار (Pro)' : 'Pro Tier'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '2px' }}>
-                    {isAr ? 'حتى 5 فروع • حتى 20 مستخدماً' : 'Up to 5 Branches • Up to 20 Users'}
+                    {isAr ? 'فرع 1 • 3 مستودعات • 6 مستخدمين • 150 AI • 25,000 د.ع/شهرياً' : '1 Branch • 3 Warehouses • 6 Users • 25,000 IQD/mo'}
                   </div>
                 </div>
                 {selectedPlan === 'Pro' && <Check size={18} style={{ color: '#10b981' }} />}
@@ -991,13 +1014,94 @@ export default function TenantsManagementView({ lang, onImpersonate }: TenantsMa
               >
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#f4f4f5' }}>
-                    {isAr ? 'مؤسسات (Enterprise)' : 'Enterprise Tier'}
+                    {isAr ? 'باقة الفروع والشركات (Enterprise)' : 'Enterprise Tier'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '2px' }}>
-                    {isAr ? 'فروع ومستخدمين غير محدودين • دعم مخصص' : 'Unlimited Scale • Dedicated Support'}
+                    {isAr ? 'فروع ومستودعات ومستخدمون غير محدودين • 45,000 د.ع/شهرياً' : 'Unlimited Branches, Warehouses & Users • 45,000 IQD/mo'}
                   </div>
                 </div>
                 {selectedPlan === 'Enterprise' && <Check size={18} style={{ color: '#c084fc' }} />}
+              </div>
+            </div>
+
+            {/* Billing Cycle & Expiry Controls */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '1.5rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '6px' }}>
+                  {isAr ? 'دورة الفوترة' : 'Billing Cycle'}
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                  {(
+                    [
+                      { id: 'Monthly', label: isAr ? 'شهري' : 'Monthly' },
+                      { id: 'Annual', label: isAr ? 'سنوي' : 'Annual' },
+                      { id: 'Lifetime', label: isAr ? 'مدى الحياة' : 'Lifetime' }
+                    ] as const
+                  ).map(opt => {
+                    const active = selectedBillingCycle === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBillingCycle(opt.id);
+                          if (opt.id === 'Monthly') {
+                            setSelectedExpiresAt(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+                          } else if (opt.id === 'Annual') {
+                            setSelectedExpiresAt(new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10));
+                          }
+                        }}
+                        style={{
+                          padding: '0.5rem 0.6rem',
+                          borderRadius: '8px',
+                          border: `1.5px solid ${active ? '#10b981' : 'rgba(63, 63, 70, 0.6)'}`,
+                          backgroundColor: active ? 'rgba(16, 185, 129, 0.14)' : '#09090b',
+                          color: active ? '#34d399' : '#a1a1aa',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#d4d4d8', marginBottom: '6px' }}>
+                  {isAr ? 'تاريخ انتهاء الاشتراك' : 'Subscription Expiration Date'}
+                </label>
+                {selectedBillingCycle === 'Lifetime' ? (
+                  <div style={{
+                    padding: '0.6rem 0.85rem',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    color: '#34d399',
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}>
+                    {isAr ? 'اشتراك مدى الحياة — لا يوجد تاريخ انتهاء' : 'Lifetime License — Never Expires'}
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    value={selectedExpiresAt}
+                    onChange={e => setSelectedExpiresAt(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '0.6rem 0.85rem',
+                      backgroundColor: '#09090b',
+                      border: '1px solid rgba(63, 63, 70, 0.6)',
+                      borderRadius: '8px',
+                      color: '#f4f4f5',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                )}
               </div>
             </div>
 

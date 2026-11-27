@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Models;
 using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
+[RequiresPlanFeature(PlanFeatureKeys.DispatchOrders)]
 [ApiController]
 [Route("api/warehouse/dispatches")]
 [Route("api/v1/warehouse/dispatches")]

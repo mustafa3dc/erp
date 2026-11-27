@@ -8,6 +8,9 @@ export interface Tenant {
   countryCode: string;
   currency: string;
   plan: 'Starter' | 'Pro' | 'Enterprise';
+  planType?: number;
+  billingCycle?: 'Monthly' | 'Annual' | 'Lifetime';
+  billingCycleType?: number;
   expiresAt: string;
   maxBranches: number;
   maxUsers: number;
@@ -662,9 +665,44 @@ export function getPlatformMetrics() {
   };
 }
 
+export async function updateTenantSubscriptionApi(
+  tenantId: string,
+  plan: 'Starter' | 'Pro' | 'Enterprise',
+  billingCycle: 'Monthly' | 'Annual' | 'Lifetime',
+  expiresAt?: string | null
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const token =
+      localStorage.getItem('token') ||
+      localStorage.getItem('zilox_token') ||
+      localStorage.getItem('zilox_auth_token') ||
+      localStorage.getItem('logistock_erp_jwt_token');
+
+    const res = await fetch(`/api/admin/tenants/${encodeURIComponent(tenantId)}/subscription`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Platform-SuperAdmin': 'true',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        plan,
+        billingCycle,
+        expiresAt: billingCycle === 'Lifetime' ? null : (expiresAt || null),
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function updateTenantPlan(
   tenantId: string,
-  newPlan: 'Starter' | 'Pro' | 'Enterprise'
+  newPlan: 'Starter' | 'Pro' | 'Enterprise',
+  billingCycle: 'Monthly' | 'Annual' | 'Lifetime' = 'Monthly',
+  expiresAt?: string | null
 ): { success: boolean; tenant?: Tenant; message: string } {
   const tenants = getStoredTenants();
   const idx = tenants.findIndex(t => t.id === tenantId);
@@ -672,13 +710,59 @@ export function updateTenantPlan(
     return { success: false, message: 'المنشأة غير موجودة' };
   }
 
+  const nextMaxBranches = newPlan === 'Enterprise' ? 9999 : 1;
+  const nextMaxUsers = newPlan === 'Starter' ? 2 : newPlan === 'Pro' ? 6 : 9999;
+  const nextMaxWarehouses = newPlan === 'Starter' ? 1 : newPlan === 'Pro' ? 3 : 9999;
+
   tenants[idx].plan = newPlan;
+  tenants[idx].planType = newPlan === 'Starter' ? 1 : newPlan === 'Enterprise' ? 3 : 2;
+  tenants[idx].billingCycle = billingCycle;
+  tenants[idx].billingCycleType = billingCycle === 'Annual' ? 2 : billingCycle === 'Lifetime' ? 3 : 1;
+  if (billingCycle === 'Lifetime') {
+    tenants[idx].expiresAt = new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString();
+  } else if (expiresAt) {
+    tenants[idx].expiresAt = new Date(expiresAt).toISOString();
+  }
+  tenants[idx].maxBranches = nextMaxBranches;
+  tenants[idx].maxUsers = nextMaxUsers;
+  if (tenants[idx].features) {
+    tenants[idx].features = {
+      ...tenants[idx].features!,
+      maxWarehouses: nextMaxWarehouses,
+      multiWarehouse: newPlan !== 'Starter',
+      enableInstallments: newPlan !== 'Starter',
+      enableMultiCurrency: newPlan !== 'Starter',
+    };
+  }
   saveStoredTenants(tenants);
+
+  // Persist to PostgreSQL backend asynchronously
+  void updateTenantSubscriptionApi(tenantId, newPlan, billingCycle, expiresAt);
+
+  // Sync active session if it matches updated tenant
+  if (typeof window !== 'undefined') {
+    const target = tenants[idx];
+    ['logistock_erp_v3_auth_session', 'zilox_auth_session'].forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        try {
+          const session = JSON.parse(raw);
+          if (session && (session.tenantId === target.id || session.tenantSlug === target.slug)) {
+            session.plan = newPlan;
+            if (target.features) session.features = target.features;
+            localStorage.setItem(k, JSON.stringify(session));
+          }
+        } catch {}
+      }
+    });
+    window.dispatchEvent(new CustomEvent('zilox_subscription_updated'));
+    window.dispatchEvent(new CustomEvent('zilox_query_invalidate', { detail: { queryKey: ['currentUser', 'auth', 'subscription'] } }));
+  }
 
   return {
     success: true,
     tenant: tenants[idx],
-    message: `تم ترقية وتعديل باقة المنشأة "${tenants[idx].name}" إلى (${newPlan}) بنجاح.`
+    message: `تم تحديث باقة المنشأة "${tenants[idx].name}" إلى (${newPlan} • ${billingCycle}) بنجاح.`
   };
 }
 

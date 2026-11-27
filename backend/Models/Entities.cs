@@ -1033,11 +1033,17 @@ public class Tenant
     [Column("plan")]
     public string Plan { get; set; } = "Pro";
 
+    [Column("plan_type")]
+    public SubscriptionPlan PlanType { get; set; } = SubscriptionPlan.Pro;
+
     [Column("trial_ends_at")]
     public DateTime? TrialEndsAt { get; set; } = DateTime.UtcNow.AddDays(14);
 
     [Column("expires_at")]
     public DateTime? ExpiresAt { get; set; } = DateTime.UtcNow.AddDays(14);
+
+    [Column("subscription_expires_at")]
+    public DateTime? SubscriptionExpiresAt { get; set; }
 
     [Column("max_branches")]
     public int MaxBranches { get; set; } = 5;
@@ -1057,6 +1063,9 @@ public class Tenant
     [MaxLength(20)]
     [Column("billing_cycle")]
     public string BillingCycle { get; set; } = "yearly";
+
+    [Column("billing_cycle_type")]
+    public BillingCycle BillingCycleType { get; set; } = ERP.Warehouse.Api.Models.BillingCycle.Monthly;
 
     [MaxLength(150)]
     [Column("contact_info")]

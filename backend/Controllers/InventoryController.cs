@@ -511,6 +511,7 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpPost("transfers")]
     [HasPermission(Permissions.Inventory.TransfersManage)]
+    [RequiresPlanFeature(PlanFeatureKeys.WarehouseTransfers)]
     public async Task<ActionResult> CreateStockTransfer([FromBody] StockTransferRequest? request)
     {
         if (request == null || request.ItemId == Guid.Empty)

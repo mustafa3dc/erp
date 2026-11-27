@@ -1,12 +1,14 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Models;
 using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.LoyaltyPoints)]
 [ApiController]
 [Route("api/loyalty")]
 [Route("api/v1/loyalty")]

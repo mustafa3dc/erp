@@ -17,10 +17,12 @@ namespace ERP.Warehouse.Api.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ITenantPlanService _planService;
 
-    public UsersController(AppDbContext context)
+    public UsersController(AppDbContext context, ITenantPlanService planService)
     {
         _context = context;
+        _planService = planService;
     }
 
     /// <summary>
@@ -118,6 +120,25 @@ public class UsersController : ControllerBase
         {
             var tenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Slug.ToLower() == currentTenantSlug.ToLower(), ct);
             if (tenant != null) tenantGuid = tenant.Id;
+        }
+
+        if (tenantGuid.HasValue)
+        {
+            var quotaCheck = await _planService.CheckUserQuotaAsync(tenantGuid.Value, ct);
+            if (!quotaCheck.IsAllowed)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    success = false,
+                    errorCode = quotaCheck.ErrorCode,
+                    details = new
+                    {
+                        currentCount = quotaCheck.CurrentCount,
+                        maxAllowed = quotaCheck.MaxAllowed,
+                        requiredPlan = quotaCheck.RequiredPlan
+                    }
+                });
+            }
         }
 
         var cleanUsername = dto.Username.Trim().ToLower();

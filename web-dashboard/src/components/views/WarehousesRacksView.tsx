@@ -28,6 +28,7 @@ import {
 } from '../../data/globalLocations';
 import { useSettings } from '../../context/settings-context';
 import { getTranslation } from '../../lib/i18n';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
 
 export interface WarehousesRacksViewProps {
   lang: 'en' | 'ar';
@@ -240,6 +241,7 @@ export default function WarehousesRacksView({
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const { plan: tenantPlan, usage: planUsage, openUpgradeModal } = useTenantPlan();
 
   const totalRacks = activeMetrics.totalRacks;
   const stockValuation = useMemo(() => {
@@ -276,7 +278,17 @@ export default function WarehousesRacksView({
             <button
               type="button"
               className="btn-add-primary"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                if (planUsage.maxWarehouses !== null && warehouses.length >= planUsage.maxWarehouses) {
+                  openUpgradeModal(
+                    tenantPlan === 'Starter' ? 'Pro' : 'Enterprise',
+                    'ERR_PLAN_WAREHOUSE_LIMIT_REACHED',
+                    { current: warehouses.length, max: planUsage.maxWarehouses }
+                  );
+                  return;
+                }
+                setIsAddModalOpen(true);
+              }}
               title={tr('addWarehouseTitle')}
             >
               <Plus size={18} />

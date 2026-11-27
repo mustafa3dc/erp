@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
+using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
@@ -16,10 +17,12 @@ namespace ERP.Warehouse.Api.Controllers;
 public class WarehousesController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ITenantPlanService _planService;
 
-    public WarehousesController(AppDbContext context)
+    public WarehousesController(AppDbContext context, ITenantPlanService planService)
     {
         _context = context;
+        _planService = planService;
     }
 
     /// <summary>
@@ -199,6 +202,44 @@ public class WarehousesController : ControllerBase
         if (!string.IsNullOrEmpty(tenantIdClaim) && Guid.TryParse(tenantIdClaim, out var parsedGuid))
         {
             tenantGuid = parsedGuid;
+        }
+
+        if (!tenantGuid.HasValue)
+        {
+            var tenantSlugClaim = User.FindFirst("tenant_slug")?.Value ?? Request.Headers["X-Tenant-Slug"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(tenantSlugClaim))
+            {
+                var matchedTenant = await _context.Tenants
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(t => t.Slug.ToLower() == tenantSlugClaim.Trim().ToLower());
+                if (matchedTenant != null)
+                {
+                    tenantGuid = matchedTenant.Id;
+                }
+            }
+        }
+
+        if (tenantGuid.HasValue)
+        {
+            var isBranch = string.Equals(input.Type, "BRANCH", StringComparison.OrdinalIgnoreCase);
+            var quotaCheck = isBranch
+                ? await _planService.CheckBranchQuotaAsync(tenantGuid.Value)
+                : await _planService.CheckWarehouseQuotaAsync(tenantGuid.Value);
+
+            if (!quotaCheck.IsAllowed)
+            {
+                return StatusCode(403, new
+                {
+                    success = false,
+                    errorCode = quotaCheck.ErrorCode,
+                    details = new
+                    {
+                        currentCount = quotaCheck.CurrentCount,
+                        maxAllowed = quotaCheck.MaxAllowed,
+                        requiredPlan = quotaCheck.RequiredPlan
+                    }
+                });
+            }
         }
 
         input.Id = Guid.NewGuid();

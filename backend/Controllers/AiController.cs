@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ERP.Warehouse.Api.Authorization;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 
@@ -11,6 +12,7 @@ namespace ERP.Warehouse.Api.Controllers;
 [ApiController]
 [Route("api/v1/ai")]
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.AiExecutiveAdvisor)]
 public class AiController : ControllerBase
 {
     private readonly AppDbContext _dbContext;

@@ -59,6 +59,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IDiscountEngineService, DiscountEngineService>();
 builder.Services.AddScoped<ITenantFeatureService, TenantFeatureService>();
+builder.Services.AddScoped<ITenantPlanService, TenantPlanService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<IPriceListService, PriceListService>();
@@ -509,6 +510,21 @@ using (var scope = app.Services.CreateScope())
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Recurring expenses always-run DDL warning (non-fatal).");
+            }
+
+            // Always ensure tenant subscription columns exist (runs regardless of DB init state)
+            try
+            {
+                dbContext.Database.ExecuteSqlRaw(@"
+                    ALTER TABLE IF EXISTS tenants
+                        ADD COLUMN IF NOT EXISTS plan_type INT NOT NULL DEFAULT 2,
+                        ADD COLUMN IF NOT EXISTS billing_cycle_type INT NOT NULL DEFAULT 1,
+                        ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ NULL;
+                ");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Tenant subscription columns always-run DDL warning (non-fatal).");
             }
 
             // Always ensure warehouse_shelves table exists (runs regardless of DB init state)

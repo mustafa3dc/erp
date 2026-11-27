@@ -1,4 +1,5 @@
 import { UserProfile, PermissionKey, CompanyFeatures } from '../types/rbac';
+import { PlanFeatureKey, SubscriptionPlan } from '../types/subscription';
 
 export interface NavItemDef {
   id: string;
@@ -7,6 +8,8 @@ export interface NavItemDef {
   path: string;
   requiredPermission: PermissionKey;
   requiredFeature?: keyof CompanyFeatures;
+  planFeature?: PlanFeatureKey;
+  requiredPlan?: SubscriptionPlan;
   badge?: string;
   badgeEn?: string;
   badgeClass?: string;
@@ -89,7 +92,9 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Sales Quotations',
         path: '/sales/quotations',
         requiredPermission: 'invoices.manage',
-        requiredFeature: 'enableQuotations'
+        requiredFeature: 'enableQuotations',
+        planFeature: 'Quotations',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Price Lists & Promotions',
@@ -97,7 +102,9 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Quantity Pricing & Bundles',
         path: '/sales/price-lists',
         requiredPermission: 'invoices.manage',
-        requiredFeature: 'enablePriceLists'
+        requiredFeature: 'enablePriceLists',
+        planFeature: 'VolumePricingAndBundles',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Installments',
@@ -106,6 +113,8 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         path: '/sales/installments',
         requiredPermission: 'invoices.manage',
         requiredFeature: 'enableInstallments',
+        planFeature: 'Installments',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Returns & Warranty',
@@ -151,7 +160,9 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleAr: 'أوامر الشراء',
         titleEn: 'Purchase Orders',
         path: '/purchases/orders',
-        requiredPermission: 'purchases.manage'
+        requiredPermission: 'purchases.manage',
+        planFeature: 'PurchaseOrders',
+        requiredPlan: 'Enterprise'
       },
       {
         id: 'Suppliers',
@@ -183,7 +194,9 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleEn: 'Serials & Warranty',
         path: '/inventory/serials',
         requiredPermission: 'inventory.view',
-        requiredFeature: 'enableSerialNumbers'
+        requiredFeature: 'enableSerialNumbers',
+        planFeature: 'SerialTracking',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Transfers & In-Transit',
@@ -192,6 +205,8 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         path: '/transfers',
         requiredPermission: 'transfers.manage',
         requiredFeature: 'multiWarehouse',
+        planFeature: 'WarehouseTransfers',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Stock Counts',
@@ -215,6 +230,8 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         path: '/warehouse/dispatch-queue',
         requiredPermission: 'inventory.view',
         requiredFeature: 'multiWarehouse',
+        planFeature: 'DispatchOrders',
+        requiredPlan: 'Enterprise'
       }
     ]
   },
@@ -253,7 +270,9 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
         titleAr: 'الشركاء وتوزيع الأرباح',
         titleEn: 'Partners & Profit Sharing',
         path: '/finance/partners',
-        requiredPermission: 'finance.partners.manage'
+        requiredPermission: 'finance.partners.manage',
+        planFeature: 'PartnersAndProfitShare',
+        requiredPlan: 'Pro'
       }
     ]
   },
@@ -267,10 +286,12 @@ export const NAVIGATION_GROUPS: NavGroupDef[] = [
     items: [
       {
         id: 'Reports',
-        titleAr: 'التقارير',
-        titleEn: 'Reports',
+        titleAr: 'التقارير التنفيذية والذكاء الاصطناعي',
+        titleEn: 'Executive Reports & AI',
         path: '/reports',
-        requiredPermission: 'reports.executive'
+        requiredPermission: 'reports.executive',
+        planFeature: 'AiExecutiveAdvisor',
+        requiredPlan: 'Pro'
       },
       {
         id: 'Users & Staff',

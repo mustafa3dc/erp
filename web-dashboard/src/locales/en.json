@@ -1481,6 +1481,91 @@
       "remainingInstallmentsLabel": "Remaining Installments:",
       "manageCustomersBtn": "Customers",
       "manageInstallmentsBtn": "Installments"
+    },
+    "plans": {
+      "modalTitle": "Subscription Plans & Upgrade",
+      "modalSubtitle": "Choose the plan tailored to your business scale and unlock advanced modules and higher quotas",
+      "popularBadge": "Most Popular",
+      "currentPlanBadge": "Current Plan",
+      "requiredPlanBadge": "Required to Unlock",
+      "currencyUnit": "IQD",
+      "billingMonthly": "Monthly",
+      "billingAnnual": "Annual — Save 2 Months",
+      "billingLifetime": "Lifetime",
+      "perMonthSuffix": "IQD / mo",
+      "perYearSuffix": "IQD / yr",
+      "lifetimeSuffix": "IQD Lifetime",
+      "requestUpgradeBtn": "Request Upgrade / Contact Us",
+      "activePlanBtn": "Currently Active",
+      "closeBtn": "Close",
+      "upgradeSuccessToast": "Upgrade request submitted — our sales team will contact you shortly to activate your selected plan.",
+      "lockedFeatureBanner": "This feature requires {plan}. Upgrade your plan to unlock it immediately.",
+      "quotaUsersBanner": "You have reached your current plan user limit ({current}/{max}).",
+      "quotaWarehousesBanner": "You have reached your current plan warehouse limit ({current}/{max}).",
+      "quotaBranchesBanner": "You have reached your current plan branch limit ({current}/{max}).",
+      "usageTitle": "Current Tenant Usage",
+      "usageUsers": "Users",
+      "usageWarehouses": "Warehouses",
+      "usageBranches": "Branches",
+      "usageAi": "AI Requests / mo",
+      "unlimited": "Unlimited",
+      "pillStarter": "Starter",
+      "pillPro": "Pro",
+      "pillEnterprise": "Enterprise",
+      "starter": {
+        "name": "Starter Plan",
+        "tag": "Starter",
+        "desc": "Built for single-store shops with fast POS and one main warehouse",
+        "cloudRenewal": "Cloud renewal 35,000 IQD/yr",
+        "quotasSummary": "1 Branch • 1 Warehouse • Up to 2 Users",
+        "features": [
+          "Cloud POS & Cashier Shifts",
+          "Cash & Credit Sales + Returns",
+          "Purchases, Suppliers & FIFO Inventory",
+          "Single Cashbox, Expenses & Vouchers",
+          "250 IQD Cash Rounding & Cost Masking"
+        ]
+      },
+      "pro": {
+        "name": "Pro Plan",
+        "tag": "Pro",
+        "desc": "Best for growing merchants needing installments, partners, multi-currency & AI insights",
+        "cloudRenewal": "Cloud renewal 50,000 IQD/yr",
+        "quotasSummary": "1 Branch • Up to 3 Warehouses • Up to 6 Users • 150 AI/mo",
+        "features": [
+          "Everything in Starter Plan",
+          "Installments, Quotations, Volume Pricing & Bundles",
+          "Partners & Profit Sharing + Loyalty Program",
+          "Multi-Currency & Multiple Banks/Cashboxes",
+          "Shelves Organizer, Serial Tracking, Internal Transfers & AI Advisor"
+        ]
+      },
+      "enterprise": {
+        "name": "Enterprise Plan",
+        "tag": "Enterprise",
+        "desc": "Designed for multi-branch enterprises with unlimited scale, POs & dispatch orders",
+        "cloudRenewal": "Cloud renewal 75,000 IQD/yr",
+        "quotasSummary": "Unlimited Branches, Warehouses & Users • 1,000 AI/mo",
+        "features": [
+          "Everything in Pro Plan",
+          "Unlimited Multi-Branch & Inter-Branch Transfers",
+          "Scheduled Purchase Orders (PO) & Dispatch Orders",
+          "Official Accounting & Executive Exports",
+          "Priority AI Capacity & Dedicated Support"
+        ]
+      },
+      "admin": {
+        "modalTitle": "Manage Tenant Subscription & Plan",
+        "planLabel": "Subscription Plan",
+        "billingCycleLabel": "Billing Cycle",
+        "expiresAtLabel": "Expiration Date",
+        "lifetimeNoExpiry": "Lifetime — No Expiration",
+        "saveBtn": "Save & Update Subscription",
+        "savedToast": "Tenant subscription plan & billing cycle updated successfully",
+        "cycleMonthly": "Monthly",
+        "cycleAnnual": "Annual",
+        "cycleLifetime": "Lifetime"
+      }
     }
   },
   "finance": {

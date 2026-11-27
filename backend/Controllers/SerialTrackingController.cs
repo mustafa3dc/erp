@@ -9,6 +9,7 @@ using ERP.Warehouse.Api.Services;
 namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.SerialTracking)]
 [ApiController]
 [Route("api/[controller]")]
 [Route("api/serial-tracking")]

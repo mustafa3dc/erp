@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
+using ERP.Warehouse.Api.Services;
 
 namespace ERP.Warehouse.Api.Controllers;
 
@@ -13,6 +14,7 @@ namespace ERP.Warehouse.Api.Controllers;
 public class TreasuryController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ITenantPlanService _planService;
     private readonly ILogger<TreasuryController> _logger;
 
     private static readonly HashSet<string> ValidAccountTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -22,9 +24,10 @@ public class TreasuryController : ControllerBase
         "DigitalWallet"
     };
 
-    public TreasuryController(AppDbContext context, ILogger<TreasuryController> logger)
+    public TreasuryController(AppDbContext context, ITenantPlanService planService, ILogger<TreasuryController> logger)
     {
         _context = context;
+        _planService = planService;
         _logger = logger;
     }
 
@@ -576,6 +579,28 @@ public class TreasuryController : ControllerBase
         }
 
         var tenantId = _context.CurrentTenantId;
+        var multiBoxCheck = await _planService.CheckFeatureAccessAsync(tenantId, PlanFeatureKeys.MultipleBanksAndCashboxes);
+        if (!multiBoxCheck.IsAllowed)
+        {
+            var existingBoxesCount = await _context.CashBoxes
+                .CountAsync(cb => cb.IsActive && (!tenantId.HasValue || cb.TenantId == tenantId.Value));
+
+            if (normalizedType != "Cashbox" || existingBoxesCount >= 1)
+            {
+                return StatusCode(403, new
+                {
+                    success = false,
+                    errorCode = "ERR_PLAN_FEATURE_LOCKED",
+                    details = new
+                    {
+                        featureKey = multiBoxCheck.FeatureKey,
+                        currentPlan = multiBoxCheck.CurrentPlan,
+                        requiredPlan = multiBoxCheck.RequiredPlan
+                    }
+                });
+            }
+        }
+
         var actor = CurrentActorName;
         var currency = string.IsNullOrWhiteSpace(dto.Currency) ? "IQD" : dto.Currency.Trim().ToUpperInvariant();
 

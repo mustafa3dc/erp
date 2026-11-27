@@ -68,6 +68,7 @@ import {
 import { Warehouse as WarehouseType } from '../../types/warehouse';
 import { updateTenantFeatures } from '../../services/tenantService';
 import { useTenantFeatures } from '../../hooks/useAuth';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
 import { toast } from 'sonner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -271,8 +272,17 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
   // ── Logo file ref ─────────────────────────────────────────────────────────
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Feature flags ─────────────────────────────────────────────────────────
+  // ── Feature flags & Subscription Plan ─────────────────────────────────────
   const { isFeatureEnabled } = useTenantFeatures();
+  const { plan: activePlan, canAccess, openUpgradeModal } = useTenantPlan();
+  const settingsLang: 'ar' | 'en' = isAr ? 'ar' : 'en';
+  const proPillLabel = getTranslation(settingsLang, 'ui.plans.pillPro');
+  const activePlanLabel =
+    activePlan === 'Starter'
+      ? getTranslation(settingsLang, 'ui.plans.pillStarter')
+      : activePlan === 'Enterprise'
+      ? getTranslation(settingsLang, 'ui.plans.pillEnterprise')
+      : proPillLabel;
   // Barcode scales are enabled/available across all subscription plans and presets
   const isScaleAllowedBySuperAdmin = true;
 
@@ -643,7 +653,14 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
 
   // ── Tab definitions ────────────────────────────────────────────────────────
 
-  const tabs: { id: TabId; icon: React.ReactNode; labelAr: string; labelEn: string }[] = [
+  const tabs: {
+    id: TabId;
+    icon: React.ReactNode;
+    labelAr: string;
+    labelEn: string;
+    locked?: boolean;
+    onLockedClick?: () => void;
+  }[] = [
     {
       id: 'company_identity',
       icon: <Building2 className="w-4 h-4" />,
@@ -655,6 +672,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
       icon: <DollarSign className="w-4 h-4" />,
       labelAr: 'المالية والعملات',
       labelEn: 'Finance & Currencies',
+      locked: !canAccess('MultiCurrency'),
     },
     {
       id: 'pos_hardware',
@@ -667,12 +685,16 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
       icon: <Award className="w-4 h-4" />,
       labelAr: getTranslation('ar', 'ui.loyalty.tabTitle'),
       labelEn: getTranslation('en', 'ui.loyalty.tabTitle'),
+      locked: !canAccess('LoyaltyPoints'),
+      onLockedClick: () => openUpgradeModal('Pro', 'LoyaltyPoints'),
     },
     {
       id: 'active_modules',
       icon: <Puzzle className="w-4 h-4" />,
       labelAr: getTranslation('ar', 'serialTracking.additionalFeaturesTab'),
       labelEn: getTranslation('en', 'serialTracking.additionalFeaturesTab'),
+      locked: !canAccess('SerialTracking'),
+      onLockedClick: () => openUpgradeModal('Pro', 'SerialTracking'),
     },
   ];
 
@@ -698,44 +720,71 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
           </div>
         </div>
 
-        <div
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-            isSaving
-              ? 'bg-primary/10 text-primary border-primary/25'
-              : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
-          }`}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>{isAr ? 'جاري الحفظ...' : 'Saving...'}</span>
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{isAr ? 'تم حفظ التغييرات' : 'All changes saved'}</span>
-            </>
-          )}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => openUpgradeModal()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{activePlanLabel}</span>
+          </button>
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              isSaving
+                ? 'bg-primary/10 text-primary border-primary/25'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+            }`}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{isAr ? 'جاري الحفظ...' : 'Saving...'}</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تم حفظ التغييرات' : 'All changes saved'}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Tab Bar */}
       <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px focus:outline-none ${
-              activeTab === tab.id
-                ? 'border-primary text-primary font-semibold'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.icon}
-            <span>{isAr ? tab.labelAr : tab.labelEn}</span>
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const isLockedAction = Boolean(tab.locked && tab.onLockedClick);
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                if (isLockedAction && tab.onLockedClick) {
+                  tab.onLockedClick();
+                  return;
+                }
+                setActiveTab(tab.id);
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px focus:outline-none cursor-pointer ${
+                isLockedAction
+                  ? 'border-transparent text-muted-foreground/80 hover:text-foreground'
+                  : activeTab === tab.id
+                  ? 'border-primary text-primary font-semibold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.icon}
+              <span>{isAr ? tab.labelAr : tab.labelEn}</span>
+              {tab.locked && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border">
+                  <Lock className="w-2.5 h-2.5" />
+                  <span>{proPillLabel}</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── TAB 1: Company Identity ───────────────────────────────────────── */}
@@ -1088,6 +1137,28 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
             icon={<ArrowLeftRight className="w-4 h-4" />}
             title={isAr ? 'تعدد العملات' : 'Multi-Currency'}
           >
+            {!canAccess('MultiCurrency') ? (
+              <button
+                type="button"
+                onClick={() => openUpgradeModal('Pro', 'MultiCurrency')}
+                className="w-full flex items-center justify-between p-3.5 rounded-lg border border-border bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer text-start"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {isAr ? 'تفعيل تعدد العملات' : 'Enable Multi-Currency'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {isAr
+                      ? 'إتاحة تسجيل المعاملات وتحديد أسعار صرف عملات ثانوية مقابل العملة الأساسية'
+                      : 'Allow managing secondary currencies with custom conversion rates against base currency'}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-muted text-muted-foreground border border-border shrink-0 ms-3">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{proPillLabel}</span>
+                </span>
+              </button>
+            ) : (
             <SwitchRow
               title={isAr ? 'تفعيل تعدد العملات' : 'Enable Multi-Currency'}
               description={
@@ -1099,8 +1170,9 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
               onToggle={handleToggleMultiCurrency}
               isAr={isAr}
             />
+            )}
 
-            {settings.multiCurrencyEnabled && (
+            {canAccess('MultiCurrency') && settings.multiCurrencyEnabled && (
               <div className="mt-2 rounded-lg border border-border p-4 space-y-3 bg-muted/20">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-xs font-semibold text-muted-foreground">

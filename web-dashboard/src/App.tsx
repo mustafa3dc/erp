@@ -65,6 +65,9 @@ import { fetchDueRecurringExpenses } from './services/recurringExpensesService';
 import { fetchDashboardSummary, DashboardSummaryResponse } from './services/partnersService';
 import { useTenantFeatures } from './hooks/useAuth';
 import { usePermissions } from './hooks/usePermissions';
+import { TenantPlanProvider } from './context/TenantPlanContext';
+import { useTenantPlan } from './hooks/useTenantPlan';
+import SubscriptionUpgradeModal from './components/modals/SubscriptionUpgradeModal';
 import TransactionModal, { TransactionDetail } from './components/TransactionModal';
 import BarcodeScannerModal from './components/BarcodeScannerModal';
 import { UserNav } from './components/UserNav';
@@ -279,8 +282,9 @@ function DashboardApp() {
   const [dueRecurringExpenses, setDueRecurringExpenses] = useState<RecurringExpenseRule[]>([]);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryResponse | null>(null);
   const { isFeatureEnabled } = useTenantFeatures();
-  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers');
-  const isInstallmentsEnabled = isFeatureEnabled('enableInstallments');
+  const { plan: tenantPlan, canAccess, usage: planUsage, openUpgradeModal } = useTenantPlan();
+  const isSerialModuleEnabled = isFeatureEnabled('enableSerialNumbers') && canAccess('SerialTracking');
+  const isInstallmentsEnabled = isFeatureEnabled('enableInstallments') && canAccess('Installments');
 
   // Public Routes (Landing Page, Pricing Calculator, Self-Service Onboarding, Login, Digital Loyalty Wallet)
   const [publicCardToken, setPublicCardToken] = useState<string | null>(() => getPublicCardTokenFromUrl());
@@ -693,6 +697,14 @@ function DashboardApp() {
     capacity: number;
     status?: 'active' | 'maintenance';
   }) => {
+    if (planUsage.maxWarehouses !== null && warehouses.length >= planUsage.maxWarehouses) {
+      openUpgradeModal(
+        tenantPlan === 'Starter' ? 'Pro' : 'Enterprise',
+        'ERR_PLAN_WAREHOUSE_LIMIT_REACHED',
+        { current: warehouses.length, max: planUsage.maxWarehouses }
+      );
+      return;
+    }
     try {
       const newWh = createWarehouse(data);
       setWarehouses(getStoredWarehouses());
@@ -2064,7 +2076,13 @@ function DashboardApp() {
                 setIsAddProductOpen(true);
               }}
               onQuickExpense={() => setIsQuickExpenseOpen(true)}
-              onTransfer={() => setIsTransferModalOpen(true)}
+              onTransfer={() => {
+                if (!canAccess('WarehouseTransfers')) {
+                  openUpgradeModal('Pro', 'WarehouseTransfers');
+                  return;
+                }
+                setIsTransferModalOpen(true);
+              }}
               onSerialLookup={isSerialModuleEnabled ? () => {
                 setSerialLookupQuery('');
                 setActiveNav('Serial & Warranty Tracking');
@@ -2113,7 +2131,13 @@ function DashboardApp() {
               {canViewProfits && (
                 <div
                   className="kpi-card kpi-card-green clickable"
-                  onClick={() => setActiveNav('Partners & Profit Sharing')}
+                  onClick={() => {
+                    if (!canAccess('PartnersAndProfitShare')) {
+                      openUpgradeModal('Pro', 'PartnersAndProfitShare');
+                      return;
+                    }
+                    setActiveNav('Partners & Profit Sharing');
+                  }}
                   title={getTranslation(lang, 'ui.dashboard.netProfit')}
                 >
                   <div className="kpi-card-header">
@@ -2822,7 +2846,10 @@ export default function App() {
   return (
     <SettingsProvider>
       <ErrorBoundary>
-        <DashboardApp />
+        <TenantPlanProvider>
+          <DashboardApp />
+          <SubscriptionUpgradeModal />
+        </TenantPlanProvider>
       </ErrorBoundary>
       <Toaster position="top-center" richColors closeButton />
     </SettingsProvider>

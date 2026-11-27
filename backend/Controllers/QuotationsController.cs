@@ -9,6 +9,7 @@ using ERP.Warehouse.Api.Services;
 namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.Quotations)]
 [ApiController]
 [Route("api/[controller]")]
 public class QuotationsController : ControllerBase

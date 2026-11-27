@@ -8,6 +8,7 @@ using ERP.Warehouse.Api.Services;
 namespace ERP.Warehouse.Api.Controllers;
 
 [Authorize]
+[RequiresPlanFeature(PlanFeatureKeys.VolumePricingAndBundles)]
 [ApiController]
 [Route("api/quantity-tiers")]
 public class PriceListsController : ControllerBase

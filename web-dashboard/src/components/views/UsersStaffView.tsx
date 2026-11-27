@@ -46,6 +46,7 @@ import PromoteStaffModal from '../modals/PromoteStaffModal';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useUsersQuery } from '../../hooks/useUsersQuery';
 import { useDeleteStaffMutation, useToggleStaffStatusMutation } from '../../hooks/useStaffMutation';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
 
 export interface UsersStaffViewProps {
   currentUser: UserProfile;
@@ -56,6 +57,7 @@ export interface UsersStaffViewProps {
 export default function UsersStaffView({ currentUser, lang, showToast }: UsersStaffViewProps) {
   const isAr = lang === 'ar';
   const { hasPermission } = usePermissions(currentUser);
+  const { plan: tenantPlan, usage: planUsage, openUpgradeModal } = useTenantPlan();
 
   // Pure Live API Consumption via useUsersQuery (Strictly ZERO Mock Data)
   const { data: usersList = [], isLoading, refetch } = useUsersQuery();
@@ -288,7 +290,17 @@ export default function UsersStaffView({ currentUser, lang, showToast }: UsersSt
 
         <button 
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 transition-all shadow-xs cursor-pointer select-none shrink-0"
-          onClick={() => setIsAddUserModalOpen(true)}
+          onClick={() => {
+            if (planUsage.maxUsers !== null && activeStaff >= planUsage.maxUsers) {
+              openUpgradeModal(
+                tenantPlan === 'Starter' ? 'Pro' : 'Enterprise',
+                'ERR_PLAN_USER_LIMIT_REACHED',
+                { current: activeStaff, max: planUsage.maxUsers }
+              );
+              return;
+            }
+            setIsAddUserModalOpen(true);
+          }}
         >
           <UserPlus size={16} />
           <span>{isAr ? 'إضافة موظف جديد' : 'Add New Staff'}</span>
@@ -427,7 +439,17 @@ export default function UsersStaffView({ currentUser, lang, showToast }: UsersSt
                         </p>
                       </div>
                       <Button
-                        onClick={() => setIsAddUserModalOpen(true)}
+                        onClick={() => {
+                          if (planUsage.maxUsers !== null && activeStaff >= planUsage.maxUsers) {
+                            openUpgradeModal(
+                              tenantPlan === 'Starter' ? 'Pro' : 'Enterprise',
+                              'ERR_PLAN_USER_LIMIT_REACHED',
+                              { current: activeStaff, max: planUsage.maxUsers }
+                            );
+                            return;
+                          }
+                          setIsAddUserModalOpen(true);
+                        }}
                         className="mt-2 h-9 text-xs font-bold gap-1.5 bg-primary text-primary-foreground shadow-xs"
                       >
                         <UserPlus size={14} />

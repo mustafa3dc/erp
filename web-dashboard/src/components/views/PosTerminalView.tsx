@@ -40,6 +40,7 @@ import {
   Gift
 } from 'lucide-react';
 import { useSettings, ScaleSettings } from '../../context/settings-context';
+import { usePermissions } from '../../hooks/usePermissions';
 import { Product, DiscountAuditLog, Warehouse, SalesInvoice } from '../../types/warehouse';
 import DiscountAuditTrailModal from '../modals/DiscountAuditTrailModal';
 import OpenShiftModal from '../modals/OpenShiftModal';
@@ -105,6 +106,8 @@ interface PosTerminalViewProps {
   onNavigateToShifts?: () => void;
 }
 
+type CartItemPricingSource = 'retail' | 'volume_tier' | 'manual_override';
+
 interface CartItem {
   product: Product;
   quantity: number;
@@ -112,6 +115,7 @@ interface CartItem {
   customPrice?: number; // Negotiated price directly (سعر تفاوضي)
   discountType?: 'PERCENT' | 'FIXED';
   discountValue?: number;
+  pricingSource?: CartItemPricingSource;
   priceError?: string; // "تجاوزت الحد المسموح به للخصم على هذه المادة"
 }
 
@@ -192,6 +196,8 @@ export default function PosTerminalView({
 }: PosTerminalViewProps) {
   const isAr = lang === 'ar';
   const { tenantCountryCode, isMethodAllowed, formatMoney, currencySymbol, exchangeRate, settings, t } = useSettings();
+  const { hasPermission } = usePermissions(currentUser ?? undefined);
+  const canOverridePriceFloor = hasPermission('pos.price.override');
   const isIraqTenant = tenantCountryCode === 'IQ' || settings?.tenantCountryCode === 'IQ';
 
   // Real-time synchronization: sync products & bundles with storage
@@ -607,17 +613,19 @@ export default function PosTerminalView({
           return prev;
         }
         setStockError(null);
-        return prev.map(item =>
-          item.product.id === product.id
-            ? {
-              ...item,
-              quantity: nextQty,
-              serialNumbers: cleanSerial
-                ? [...(item.serialNumbers || []), cleanSerial]
-                : item.serialNumbers
-            }
-            : item
-        );
+        return prev.map(item => {
+          if (item.product.id !== product.id) return item;
+          const isManual = item.pricingSource === 'manual_override' || item.customPrice !== undefined || (item.discountValue || 0) > 0;
+          const nextTier = !isManual ? resolveQuantityUnitPrice(product, nextQty) : null;
+          return {
+            ...item,
+            quantity: nextQty,
+            ...(nextTier ? { pricingSource: (nextTier.isTierApplied ? 'volume_tier' : 'retail') as CartItemPricingSource, priceError: undefined } : {}),
+            serialNumbers: cleanSerial
+              ? [...(item.serialNumbers || []), cleanSerial]
+              : item.serialNumbers
+          };
+        });
       }
       const initialQty = Math.round(quantityToAdd * 1000) / 1000;
       if (initialQty > currentMax) {
@@ -629,6 +637,7 @@ export default function PosTerminalView({
         return prev;
       }
       setStockError(null);
+      const initialTierRes = resolveQuantityUnitPrice(product, initialQty);
       return [
         ...prev,
         {
@@ -636,7 +645,8 @@ export default function PosTerminalView({
           quantity: initialQty,
           serialNumbers: cleanSerial ? [cleanSerial] : undefined,
           discountType: 'PERCENT',
-          discountValue: 0
+          discountValue: 0,
+          pricingSource: initialTierRes.isTierApplied ? 'volume_tier' : 'retail'
         }
       ];
     });
@@ -667,7 +677,14 @@ export default function PosTerminalView({
           return item;
         }
         setStockError(null);
-        return newQty > 0 ? { ...item, quantity: newQty } : null;
+        if (newQty <= 0) return null;
+        const isManual = item.pricingSource === 'manual_override' || item.customPrice !== undefined || (item.discountValue || 0) > 0;
+        const nextTier = !isManual ? resolveQuantityUnitPrice(freshProd, newQty) : null;
+        return {
+          ...item,
+          quantity: newQty,
+          ...(nextTier ? { pricingSource: (nextTier.isTierApplied ? 'volume_tier' : 'retail') as CartItemPricingSource, priceError: undefined } : {})
+        };
       }
       return item;
     }).filter(Boolean) as CartItem[]);
@@ -695,52 +712,68 @@ export default function PosTerminalView({
 
 
 
-  // Floor Price & Quantity Tier Engine: Get the current effective unit price
-  const getEffectiveUnitPrice = (item: CartItem): number => {
-    if (item.customPrice !== undefined) {
-      return item.customPrice;
-    }
+  // Floor Price & Quantity Tier Engine: Resolve pricingSource ('retail' | 'volume_tier' | 'manual_override') and unitPrice
+  const resolveCartItemPricing = (item: CartItem): {
+    pricingSource: CartItemPricingSource;
+    unitPrice: number;
+    tierRes: ReturnType<typeof resolveQuantityUnitPrice>;
+  } => {
     const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
-    const tierOrBasePrice = tierRes.unitPrice;
-    if (item.discountType === 'PERCENT' && item.discountValue) {
-      return Math.max(0, Math.round((tierOrBasePrice * (1 - item.discountValue / 100)) * 100) / 100);
+    const hasManualPrice = item.customPrice !== undefined;
+    const hasManualDiscount = (item.discountValue || 0) > 0;
+
+    if (
+      item.pricingSource === 'manual_override' ||
+      (hasManualPrice && item.pricingSource !== 'volume_tier') ||
+      hasManualDiscount
+    ) {
+      let unitPrice = item.customPrice !== undefined ? item.customPrice : tierRes.unitPrice;
+      if (item.customPrice === undefined) {
+        if (item.discountType === 'PERCENT' && item.discountValue) {
+          unitPrice = Math.max(0, Math.round((tierRes.unitPrice * (1 - item.discountValue / 100)) * 100) / 100);
+        } else if (item.discountType === 'FIXED' && item.discountValue) {
+          unitPrice = Math.max(0, tierRes.unitPrice - item.discountValue);
+        }
+      }
+      return { pricingSource: 'manual_override', unitPrice, tierRes };
     }
-    if (item.discountType === 'FIXED' && item.discountValue) {
-      return Math.max(0, tierOrBasePrice - item.discountValue);
+
+    if (tierRes.isTierApplied) {
+      return { pricingSource: 'volume_tier', unitPrice: tierRes.unitPrice, tierRes };
     }
-    return tierOrBasePrice;
+
+    return { pricingSource: 'retail', unitPrice: tierRes.basePrice, tierRes };
+  };
+
+  const getEffectiveUnitPrice = (item: CartItem): number => {
+    return resolveCartItemPricing(item).unitPrice;
   };
 
   const getDiscountAmountPerUnit = (item: CartItem): number => {
-    const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
-    const effective = getEffectiveUnitPrice(item);
-    return Math.max(0, tierRes.unitPrice - effective);
+    const resolved = resolveCartItemPricing(item);
+    if (resolved.pricingSource !== 'manual_override') return 0;
+    return Math.max(0, resolved.tierRes.unitPrice - resolved.unitPrice);
   };
 
   // Floor Price Engine (نظام الحد الأدنى للبيع):
-  // When the employee enters any bargained price:
-  // If price >= Floor Price: ACCEPTED IMMEDIATELY without any PIN or supervisor prompt!
-  // If price < Floor Price: REJECTED, LOCKED, exact message: "تجاوزت الحد المسموح به للخصم على هذه المادة"
+  // Applies ONLY when the cashier enters a manual override/discount below MinSalePrice
+  // (official volume pricing tiers & users with pos.price.override are exempt).
   const handleSetItemPrice = (item: CartItem, proposedPrice: number) => {
+    const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
     const retail = item.product.sellingPrice;
     const floorPrice = item.product.minSellingPrice !== undefined
       ? item.product.minSellingPrice
-      : Math.round(retail * 0.88);
+      : (item.product.isBundle ? 0 : Math.round(retail * 0.88));
 
-    // Resetting to original retail price
-    if (proposedPrice === retail) {
-      setCart(prev => prev.map(ci =>
-        ci.product.id === item.product.id
-          ? { ...ci, customPrice: undefined, discountType: undefined, discountValue: undefined, priceError: undefined }
-          : ci
-      ));
-      setEditingDiscountItemId(null);
-      setBargainInputPrice('');
+    // Resetting back to automatic volume tier or retail price
+    const automaticTarget = tierRes.isTierApplied ? tierRes.unitPrice : retail;
+    if (proposedPrice === automaticTarget) {
+      handleResetItemPrice(item);
       return;
     }
 
-    if (proposedPrice >= floorPrice && proposedPrice >= 0) {
-      // 1. Accepted immediately! No questions asked!
+    if (proposedPrice >= 0 && (canOverridePriceFloor || proposedPrice >= floorPrice)) {
+      // Accepted manual override within floor (or authorized override permission)
       setCart(prev => prev.map(ci =>
         ci.product.id === item.product.id
           ? {
@@ -748,6 +781,7 @@ export default function PosTerminalView({
             customPrice: proposedPrice,
             discountType: undefined,
             discountValue: undefined,
+            pricingSource: 'manual_override',
             priceError: undefined
           }
           : ci
@@ -759,7 +793,7 @@ export default function PosTerminalView({
         : `Price (${formatMoney(proposedPrice)}) accepted`);
       setTimeout(() => setPaymentToast(''), 3000);
     } else {
-      // 2. Breached safety floor! Lock, reject, and show exact message.
+      // Breached safety floor on manual override! Lock, reject, and show exact message.
       const errorMsg = isAr
         ? 'تجاوزت الحد المسموح به للخصم على هذه المادة'
         : 'Discount exceeds allowed floor limit for this item';
@@ -769,6 +803,7 @@ export default function PosTerminalView({
           ? {
             ...ci,
             customPrice: proposedPrice,
+            pricingSource: 'manual_override',
             priceError: errorMsg
           }
           : ci
@@ -789,9 +824,17 @@ export default function PosTerminalView({
   };
 
   const handleResetItemPrice = (item: CartItem) => {
+    const tierRes = resolveQuantityUnitPrice(item.product, item.quantity);
     setCart(prev => prev.map(ci =>
       ci.product.id === item.product.id
-        ? { ...ci, customPrice: undefined, discountType: undefined, discountValue: undefined, priceError: undefined }
+        ? {
+          ...ci,
+          customPrice: undefined,
+          discountType: undefined,
+          discountValue: undefined,
+          pricingSource: tierRes.isTierApplied ? 'volume_tier' : 'retail',
+          priceError: undefined
+        }
         : ci
     ));
     setEditingDiscountItemId(null);
@@ -1165,13 +1208,25 @@ export default function PosTerminalView({
             cashierName: effectiveCashierName,
             paymentMethod: method,
             redeemPoints,
-            items: cart.map(it => ({
-              productId: it.product.id,
-              quantity: it.quantity,
-              discountType: it.discountType || 'NONE',
-              discountValue: it.discountValue || 0,
-              serialNumbers: it.serialNumbers || []
-            }))
+            items: cart.map(it => {
+              const resolved = resolveCartItemPricing(it);
+              const manualDiff = resolved.pricingSource === 'manual_override' && it.customPrice !== undefined
+                ? Math.max(0, resolved.tierRes.unitPrice - resolved.unitPrice)
+                : 0;
+              return {
+                productId: it.product.id,
+                quantity: it.quantity,
+                discountType: resolved.pricingSource === 'volume_tier'
+                  ? 'NONE'
+                  : (it.customPrice !== undefined && manualDiff > 0 ? 'FIXED' : (it.discountType || 'NONE')),
+                discountValue: resolved.pricingSource === 'volume_tier'
+                  ? 0
+                  : (it.customPrice !== undefined && manualDiff > 0 ? manualDiff : (it.discountValue || 0)),
+                unitPrice: resolved.unitPrice,
+                pricingSource: resolved.pricingSource,
+                serialNumbers: it.serialNumbers || []
+              };
+            })
           })
         }).then(async res => {
           if (!res.ok) {
@@ -2031,15 +2086,14 @@ export default function PosTerminalView({
                 const targetCheckWhId = dispenseMode === 'WAREHOUSE_DISPATCH' ? targetDispatchWarehouseId : selectedWarehouseId;
                 const cartStockCheck = validateCartStockWithBundles(cart, products, storedBundles, targetCheckWhId);
                 return cart.map(item => {
-                  const tierResolution = resolveQuantityUnitPrice(item.product, item.quantity);
-                  const isManualBargain = item.customPrice !== undefined || (item.discountValue || 0) > 0;
-                  const isTierActive = tierResolution.isTierApplied && !isManualBargain;
-                  const finalUnitPrice = getEffectiveUnitPrice(item);
+                  const { pricingSource, unitPrice: finalUnitPrice, tierRes: tierResolution } = resolveCartItemPricing(item);
+                  const isManualBargain = pricingSource === 'manual_override';
+                  const isTierActive = pricingSource === 'volume_tier';
                   const isModified = isTierActive || isManualBargain;
                   const floorPrice = item.product.minSellingPrice !== undefined
                     ? item.product.minSellingPrice
                     : (item.product.isBundle ? 0 : Math.round(item.product.sellingPrice * 0.88));
-                  const isBreached = !!item.priceError || (!tierResolution.isTierApplied && finalUnitPrice < floorPrice);
+                  const isBreached = !!item.priceError || (pricingSource === 'manual_override' && !canOverridePriceFloor && finalUnitPrice < floorPrice);
                   const lineIssue = cartStockCheck.lineIssues[item.product.id];
 
                   return (
@@ -2514,11 +2568,18 @@ export default function PosTerminalView({
               </div>
             </div>
 
-            {/* Check if any item breached floor limit or has stock deficit (bundles validated dynamically via components) */}
+            {/* Check if any manual override item breached floor limit or has stock deficit (volume tiers are exempt from manual MinSalePrice guard) */}
             {(() => {
-              const hasFloorBreach = cart.some(ci =>
-                !!ci.priceError || getEffectiveUnitPrice(ci) < (ci.product.minSellingPrice ?? (ci.product.isBundle ? 0 : Math.round(ci.product.sellingPrice * 0.88)))
-              );
+              const hasFloorBreach = cart.some(ci => {
+                if (ci.priceError) return true;
+                const resolved = resolveCartItemPricing(ci);
+                if (resolved.pricingSource === 'volume_tier') return false;
+                if (canOverridePriceFloor) return false;
+                const floorPrice = ci.product.minSellingPrice !== undefined
+                  ? ci.product.minSellingPrice
+                  : (ci.product.isBundle ? 0 : Math.round(ci.product.sellingPrice * 0.88));
+                return resolved.unitPrice < floorPrice;
+              });
               const targetCheckWhId = dispenseMode === 'WAREHOUSE_DISPATCH' ? targetDispatchWarehouseId : selectedWarehouseId;
               const cartStockCheck = validateCartStockWithBundles(cart, products, storedBundles, targetCheckWhId);
               const hasStockDeficit = !cartStockCheck.isValid;

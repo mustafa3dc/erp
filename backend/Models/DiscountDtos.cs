@@ -46,6 +46,7 @@ public class PosProductDto
 public class ValidateDiscountRequest
 {
     public Guid ProductId { get; set; }
+    public int Quantity { get; set; } = 1;
     
     /// <summary>
     /// "PERCENT" (%) or "FIXED" ($ / IQD)
@@ -53,6 +54,8 @@ public class ValidateDiscountRequest
     public string DiscountType { get; set; } = "PERCENT";
     
     public decimal DiscountValue { get; set; }
+    public decimal? UnitPrice { get; set; }
+    public string? PricingSource { get; set; }
     public string CashierId { get; set; } = string.Empty;
     
     /// <summary>
@@ -141,6 +144,8 @@ public class PosInvoiceItemRequest
     public int Quantity { get; set; } = 1;
     public string DiscountType { get; set; } = "NONE"; // NONE, PERCENT, FIXED
     public decimal DiscountValue { get; set; } = 0.00m;
+    public decimal? UnitPrice { get; set; }
+    public string? PricingSource { get; set; } // 'retail' | 'volume_tier' | 'manual_override'
     public string? ManagerOverridePin { get; set; }
     public string? OverrideReason { get; set; }
     public string? SerialNumber { get; set; }

@@ -98,17 +98,29 @@ public class DiscountEngineService : IDiscountEngineService
         }).ToList();
     }
 
+    private static ProductQuantityTier? MatchActiveQuantityTier(Product product, int quantity)
+    {
+        var safeQty = quantity < 1 ? 1 : quantity;
+        return product.QuantityTiers
+            .Where(t => safeQty >= t.MinQty
+                        && (!t.MaxQty.HasValue || safeQty <= t.MaxQty.Value)
+                        && (!t.TenantId.HasValue || !product.TenantId.HasValue || t.TenantId == product.TenantId))
+            .OrderByDescending(t => t.MinQty)
+            .FirstOrDefault();
+    }
+
     /// <summary>
     /// Silent Backend Validation:
-    /// 1. Cashier Role Ceiling: max 5% (or product's MaxCashierDiscountPercent).
-    /// 2. Supervisor Ceiling: max 15%.
-    /// 3. Admin: Unlimited.
-    /// 4. Floor Check: proposedPrice >= MinSellingPrice AND proposedPrice >= (CostPrice + MinProfitMargin).
+    /// 1. Official Volume Pricing Tiers for (ProductId, Quantity) are exempt from single-unit MinSellingPrice floor checks.
+    /// 2. Manual cashier override / discount check: proposedPrice >= MinSellingPrice AND proposedPrice >= (CostPrice + MinProfitMargin).
     /// Returns ERR_DISCOUNT_EXCEEDED_LIMIT with generic message on violation.
     /// </summary>
     public async Task<ValidateDiscountResponse> ValidateDiscountAsync(ValidateDiscountRequest request)
     {
-        var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProductId);
+        var product = await _context.Products
+            .AsNoTracking()
+            .Include(p => p.QuantityTiers)
+            .FirstOrDefaultAsync(p => p.Id == request.ProductId);
         if (product == null)
         {
             return new ValidateDiscountResponse
@@ -119,15 +131,21 @@ public class DiscountEngineService : IDiscountEngineService
             };
         }
 
-        var (discountAmount, discountPercent, proposedUnitPrice) = CalculateDiscount(
-            product.SellingPrice, request.DiscountType, request.DiscountValue);
+        var matchedTier = MatchActiveQuantityTier(product, request.Quantity);
+        decimal discountAmount;
+        decimal proposedUnitPrice;
 
-        var cashierMaxPercent = product.MaxCashierDiscountPercent > 0 ? product.MaxCashierDiscountPercent : 5.0m;
-        
-        // Silent Internal Floor (Never expose to client)
-        var costFloor = product.CostPrice + product.MinProfitMargin;
-        var minSellingFloor = product.MinSellingPrice > 0 ? product.MinSellingPrice : 0m;
-        var effectiveFloor = Math.Max(costFloor, minSellingFloor);
+        if (request.UnitPrice.HasValue && request.UnitPrice.Value >= 0 &&
+            (string.Equals(request.DiscountType, "NONE", StringComparison.OrdinalIgnoreCase) || request.DiscountValue == 0))
+        {
+            proposedUnitPrice = request.UnitPrice.Value;
+            discountAmount = Math.Max(0m, product.SellingPrice - proposedUnitPrice);
+        }
+        else
+        {
+            (discountAmount, _, proposedUnitPrice) = CalculateDiscount(
+                product.SellingPrice, request.DiscountType, request.DiscountValue);
+        }
 
         // Case 1: Proposed price is invalid or negative
         if (proposedUnitPrice < 0)
@@ -142,6 +160,28 @@ public class DiscountEngineService : IDiscountEngineService
                 FinalPrice = product.SellingPrice
             };
         }
+
+        // Exempt active Volume Pricing Tier from manual MinSellingPrice floor check
+        bool isOfficialVolumeTier = matchedTier != null
+            && proposedUnitPrice >= matchedTier.UnitPrice
+            && !string.Equals(request.PricingSource, "manual_override", StringComparison.OrdinalIgnoreCase);
+
+        if (isOfficialVolumeTier)
+        {
+            return new ValidateDiscountResponse
+            {
+                IsAllowed = true,
+                RequiresManagerOverride = false,
+                OriginalPrice = product.SellingPrice,
+                DiscountAmount = 0m,
+                FinalPrice = proposedUnitPrice
+            };
+        }
+
+        // Silent Internal Floor (Never expose to client)
+        var costFloor = product.CostPrice + product.MinProfitMargin;
+        var minSellingFloor = product.MinSellingPrice > 0 ? product.MinSellingPrice : 0m;
+        var effectiveFloor = Math.Max(costFloor, minSellingFloor);
 
         // Floor Price Engine Check:
         // Any proposed price >= effectiveFloor is accepted immediately without supervisor PIN!
@@ -509,33 +549,54 @@ public class DiscountEngineService : IDiscountEngineService
                 }
 
                 // Automatic Quantity Tier Resolution
-                var matchedTier = product.QuantityTiers
-                    .Where(t => itemReq.Quantity >= t.MinQty && (!t.MaxQty.HasValue || itemReq.Quantity <= t.MaxQty.Value))
-                    .OrderByDescending(t => t.MinQty)
-                    .FirstOrDefault();
+                var matchedTier = MatchActiveQuantityTier(product, itemReq.Quantity);
 
                 decimal resolvedUnitBasePrice = matchedTier != null ? matchedTier.UnitPrice : product.SellingPrice;
 
-                var (discountAmountPerUnit, discountPercent, finalUnitPrice) = CalculateDiscount(
-                    resolvedUnitBasePrice, itemReq.DiscountType, itemReq.DiscountValue);
+                decimal discountAmountPerUnit;
+                decimal discountPercent;
+                decimal finalUnitPrice;
 
-                var cashierMax = product.MaxCashierDiscountPercent > 0 ? product.MaxCashierDiscountPercent : 5.0m;
+                bool isExplicitUnitPrice = itemReq.UnitPrice.HasValue && itemReq.UnitPrice.Value >= 0 &&
+                    (string.Equals(itemReq.DiscountType, "NONE", StringComparison.OrdinalIgnoreCase) || itemReq.DiscountValue == 0);
+
+                if (isExplicitUnitPrice)
+                {
+                    finalUnitPrice = itemReq.UnitPrice!.Value;
+                    discountAmountPerUnit = Math.Max(0m, resolvedUnitBasePrice - finalUnitPrice);
+                    discountPercent = resolvedUnitBasePrice > 0 ? (discountAmountPerUnit / resolvedUnitBasePrice) * 100m : 0m;
+                }
+                else
+                {
+                    (discountAmountPerUnit, discountPercent, finalUnitPrice) = CalculateDiscount(
+                        resolvedUnitBasePrice, itemReq.DiscountType, itemReq.DiscountValue);
+                }
+
                 var costFloor = product.CostPrice + product.MinProfitMargin;
                 var effectiveFloor = Math.Max(costFloor, product.MinSellingPrice);
+
+                // Official Volume Pricing Tiers are owner-approved bulk prices and exempt from single-unit MinSellingPrice floor checks.
+                bool isOfficialVolumeTier = matchedTier != null
+                    && finalUnitPrice >= matchedTier.UnitPrice
+                    && !string.Equals(itemReq.PricingSource, "manual_override", StringComparison.OrdinalIgnoreCase);
 
                 bool wasOverride = false;
                 string? approvedManagerId = null;
                 string? approvedManagerName = null;
 
-                // If item has an explicit manual cashier discount on top of resolved tier/base price
-                if (discountAmountPerUnit > 0)
+                if (!isOfficialVolumeTier && (discountAmountPerUnit > 0 || finalUnitPrice < resolvedUnitBasePrice))
                 {
-                    discountedCount++;
-                    // Strict Floor Price Protection
+                    // Strict Floor Price Protection for manual cashier overrides/discounts
                     if (finalUnitPrice < effectiveFloor)
                     {
-                        throw new ApplicationException(GenericExceededMessageAr);
+                        throw new ApplicationException($"ERR_DISCOUNT_LIMIT_EXCEEDED: {GenericExceededMessageAr}");
                     }
+                }
+
+                // If item has an explicit manual cashier discount on top of resolved tier/base price
+                if (!isOfficialVolumeTier && discountAmountPerUnit > 0)
+                {
+                    discountedCount++;
 
                     // Record in Discount Audit Log
                     auditLogs.Add(new DiscountAuditLog

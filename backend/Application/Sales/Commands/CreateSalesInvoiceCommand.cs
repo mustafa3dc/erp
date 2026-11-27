@@ -14,7 +14,9 @@ public sealed record SalesItemRequestDto(
     string DiscountType = "NONE",
     decimal DiscountValue = 0.00m,
     string? OverrideReason = null,
-    List<string>? SerialNumbers = null
+    List<string>? SerialNumbers = null,
+    decimal? UnitPrice = null,
+    string? PricingSource = null
 );
 
 public sealed record CreateSalesInvoiceCommand(
@@ -70,7 +72,9 @@ public sealed class CreateSalesInvoiceCommandHandler
                     DiscountType = i.DiscountType,
                     DiscountValue = i.DiscountValue,
                     OverrideReason = i.OverrideReason,
-                    SerialNumbers = i.SerialNumbers
+                    SerialNumbers = i.SerialNumbers,
+                    UnitPrice = i.UnitPrice,
+                    PricingSource = i.PricingSource
                 })
             };
 
@@ -79,7 +83,11 @@ public sealed class CreateSalesInvoiceCommandHandler
         }
         catch (ApplicationException ex)
         {
-            var errorCode = ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
+            var errorCode = ex.Message.Contains("ERR_DISCOUNT_LIMIT_EXCEEDED")
+                ? "ERR_DISCOUNT_LIMIT_EXCEEDED"
+                : ex.Message.Contains("ERR_DISCOUNT_EXCEEDED_LIMIT")
+                ? "ERR_DISCOUNT_EXCEEDED_LIMIT"
+                : ex.Message.Contains("ERR_NO_ACTIVE_SHIFT")
                 ? "ERR_NO_ACTIVE_SHIFT"
                 : ex.Message.Contains("ERR_INSUFFICIENT_LOYALTY_POINTS")
                 ? "ERR_INSUFFICIENT_LOYALTY_POINTS"

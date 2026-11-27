@@ -119,6 +119,7 @@ public class PosTerminalController : ControllerBase
     /// Strictly validates regional isolation for payment methods (e.g. ZAIN_CASH, QI_CARD only for IQ).
     /// </summary>
     [HttpPost("invoices")]
+    [HttpPost("checkout")]
     public async Task<ActionResult<PosInvoiceResponse>> CreateInvoice(
         [FromBody] CreatePosInvoiceRequest request,
         [FromHeader(Name = "X-Tenant-Country")] string? countryCode)
@@ -175,6 +176,8 @@ public class PosTerminalController : ControllerBase
                 ? "ERR_INSUFFICIENT_STOCK"
                 : (ex.Message.Contains("INVALID_WAREHOUSE") || ex.Message.Contains("المستودع") || ex.Message.Contains("مستودع"))
                 ? "INVALID_WAREHOUSE"
+                : ex.Message.Contains("ERR_DISCOUNT_LIMIT_EXCEEDED")
+                ? "ERR_DISCOUNT_LIMIT_EXCEEDED"
                 : "ERR_DISCOUNT_EXCEEDED_LIMIT";
 
             return BadRequest(new

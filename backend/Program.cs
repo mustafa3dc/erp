@@ -590,6 +590,19 @@ using (var scope = app.Services.CreateScope())
                 {
                     // Fallback: inline SQL if script file not found (e.g. on Render.com after publish)
                     dbContext.Database.ExecuteSqlRaw(@"
+                        -- Fix warehouse_stock: add product_id, tenant_id, shelf_id columns
+                        ALTER TABLE IF EXISTS warehouse_stock
+                            ADD COLUMN IF NOT EXISTS product_id      UUID          NULL,
+                            ADD COLUMN IF NOT EXISTS tenant_id       UUID          NULL,
+                            ADD COLUMN IF NOT EXISTS shelf_id        UUID          NULL,
+                            ADD COLUMN IF NOT EXISTS shelf_location  VARCHAR(100)  NULL,
+                            ADD COLUMN IF NOT EXISTS last_counted_at TIMESTAMPTZ   NULL;
+
+                        -- Backfill product_id from item_id
+                        UPDATE warehouse_stock SET product_id = item_id
+                            WHERE product_id IS NULL AND item_id IS NOT NULL;
+
+                        -- Create warehouse_shelves table
                         CREATE TABLE IF NOT EXISTS warehouse_shelves (
                             id UUID PRIMARY KEY,
                             tenant_id UUID NULL,
@@ -603,11 +616,7 @@ using (var scope = app.Services.CreateScope())
                             updated_at TIMESTAMPTZ NULL,
                             created_by VARCHAR(150) NULL
                         );
-                        ALTER TABLE IF EXISTS warehouse_stock
-                            ADD COLUMN IF NOT EXISTS shelf_id UUID NULL,
-                            ADD COLUMN IF NOT EXISTS shelf_location VARCHAR(100) NULL,
-                            ADD COLUMN IF NOT EXISTS tenant_id UUID NULL,
-                            ADD COLUMN IF NOT EXISTS product_id UUID NULL;
+
                         CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh
                             ON warehouse_shelves (tenant_id, warehouse_id);
                     ");

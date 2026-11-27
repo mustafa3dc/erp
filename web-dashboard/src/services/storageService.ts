@@ -2,7 +2,7 @@ import { Product, SalesInvoice, Warehouse, WarehouseDispatchOrder, DispenseMode,
 import { TransactionDetail } from '../components/TransactionModal';
 import { localizeCategory, localizeUnit, localizeWarehouse } from '../lib/localeHelpers';
 import { parseDateSafely } from '../utils/dateFormatter';
-import { formatLatinDateTime, formatLatinNumber, formatLatinTime } from '../lib/formatters';
+import { formatLatinDateTime, formatLatinNumber, formatLatinTime, toLatinDigits } from '../lib/formatters';
 import { UserAccount, DEFAULT_USER_ACCOUNTS, UserProfile, UserRole } from '../types/rbac';
 import { PurchaseInvoice, PurchaseInvoiceItem, PurchaseJournalEntry } from '../types/purchases';
 import { 
@@ -73,6 +73,7 @@ export const KEYS = {
   get DISPATCH_ORDERS() { return getScopedKey('dispatch_orders'); },
   get STOCK_ADJUSTMENTS() { return getScopedKey('stock_adjustments'); },
   get EMPLOYEE_TRANSACTIONS() { return getScopedKey('employee_transactions'); },
+  get AUDIT_LOGS() { return getScopedKey('audit_logs'); },
   get INSTALLMENT_CONTRACTS() { return getScopedKey('installment_contracts'); },
   get EXPENSE_CATEGORIES() { return getScopedKey('expense_categories'); },
   get EXPENSE_VOUCHERS() { return getScopedKey('expense_vouchers'); },
@@ -3709,11 +3710,39 @@ export async function executeStockAdjustment(data: StockAdjustmentData): Promise
   const storedAdjustments = getStoredStockAdjustments();
   saveStoredStockAdjustments([record, ...storedAdjustments]);
 
+  recordLocalAuditLog({
+    actionType: 'STOCK_ADJUSTMENT',
+    entityName: 'warehouse_stock',
+    entityId: `${prod.sku}@${warehouseName}`,
+    oldValues: {
+      productName: prod.nameAr,
+      previousStock,
+    },
+    newValues: {
+      adjustmentType: data.adjustmentType,
+      quantityChange: quantityDelta,
+      newStock,
+      reason: data.reason,
+      notes: data.notes,
+    },
+    userName: data.operator,
+  });
+
   // Async sync to Backend API if available
   try {
+    const authToken =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('zilox_auth_token') ||
+          localStorage.getItem('logistock_erp_jwt_token') ||
+          localStorage.getItem('token') ||
+          localStorage.getItem('zilox_token')
+        : null;
     fetch('/api/inventory/adjustments', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({
         productId: prod.id,
         warehouseId: data.warehouseId,
@@ -4869,6 +4898,78 @@ export function updateLocalSerialStatus(serialNumber: string, status: ProductSer
     };
   });
   if (changed) saveStoredProductSerials(updated);
+}
+
+// ============================================================================
+// LOCAL IMMUTABLE AUDIT LOG LEDGER (Offline / Client-Side Mode Support)
+// ============================================================================
+
+export interface LocalAuditLogEntry {
+  id: string;
+  tenantId?: string | null;
+  userId: string;
+  userName: string;
+  actionType: string;
+  entityName: string;
+  entityId: string;
+  oldValuesJson?: string | null;
+  newValuesJson?: string | null;
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export function getStoredAuditLogs(): LocalAuditLogEntry[] {
+  const list = safeGet<LocalAuditLogEntry[]>(KEYS.AUDIT_LOGS, []);
+  return Array.isArray(list) ? list : [];
+}
+
+export function recordLocalAuditLog(params: {
+  actionType: string;
+  entityName: string;
+  entityId: string;
+  oldValues?: unknown;
+  newValues?: unknown;
+  userId?: string;
+  userName?: string;
+}): LocalAuditLogEntry | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const session = getStoredAuthSession();
+    const userId = (params.userId || session?.username || session?.id || 'local-user').trim();
+    const userName = (params.userName || session?.fullName || session?.username || userId).trim();
+
+    const serialize = (val: unknown): string | null => {
+      if (val === undefined || val === null) return null;
+      if (typeof val === 'string') {
+        const trimmed = toLatinDigits(val).trim();
+        return trimmed || null;
+      }
+      return toLatinDigits(JSON.stringify(val));
+    };
+
+    const entry: LocalAuditLogEntry = {
+      id: `AUD-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      tenantId: session?.tenantId || null,
+      userId,
+      userName,
+      actionType: toLatinDigits(params.actionType).trim().toUpperCase(),
+      entityName: toLatinDigits(params.entityName).trim(),
+      entityId: toLatinDigits(params.entityId).trim() || '-',
+      oldValuesJson: serialize(params.oldValues),
+      newValuesJson: serialize(params.newValues),
+      ipAddress: 'local-browser',
+      createdAt: new Date().toISOString(),
+    };
+
+    const current = getStoredAuditLogs();
+    const updated = [entry, ...current].slice(0, 500);
+    safeSet(KEYS.AUDIT_LOGS, updated);
+    window.dispatchEvent(new CustomEvent('zilox_audit_logs_updated'));
+    return entry;
+  } catch {
+    return null;
+  }
 }
 
 

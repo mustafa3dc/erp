@@ -159,6 +159,15 @@
       "ERR_SHELF_NOT_FOUND": "الرف المحدد غير موجود في هذا المستودع.",
       "ERR_SHELF_SAVE_FAILED": "تعذر حفظ بيانات الرف.",
       "ERR_SHELF_ASSIGN_FAILED": "تعذر تسكين الأصناف في الرف المحدد."
+    },
+    "AUTH": {
+      "ERR_AUTH_IDENTIFIER_REQUIRED": "يرجى إدخال اسم المستخدم أو البريد الإلكتروني أو رقم الهاتف.",
+      "ERR_AUTH_PASSWORD_REQUIRED": "يرجى إدخال كلمة المرور.",
+      "ERR_INVALID_CREDENTIALS": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+      "ERR_ACCOUNT_INACTIVE": "هذا الحساب معطل من قِبل إدارة المنشأة.",
+      "ERR_TENANT_SUSPENDED": "تم تعليق اشتراك هذه المنشأة من قِبل إدارة المنصة. يرجى مراجعة الدعم الفني.",
+      "ERR_TENANT_SUBSCRIPTION_EXPIRED": "انتهت صلاحية اشتراك هذه المنشأة. يرجى تجديد الاشتراك للمتابعة.",
+      "ERR_TENANT_NOT_FOUND": "رمز المنشأة غير مسجل في النظام."
     }
   }
 }

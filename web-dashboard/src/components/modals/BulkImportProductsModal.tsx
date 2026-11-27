@@ -18,7 +18,7 @@ import { toLatinDigits } from '../../lib/formatters';
 import { getTenantAuthHeaders } from '../../lib/api-client';
 import { getAuthToken } from '../../services/purchasesService';
 import { Product, Warehouse } from '../../types/warehouse';
-import { saveStoredProducts } from '../../services/storageService';
+import { saveStoredProducts, recordLocalAuditLog } from '../../services/storageService';
 import { useSettings } from '../../context/settings-context';
 import { toast } from 'sonner';
 
@@ -282,14 +282,32 @@ export default function BulkImportProductsModal({
           method: 'POST',
           headers,
           body: formData
-        });
-        const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.success) {
+        }).catch(() => null);
+        if (res && res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json?.success) {
+            setPreviewResult(json.data);
+            return;
+          }
           setErrorMsg(translateErrCode(json?.errorCode || 'ERR_IMPORT_INVALID_FORMAT'));
           setPreviewResult(null);
           return;
         }
-        setPreviewResult(json.data);
+        if (res && res.status < 500) {
+          const json = await res.json().catch(() => null);
+          setErrorMsg(translateErrCode(json?.errorCode || 'ERR_IMPORT_INVALID_FORMAT'));
+          setPreviewResult(null);
+          return;
+        }
+        // Fallback smoothly to local CSV preview when backend is offline
+        if (lowerName.endsWith('.csv')) {
+          const localRes = await validateCsvLocally(file);
+          setPreviewResult(localRes);
+          return;
+        }
+        setErrorMsg(translateErrCode('ERR_IMPORT_INVALID_FORMAT'));
+        setPreviewResult(null);
+        return;
       } else {
         if (lowerName.endsWith('.xlsx')) {
           setErrorMsg(translateErrCode('ERR_IMPORT_INVALID_FORMAT'));
@@ -330,13 +348,27 @@ export default function BulkImportProductsModal({
           method: 'POST',
           headers,
           body: formData
-        });
-        const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.success) {
+        }).catch(() => null);
+        if (res && res.ok) {
+          const json = await res.json().catch(() => null);
+          if (!json?.success) {
+            setErrorMsg(translateErrCode(json?.errorCode || 'ERR_IMPORT_TRANSACTION_FAILED'));
+            return;
+          }
+          resultData = json.data;
+        } else if (res && res.status < 500) {
+          const json = await res.json().catch(() => null);
           setErrorMsg(translateErrCode(json?.errorCode || 'ERR_IMPORT_TRANSACTION_FAILED'));
           return;
+        } else {
+          // Offline / no-server local import fallback
+          resultData = {
+            ...previewResult,
+            dryRun: false,
+            importedProductsCount: previewResult.validRows,
+            openingStockMovementsCount: previewResult.rows.filter(r => r.openingQuantity > 0).length
+          };
         }
-        resultData = json.data;
       } else {
         resultData = {
           ...previewResult,
@@ -378,6 +410,15 @@ export default function BulkImportProductsModal({
 
       const merged = [...newLocalProducts, ...existingProducts];
       saveStoredProducts(merged);
+      recordLocalAuditLog({
+        actionType: 'BULK_PRODUCT_IMPORT',
+        entityName: 'products',
+        entityId: selectedFile.name,
+        newValues: {
+          importedProductsCount: resultData.importedProductsCount,
+          openingStockMovementsCount: resultData.openingStockMovementsCount
+        }
+      });
       onImported(merged);
       window.dispatchEvent(new CustomEvent('zilox_products_updated'));
       setFinalResult(resultData);

@@ -128,6 +128,13 @@ public static class DigitNormalizer
 
     public static bool IsTargetFieldName(string propertyName)
     {
+        // Strictly exclude password/passcode fields from digit normalization
+        if (propertyName.Contains("Password", StringComparison.OrdinalIgnoreCase)
+            || propertyName.Contains("Passcode", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return propertyName.Contains("Phone", StringComparison.OrdinalIgnoreCase)
             || propertyName.Contains("Barcode", StringComparison.OrdinalIgnoreCase)
             || propertyName.Equals("Sku", StringComparison.OrdinalIgnoreCase)
@@ -139,6 +146,12 @@ public static class DigitNormalizer
 
     internal static bool ShouldNormalizeParameterName(string name)
     {
+        if (name.Contains("Password", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Passcode", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         foreach (var key in TargetQueryParameterKeys)
         {
             if (name.Contains(key, StringComparison.OrdinalIgnoreCase))

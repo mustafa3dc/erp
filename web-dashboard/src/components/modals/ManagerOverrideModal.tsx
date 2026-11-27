@@ -317,6 +317,7 @@ export default function ManagerOverrideModal({
                     ref={pinInputRef}
                     autoFocus
                     type="password"
+                    data-no-digit-normalize="true"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}

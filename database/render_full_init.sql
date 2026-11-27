@@ -725,7 +725,7 @@ VALUES (
     '00000000-0000-0000-0000-000000000001'::uuid,
     NULL,
     'superadmin',
-    'AQAAAAIAAYagAAAAEG3g1Vz5jXk...', -- standard hash for '123'
+    'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', -- SHA-256 hash for '123'
     'المدير العام للمنصة (SaaS Platform Owner)',
     'owner@zilox.cloud',
     '+964 770 000 0000',

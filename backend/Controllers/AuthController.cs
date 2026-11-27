@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -51,6 +52,8 @@ public class AuthController : ControllerBase
 
     [HttpGet("profile")]
     [HttpGet("me")]
+    [HttpGet("/api/auth/profile")]
+    [HttpGet("/api/auth/me")]
     public async Task<ActionResult<UserProfileDto>> GetCurrentUserProfile()
     {
         var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
@@ -64,10 +67,10 @@ public class AuthController : ControllerBase
         var currentTenantSlug = User.FindFirst("tenant_slug")?.Value 
             ?? Request.Headers["X-Tenant-Slug"].FirstOrDefault();
 
-        // 1. Strict Query in EF Core scoped to UserId and TenantId
+        // 1. Strict Query in EF Core scoped to UserId and TenantId (IgnoreQueryFilters so global tenant filter cannot hide self/platform profile)
         if (_context != null && !string.IsNullOrWhiteSpace(currentUserId) && Guid.TryParse(currentUserId, out var parsedUserId))
         {
-            var query = _context.Users.AsNoTracking().Include(u => u.Tenant).Where(u => u.Id == parsedUserId);
+            var query = _context.Users.IgnoreQueryFilters().AsNoTracking().Include(u => u.Tenant).Where(u => u.Id == parsedUserId);
             
             if (!string.IsNullOrWhiteSpace(currentTenantId) && Guid.TryParse(currentTenantId, out var parsedTenantId))
             {
@@ -414,218 +417,178 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [HttpPost("/api/auth/login")]
+    [AllowAnonymous]
     public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto request, CancellationToken ct = default)
     {
-        var rawInput = (!string.IsNullOrWhiteSpace(request.Identifier) ? request.Identifier : request.Username)?.Trim();
+        var rawInput = !string.IsNullOrWhiteSpace(request.Identifier) ? request.Identifier : request.Username;
+        var cleanInput = DigitNormalizer.ToLatinDigits(rawInput).Trim();
 
-        if (string.IsNullOrWhiteSpace(rawInput))
+        if (string.IsNullOrWhiteSpace(cleanInput))
         {
-            return BadRequest(new { message = "يرجى إدخال اسم المستخدم ورمز الشركة" });
+            return BadRequest(new { success = false, errorCode = "ERR_AUTH_IDENTIFIER_REQUIRED" });
         }
 
+        if (string.IsNullOrEmpty(request.Password))
+        {
+            return BadRequest(new { success = false, errorCode = "ERR_AUTH_PASSWORD_REQUIRED" });
+        }
+
+        var lowerInput = cleanInput.ToLowerInvariant();
+        var compactPhoneInput = NormalizePhoneDigits(cleanInput);
+
         // 0. SuperAdmin Platform Owner Check
-        if (rawInput.Equals("superadmin", StringComparison.OrdinalIgnoreCase) || 
-            rawInput.Equals("superadmin@platform", StringComparison.OrdinalIgnoreCase))
+        if (lowerInput == "superadmin" || lowerInput == "superadmin@platform")
         {
             User? platformDbUser = null;
             if (_context != null)
             {
-                platformDbUser = await _context.Users.FirstOrDefaultAsync(u => 
-                    u.TenantId == null && u.Username.ToLower() == "superadmin", ct);
+                platformDbUser = await _context.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u =>
+                        u.TenantId == null &&
+                        (u.Username.ToLower() == "superadmin" ||
+                         (u.Email != null && u.Email.ToLower() == lowerInput)), ct);
             }
 
-            if (platformDbUser != null && !PasswordHasher.Verify(request.Password, platformDbUser.PasswordHash))
+            if (platformDbUser != null)
             {
-                return Unauthorized(new { message = "بيانات حساب مسؤول المنصة غير صحيحة." });
-            }
-            else if (platformDbUser == null && request.Password != "123")
-            {
-                return Unauthorized(new { message = "بيانات حساب مسؤول المنصة غير صحيحة." });
-            }
-
-            var superAdminProfile = new UserProfileDto
-            {
-                Id = platformDbUser?.Id.ToString() ?? "00000000-0000-0000-0000-000000000001",
-                Username = "superadmin",
-                FullName = platformDbUser?.FullName ?? "المدير العام للمنصة (SaaS Platform Owner)",
-                Email = platformDbUser?.Email ?? "owner@zilox.cloud",
-                Role = UserRole.PlatformSuperAdmin,
-                RoleNameAr = "مالك المنصة (SaaS Super Admin)",
-                RoleNameEn = "Platform Super Admin",
-                BranchId = "PLATFORM",
-                BranchName = "SaaS Platform Control Plane",
-                DefaultWarehouseId = "PLATFORM",
-                TenantId = string.Empty,
-                TenantSlug = string.Empty,
-                TenantName = "ZiloX SaaS Control Plane",
-                AssignedBranches = new List<string>(),
-                PermissionsList = new List<string> { "Permissions.Platform.ControlPlane" },
-                DefaultRoute = "/super-admin/tenants",
-                CanViewCostPrice = false,
-                IsReadOnlyCatalog = true,
-                BusinessPreset = BusinessPreset.Custom,
-                BusinessPresetName = "لوحة تحكم المنصة",
-                Features = new CompanyFeatures
+                if (!PasswordHasher.Verify(request.Password, platformDbUser.PasswordHash))
                 {
-                    EnablePOS = true,
-                    MultiWarehouse = true,
-                    MaxWarehouses = 99,
-                    EnableInstallments = true,
-                    EnableSerialNumbers = true,
-                    EnableVariants = true,
-                    EnableMultiCurrency = true,
-                    EnableCreditLimits = true,
-                    EnableBarcodeScales = true,
-                    EnableExpiryDates = true
+                    return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
                 }
-            };
 
-            var platformToken = GenerateJwtToken(superAdminProfile);
-            return Ok(new LoginResponseDto
+                if (!platformDbUser.IsActive)
+                {
+                    return StatusCode(403, new { success = false, errorCode = "ERR_ACCOUNT_INACTIVE" });
+                }
+
+                platformDbUser.LastLoginAt = DateTime.UtcNow;
+                await _context!.SaveChangesAsync(ct);
+                return Ok(BuildPlatformSuperAdminLoginResponse(platformDbUser));
+            }
+            else
             {
-                Token = platformToken,
-                ExpiresAt = DateTime.UtcNow.AddHours(12),
-                User = superAdminProfile,
-                PermittedNavigation = new List<NavigationPermissionItemDto>()
-            });
-        }
+                if (request.Password != "123")
+                {
+                    return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
+                }
 
-        string username;
-        string tenantSlug;
-
-        if (rawInput.Contains('@'))
-        {
-            var parts = rawInput.Split('@');
-            username = parts[0].Trim().ToLowerInvariant();
-            tenantSlug = parts[1].Trim().ToLowerInvariant();
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(tenantSlug))
-            {
-                return BadRequest(new { message = "صيغة اسم المستخدم غير صحيحة. يجب كتابة: اسم_المستخدم@رمز_الشركة (مثال: mustafa@m)" });
+                return Ok(BuildPlatformSuperAdminLoginResponse(null));
             }
         }
-        else
-        {
-            return BadRequest(new { message = "صيغة اسم المستخدم غير صحيحة. يجب كتابة: اسم_المستخدم@رمز_الشركة (مثال: mustafa@m)" });
-        }
 
-        // 1. Database-backed Authentication (PostgreSQL EF Core)
+        // 1. Database-backed Authentication (PostgreSQL EF Core, bypassing multi-tenant global filter safely)
         if (_context != null)
         {
-            var dbTenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Slug.ToLower() == tenantSlug, ct);
-            if (dbTenant != null)
+            if (lowerInput.Contains('@'))
             {
-                if (!dbTenant.IsActive)
+                var atIndex = lowerInput.LastIndexOf('@');
+                var prefix = lowerInput[..atIndex].Trim();
+                var slugCandidate = lowerInput[(atIndex + 1)..].Trim();
+
+                if (!string.IsNullOrEmpty(prefix) && !string.IsNullOrEmpty(slugCandidate))
                 {
-                    return StatusCode(403, new { message = "تم تعليق اشتراك هذه المنشأة من قِبل إدارة المنصة. يرجى مراجعة الدعم الفني." });
+                    var dbTenant = await _context.Tenants
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(t => t.Slug.ToLower() == slugCandidate, ct);
+
+                    if (dbTenant != null)
+                    {
+                        var tenantStatusError = ValidateTenantStatus(dbTenant);
+                        if (tenantStatusError != null) return tenantStatusError;
+
+                        var dbUser = await FindTenantUserByIdentifierAsync(dbTenant.Id, prefix, lowerInput, cleanInput, compactPhoneInput, ct);
+                        if (dbUser != null)
+                        {
+                            return await AuthenticateDbUserAsync(dbUser, dbTenant, request.Password, ct);
+                        }
+                    }
+                }
+            }
+
+            // Flexible cross-tenant lookup by full Email, exact Username, or Phone (IgnoreQueryFilters before tenant context is established)
+            var matchedCandidates = await FindUsersAcrossTenantsAsync(lowerInput, cleanInput, compactPhoneInput, ct);
+            if (matchedCandidates.Count > 0)
+            {
+                var verifiedUser = matchedCandidates.FirstOrDefault(u => PasswordHasher.Verify(request.Password, u.PasswordHash));
+                if (verifiedUser != null)
+                {
+                    return await AuthenticateDbUserAsync(verifiedUser, verifiedUser.Tenant, request.Password, ct);
                 }
 
-                if (dbTenant.ExpiresAt.HasValue && dbTenant.ExpiresAt.Value < DateTime.UtcNow)
+                // Password did not match any matched candidate; preserve status visibility only if single non-suspended tenant? Return generic invalid credentials cleanly
+                var firstTenant = matchedCandidates[0].Tenant;
+                if (matchedCandidates.Count == 1 && firstTenant != null && !firstTenant.IsActive)
                 {
-                    return StatusCode(403, new { message = "انتهت صلاحية اشتراك هذه المنشأة. يرجى تجديد الاشتراك للمتابعة." });
+                    return StatusCode(403, new { success = false, errorCode = "ERR_TENANT_SUSPENDED" });
                 }
 
-                var normalizedIdentifier = username.Trim().ToLowerInvariant();
-                var dbUser = await _context.Users
-                    .FirstOrDefaultAsync(u => 
-                        u.TenantId == dbTenant.Id &&
-                        (u.Username.ToLower() == normalizedIdentifier || 
-                         (u.Email != null && u.Email.ToLower() == normalizedIdentifier) || 
-                         u.Username.ToLower() == $"{normalizedIdentifier}@{tenantSlug}"), ct);
-
-                if (dbUser != null)
-                {
-                    if (!PasswordHasher.Verify(request.Password, dbUser.PasswordHash))
-                    {
-                        return Unauthorized(new { message = "اسم المستخدم أو كلمة المرور غير صحيحة داخل هذه المنشأة." });
-                    }
-
-                    if (!dbUser.IsActive)
-                    {
-                        return StatusCode(403, new { message = "هذا الحساب معطل من قِبل إدارة المنشأة." });
-                    }
-
-                    dbUser.LastLoginAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync(ct);
-
-                    var dbPermissions = await _context.UserPermissions
-                        .Where(up => up.UserId == dbUser.Id)
-                        .Select(up => up.PermissionCode)
-                        .ToListAsync(ct);
-
-                    var userProfile = BuildUserProfile(dbUser.Role);
-                    userProfile.Id = dbUser.Id.ToString();
-                    userProfile.Username = $"{dbUser.Username}@{dbTenant.Slug}";
-                    userProfile.FullName = dbUser.FullName;
-                    userProfile.Email = dbUser.Email ?? $"{dbUser.Username}@{dbTenant.Slug}.zilox.com";
-                    userProfile.Role = dbUser.Role;
-                    userProfile.BranchId = dbUser.BranchId;
-                    userProfile.BranchName = dbUser.BranchId == "ALL" ? "كافة الفروع والمستودعات" : (string.IsNullOrWhiteSpace(dbUser.BranchId) ? null : $"فرع {dbUser.BranchId}");
-                    userProfile.TenantId = dbTenant.Id.ToString();
-                    userProfile.TenantSlug = dbTenant.Slug;
-                    userProfile.TenantName = dbTenant.Name;
-                    userProfile.DefaultWarehouseId = dbUser.DefaultWarehouseId;
-                    userProfile.BusinessPreset = dbTenant.BusinessPreset;
-                    userProfile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(dbTenant.BusinessPreset);
-                    userProfile.Features = dbTenant.Features ?? BusinessPresetFactory.CreateFeatures(dbTenant.BusinessPreset);
-
-                    if (dbPermissions != null && dbPermissions.Count > 0)
-                    {
-                        userProfile.PermissionsList = dbPermissions;
-                    }
-
-                    var token = GenerateJwtToken(userProfile);
-                    var permittedNav = FullNavigationSchema
-                        .Where(item => userProfile.PermissionsList.Contains(item.RequiredPermission))
-                        .ToList();
-
-                    return Ok(new LoginResponseDto
-                    {
-                        Token = token,
-                        ExpiresAt = DateTime.UtcNow.AddHours(8),
-                        User = userProfile,
-                        PermittedNavigation = permittedNav
-                    });
-                }
+                return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
             }
         }
 
-        // 2. In-Memory Tenant-Scoped Accounts Fallback
-        var tenant = SupportedTenants.FirstOrDefault(t => t.Slug.ToLowerInvariant() == tenantSlug && t.IsActive);
-        if (tenant == null)
+        // 2. In-Memory Tenant-Scoped Accounts Fallback (supports username@slug, full email, phone, or unique username)
+        string fallbackUserPart = lowerInput;
+        string? fallbackSlugPart = null;
+
+        if (lowerInput.Contains('@'))
         {
-            return Unauthorized(new { message = "رمز المنشأة غير صحيح أو الحساب معطل." });
+            var atIdx = lowerInput.LastIndexOf('@');
+            fallbackUserPart = lowerInput[..atIdx].Trim();
+            fallbackSlugPart = lowerInput[(atIdx + 1)..].Trim();
         }
 
-        var matchedAccount = EmployeeAccounts.FirstOrDefault(u => 
-            u.TenantSlug.ToLowerInvariant() == tenantSlug && 
-            (u.Username.ToLowerInvariant() == $"{username}@{tenantSlug}" || 
-             u.Username.ToLowerInvariant() == username ||
-             u.Username.Split('@')[0].ToLowerInvariant() == username ||
-             (u.Email != null && u.Email.ToLowerInvariant() == username)));
-
-        if (matchedAccount == null || (!string.IsNullOrEmpty(request.Password) && !PasswordHasher.Verify(request.Password, matchedAccount.PasswordHash)))
+        TenantRecord? tenant = null;
+        if (!string.IsNullOrEmpty(fallbackSlugPart))
         {
-            return Unauthorized(new { message = "اسم المستخدم أو كلمة المرور غير صحيحة داخل هذه المنشأة." });
+            tenant = SupportedTenants.FirstOrDefault(t => t.Slug.ToLowerInvariant() == fallbackSlugPart);
+            if (tenant != null && !tenant.IsActive)
+            {
+                return StatusCode(403, new { success = false, errorCode = "ERR_TENANT_SUSPENDED" });
+            }
+        }
+
+        var matchedAccount = EmployeeAccounts.FirstOrDefault(u =>
+            (tenant == null || u.TenantSlug.ToLowerInvariant() == tenant.Slug.ToLowerInvariant()) &&
+            (u.Username.ToLowerInvariant() == lowerInput ||
+             u.Username.ToLowerInvariant() == fallbackUserPart ||
+             u.Username.Split('@')[0].ToLowerInvariant() == fallbackUserPart ||
+             (!string.IsNullOrWhiteSpace(u.Email) && u.Email.ToLowerInvariant() == lowerInput) ||
+             PhonesMatch(u.Phone, compactPhoneInput)));
+
+        if (matchedAccount == null || !PasswordHasher.Verify(request.Password, matchedAccount.PasswordHash))
+        {
+            return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
+        }
+
+        tenant ??= SupportedTenants.FirstOrDefault(t => t.Slug.ToLowerInvariant() == matchedAccount.TenantSlug.ToLowerInvariant());
+        if (tenant != null && !tenant.IsActive)
+        {
+            return StatusCode(403, new { success = false, errorCode = "ERR_TENANT_SUSPENDED" });
         }
 
         if (!matchedAccount.IsActive)
         {
-            return StatusCode(403, new { message = "هذا الحساب معطل من قِبل إدارة الفرع - يرجى مراجعة المدير" });
+            return StatusCode(403, new { success = false, errorCode = "ERR_ACCOUNT_INACTIVE" });
         }
 
         matchedAccount.LastLoginAt = DateTime.UtcNow;
 
         var targetRole = matchedAccount.Role;
         var inMemoryProfile = BuildUserProfile(targetRole, matchedAccount);
-        inMemoryProfile.TenantId = tenant.Id;
-        inMemoryProfile.TenantSlug = tenant.Slug;
-        inMemoryProfile.TenantName = tenant.Name;
+        inMemoryProfile.TenantId = tenant?.Id ?? matchedAccount.TenantId;
+        inMemoryProfile.TenantSlug = tenant?.Slug ?? matchedAccount.TenantSlug;
+        inMemoryProfile.TenantName = tenant?.Name ?? matchedAccount.TenantName;
         inMemoryProfile.DefaultWarehouseId = matchedAccount.DefaultWarehouseId;
-        inMemoryProfile.Username = $"{username}@{tenant.Slug}";
-        inMemoryProfile.BusinessPreset = tenant.BusinessPreset;
-        inMemoryProfile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(tenant.BusinessPreset);
-        inMemoryProfile.Features = tenant.Features ?? BusinessPresetFactory.CreateFeatures(tenant.BusinessPreset);
+        var baseUsername = matchedAccount.Username.Split('@')[0].ToLowerInvariant();
+        inMemoryProfile.Username = $"{baseUsername}@{inMemoryProfile.TenantSlug}";
+        if (tenant != null)
+        {
+            inMemoryProfile.BusinessPreset = tenant.BusinessPreset;
+            inMemoryProfile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(tenant.BusinessPreset);
+            inMemoryProfile.Features = tenant.Features ?? BusinessPresetFactory.CreateFeatures(tenant.BusinessPreset);
+        }
 
         var inMemoryToken = GenerateJwtToken(inMemoryProfile);
 
@@ -651,6 +614,252 @@ public class AuthController : ControllerBase
             User = inMemoryProfile,
             PermittedNavigation = permittedInMemoryNav
         });
+    }
+
+    private ActionResult? ValidateTenantStatus(Tenant dbTenant)
+    {
+        if (!dbTenant.IsActive)
+        {
+            return StatusCode(403, new { success = false, errorCode = "ERR_TENANT_SUSPENDED" });
+        }
+
+        if (dbTenant.ExpiresAt.HasValue && dbTenant.ExpiresAt.Value < DateTime.UtcNow)
+        {
+            return StatusCode(403, new { success = false, errorCode = "ERR_TENANT_SUBSCRIPTION_EXPIRED" });
+        }
+
+        return null;
+    }
+
+    private async Task<User?> FindTenantUserByIdentifierAsync(
+        Guid tenantId,
+        string prefix,
+        string lowerFullInput,
+        string rawTrimmedInput,
+        string compactPhoneInput,
+        CancellationToken ct)
+    {
+        var direct = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u =>
+                u.TenantId == tenantId &&
+                (u.Username.ToLower() == prefix ||
+                 u.Username.ToLower() == lowerFullInput ||
+                 (u.Email != null && u.Email.ToLower() == lowerFullInput) ||
+                 (u.Phone != null && u.Phone == rawTrimmedInput)), ct);
+
+        if (direct != null || string.IsNullOrEmpty(compactPhoneInput))
+        {
+            return direct;
+        }
+
+        var phoneCandidates = await _context.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.TenantId == tenantId && u.Phone != null && u.Phone != "")
+            .ToListAsync(ct);
+
+        return phoneCandidates.FirstOrDefault(u => PhonesMatch(u.Phone, compactPhoneInput));
+    }
+
+    private async Task<List<User>> FindUsersAcrossTenantsAsync(
+        string lowerInput,
+        string rawTrimmedInput,
+        string compactPhoneInput,
+        CancellationToken ct)
+    {
+        var directMatches = await _context.Users
+            .IgnoreQueryFilters()
+            .Include(u => u.Tenant)
+            .Where(u =>
+                (u.Email != null && u.Email.ToLower() == lowerInput) ||
+                u.Username.ToLower() == lowerInput ||
+                (u.Phone != null && u.Phone == rawTrimmedInput))
+            .ToListAsync(ct);
+
+        if (directMatches.Count > 0 || string.IsNullOrEmpty(compactPhoneInput))
+        {
+            return directMatches;
+        }
+
+        var phoneCandidates = await _context.Users
+            .IgnoreQueryFilters()
+            .Include(u => u.Tenant)
+            .Where(u => u.Phone != null && u.Phone != "")
+            .ToListAsync(ct);
+
+        return phoneCandidates.Where(u => PhonesMatch(u.Phone, compactPhoneInput)).ToList();
+    }
+
+    private async Task<ActionResult<LoginResponseDto>> AuthenticateDbUserAsync(
+        User dbUser,
+        Tenant? dbTenant,
+        string password,
+        CancellationToken ct)
+    {
+        if (dbUser.Role == UserRole.PlatformSuperAdmin && dbUser.TenantId == null)
+        {
+            if (!PasswordHasher.Verify(password, dbUser.PasswordHash))
+            {
+                return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
+            }
+
+            if (!dbUser.IsActive)
+            {
+                return StatusCode(403, new { success = false, errorCode = "ERR_ACCOUNT_INACTIVE" });
+            }
+
+            dbUser.LastLoginAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync(ct);
+            return Ok(BuildPlatformSuperAdminLoginResponse(dbUser));
+        }
+
+        if (dbTenant != null)
+        {
+            var tenantError = ValidateTenantStatus(dbTenant);
+            if (tenantError != null) return tenantError;
+        }
+
+        if (!PasswordHasher.Verify(password, dbUser.PasswordHash))
+        {
+            return Unauthorized(new { success = false, errorCode = "ERR_INVALID_CREDENTIALS" });
+        }
+
+        if (!dbUser.IsActive)
+        {
+            return StatusCode(403, new { success = false, errorCode = "ERR_ACCOUNT_INACTIVE" });
+        }
+
+        dbUser.LastLoginAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(ct);
+
+        var dbPermissions = await _context.UserPermissions
+            .Where(up => up.UserId == dbUser.Id)
+            .Select(up => up.PermissionCode)
+            .ToListAsync(ct);
+
+        var effectiveTenant = dbTenant ?? dbUser.Tenant;
+        var userProfile = BuildUserProfile(dbUser.Role);
+        userProfile.Id = dbUser.Id.ToString();
+        userProfile.Username = effectiveTenant != null && !dbUser.Username.Contains('@')
+            ? $"{dbUser.Username}@{effectiveTenant.Slug}"
+            : dbUser.Username;
+        userProfile.FullName = dbUser.FullName;
+        userProfile.Email = dbUser.Email ?? $"{dbUser.Username}@{(effectiveTenant?.Slug ?? "zilox")}.zilox.com";
+        userProfile.Role = dbUser.Role;
+        userProfile.BranchId = dbUser.BranchId;
+        userProfile.BranchName = dbUser.BranchId == "ALL" ? "كافة الفروع والمستودعات" : (string.IsNullOrWhiteSpace(dbUser.BranchId) ? null : $"فرع {dbUser.BranchId}");
+        userProfile.TenantId = effectiveTenant?.Id.ToString() ?? dbUser.TenantId?.ToString() ?? string.Empty;
+        userProfile.TenantSlug = effectiveTenant?.Slug ?? string.Empty;
+        userProfile.TenantName = effectiveTenant?.Name ?? string.Empty;
+        userProfile.DefaultWarehouseId = dbUser.DefaultWarehouseId;
+        if (effectiveTenant != null)
+        {
+            userProfile.BusinessPreset = effectiveTenant.BusinessPreset;
+            userProfile.BusinessPresetName = BusinessPresetFactory.GetPresetArabicName(effectiveTenant.BusinessPreset);
+            userProfile.Features = effectiveTenant.Features ?? BusinessPresetFactory.CreateFeatures(effectiveTenant.BusinessPreset);
+        }
+
+        if (dbPermissions != null && dbPermissions.Count > 0)
+        {
+            userProfile.PermissionsList = dbPermissions;
+        }
+
+        var token = GenerateJwtToken(userProfile);
+        var permittedNav = FullNavigationSchema
+            .Where(item => userProfile.PermissionsList.Contains(item.RequiredPermission))
+            .ToList();
+
+        return Ok(new LoginResponseDto
+        {
+            Token = token,
+            ExpiresAt = DateTime.UtcNow.AddHours(8),
+            User = userProfile,
+            PermittedNavigation = permittedNav
+        });
+    }
+
+    private LoginResponseDto BuildPlatformSuperAdminLoginResponse(User? platformDbUser)
+    {
+        var superAdminProfile = new UserProfileDto
+        {
+            Id = platformDbUser?.Id.ToString() ?? "00000000-0000-0000-0000-000000000001",
+            Username = "superadmin",
+            FullName = platformDbUser?.FullName ?? "المدير العام للمنصة (SaaS Platform Owner)",
+            Email = platformDbUser?.Email ?? "owner@zilox.cloud",
+            Role = UserRole.PlatformSuperAdmin,
+            RoleNameAr = "مالك المنصة (SaaS Super Admin)",
+            RoleNameEn = "Platform Super Admin",
+            BranchId = "PLATFORM",
+            BranchName = "SaaS Platform Control Plane",
+            DefaultWarehouseId = "PLATFORM",
+            TenantId = string.Empty,
+            TenantSlug = string.Empty,
+            TenantName = "ZiloX SaaS Control Plane",
+            AssignedBranches = new List<string>(),
+            PermissionsList = new List<string> { "Permissions.Platform.ControlPlane" },
+            DefaultRoute = "/super-admin/tenants",
+            CanViewCostPrice = false,
+            IsReadOnlyCatalog = true,
+            BusinessPreset = BusinessPreset.Custom,
+            BusinessPresetName = "لوحة تحكم المنصة",
+            Features = new CompanyFeatures
+            {
+                EnablePOS = true,
+                MultiWarehouse = true,
+                MaxWarehouses = 99,
+                EnableInstallments = true,
+                EnableSerialNumbers = true,
+                EnableVariants = true,
+                EnableMultiCurrency = true,
+                EnableCreditLimits = true,
+                EnableBarcodeScales = true,
+                EnableExpiryDates = true
+            }
+        };
+
+        var platformToken = GenerateJwtToken(superAdminProfile);
+        return new LoginResponseDto
+        {
+            Token = platformToken,
+            ExpiresAt = DateTime.UtcNow.AddHours(12),
+            User = superAdminProfile,
+            PermittedNavigation = new List<NavigationPermissionItemDto>()
+        };
+    }
+
+    private static string NormalizePhoneDigits(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var latin = DigitNormalizer.ToLatinDigits(raw);
+        var sb = new StringBuilder(latin.Length);
+        foreach (char c in latin)
+        {
+            if (char.IsDigit(c)) sb.Append(c);
+        }
+        return sb.Length >= 7 ? sb.ToString() : string.Empty;
+    }
+
+    private static bool PhonesMatch(string? storedPhone, string compactInputDigits)
+    {
+        if (string.IsNullOrWhiteSpace(storedPhone) || string.IsNullOrEmpty(compactInputDigits))
+            return false;
+
+        var storedDigits = NormalizePhoneDigits(storedPhone);
+        if (string.IsNullOrEmpty(storedDigits)) return false;
+
+        if (storedDigits == compactInputDigits) return true;
+
+        // Handle local vs international prefix differences (e.g. 07701234567 vs +9647701234567)
+        var sTrim = storedDigits.TrimStart('0');
+        var iTrim = compactInputDigits.TrimStart('0');
+        if (sTrim == iTrim) return true;
+
+        if (storedDigits.Length >= 10 && compactInputDigits.Length >= 10)
+        {
+            return storedDigits[^10..] == compactInputDigits[^10..];
+        }
+
+        return false;
     }
 
     [HttpGet("users")]
@@ -1177,12 +1386,12 @@ public class AuthController : ControllerBase
         if (_context != null)
         {
             var dbTenant = Guid.TryParse(id, out var parsedTenantGuid)
-                ? await _context.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == parsedTenantGuid, ct)
-                : await _context.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Slug.ToLower() == id.ToLower(), ct);
+                ? await _context.Tenants.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(t => t.Id == parsedTenantGuid, ct)
+                : await _context.Tenants.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(t => t.Slug.ToLower() == id.ToLower(), ct);
 
             if (dbTenant != null)
             {
-                var dbAdmin = await _context.Users.AsNoTracking()
+                var dbAdmin = await _context.Users.IgnoreQueryFilters().AsNoTracking()
                     .Where(u => u.TenantId == dbTenant.Id)
                     .OrderBy(u => u.Role == UserRole.SuperAdmin ? 0 : 1)
                     .FirstOrDefaultAsync(ct);

@@ -758,6 +758,8 @@ export default function SelfServiceRegisterView({
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="new-password"
+                  data-no-digit-normalize="true"
                   value={adminPassword}
                   onChange={e => setAdminPassword(e.target.value)}
                   placeholder="••••••••"

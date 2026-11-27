@@ -65,9 +65,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     };
 
     const resolvedInputMode = inferDefaultInputMode(type, step, name, id, inputMode);
+    const skipDigitNormalize =
+      type === 'password' ||
+      autoComplete === 'current-password' ||
+      (props as Record<string, unknown>)['data-no-digit-normalize'] === 'true';
 
     const handleNormalizedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (type !== 'password') {
+      if (!skipDigitNormalize) {
         normalizeElementDigitsInPlace(e.target);
         if (/[\u0660-\u0669\u06F0-\u06F9\u066B]/.test(e.target.value)) {
           e.target.value = toLatinDigits(e.target.value);
@@ -77,14 +81,14 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     };
 
     const handleNormalizedInput = (e: React.InputEvent<HTMLInputElement>) => {
-      if (type !== 'password') {
+      if (!skipDigitNormalize) {
         normalizeElementDigitsInPlace(e.currentTarget);
       }
       onInput?.(e);
     };
 
     const handleNormalizedPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-      if (type !== 'password') {
+      if (!skipDigitNormalize) {
         const rawPaste = e.clipboardData?.getData('text');
         if (rawPaste && /[\u0660-\u0669\u06F0-\u06F9\u066B]/.test(rawPaste)) {
           e.preventDefault();
@@ -122,6 +126,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         step={step}
         inputMode={resolvedInputMode}
         readOnly={!isWritable && preventAutofill}
+        data-no-digit-normalize={skipDigitNormalize ? 'true' : undefined}
         onFocus={(e) => {
           unlockField();
           onFocus?.(e);

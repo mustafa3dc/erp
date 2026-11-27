@@ -76,6 +76,7 @@ import {
   validateAndResolveActiveWarehouse,
   resolveQuantityUnitPrice,
   getStoredProductBundles,
+  recordLocalAuditLog,
   getEffectiveProductStock,
   validateCartStockWithBundles,
   getMaxAllowedCartQuantity,
@@ -1035,10 +1036,37 @@ export default function PosTerminalView({
         setInvoices(prev => [result.invoice, ...prev]);
       }
 
-      // Create Audit Log entries for discounted items
+      // Create Audit Log entries for discounted items & manual price overrides (مكاسرة)
       const newLogs: DiscountAuditLog[] = [];
       cart.forEach(item => {
+        const resolved = resolveCartItemPricing(item);
         const discUnit = getDiscountAmountPerUnit(item);
+        const catalogPrice = item.product.sellingPrice;
+        const isManualOverride =
+          resolved.pricingSource === 'manual_override' ||
+          (resolved.pricingSource !== 'volume_tier' && (resolved.unitPrice !== catalogPrice || discUnit > 0));
+
+        if (isManualOverride) {
+          recordLocalAuditLog({
+            actionType: 'POS_PRICE_OVERRIDE',
+            entityName: 'sales_invoice_items',
+            entityId: invoiceNumber,
+            oldValues: {
+              itemName: getProductName(item.product),
+              originalPrice: catalogPrice,
+              qty: item.quantity
+            },
+            newValues: {
+              itemName: getProductName(item.product),
+              customPrice: resolved.unitPrice,
+              qty: item.quantity,
+              sku: item.product.sku
+            },
+            userId: activeShift.terminalId,
+            userName: effectiveCashierName
+          });
+        }
+
         if (discUnit > 0) {
           newLogs.push({
             id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1049,8 +1077,8 @@ export default function PosTerminalView({
             discountType: item.discountType || 'PERCENT',
             discountValue: item.discountValue || 0,
             discountAmountMoney: discUnit * item.quantity,
-            originalRetailPrice: item.product.sellingPrice,
-            finalSellingPrice: getEffectiveUnitPrice(item),
+            originalRetailPrice: catalogPrice,
+            finalSellingPrice: resolved.unitPrice,
             cashierId: activeShift.terminalId,
             cashierName: effectiveCashierName,
             wasManagerOverride: false,
@@ -1059,6 +1087,26 @@ export default function PosTerminalView({
           });
         }
       });
+
+      if (totalDiscount > 0 || loyaltyDiscountAmount > 0) {
+        recordLocalAuditLog({
+          actionType: 'POS_INVOICE_DISCOUNT',
+          entityName: 'sales_invoices',
+          entityId: invoiceNumber,
+          oldValues: {
+            subtotal,
+            itemsCount: cart.length
+          },
+          newValues: {
+            discountAmount: totalDiscount + loyaltyDiscountAmount,
+            loyaltyDiscountAmount,
+            totalAfterDiscount: grandTotal,
+            shiftId: activeShift.id
+          },
+          userId: activeShift.terminalId,
+          userName: effectiveCashierName
+        });
+      }
 
       if (newLogs.length > 0) {
         setAuditLogs(prev => [...newLogs, ...prev]);

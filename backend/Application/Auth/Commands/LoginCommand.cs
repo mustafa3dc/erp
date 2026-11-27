@@ -30,27 +30,40 @@ public sealed class LoginCommandHandler
     {
         if (string.IsNullOrWhiteSpace(request.Identifier))
         {
-            throw new ValidationException("يرجى إدخال اسم المستخدم ورمز الشركة");
+            throw new ValidationException("ERR_AUTH_IDENTIFIER_REQUIRED");
         }
 
-        var input = request.Identifier.Trim();
-
-        // 1. استثناء حساب مالك المنصة (Platform Super Admin)
-        if (input.Equals("superadmin", StringComparison.OrdinalIgnoreCase) || 
-            input.Equals("superadmin@platform", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(request.Password))
         {
-            var platformUser = await _context.Users.FirstOrDefaultAsync(u => 
-                u.TenantId == null && 
-                u.Username.ToLower() == "superadmin", ct);
+            throw new ValidationException("ERR_AUTH_PASSWORD_REQUIRED");
+        }
 
-            // Fallback for initial setup if not yet seeded in database
-            if (platformUser != null && !PasswordHasher.Verify(request.Password, platformUser.PasswordHash))
+        var input = DigitNormalizer.ToLatinDigits(request.Identifier).Trim();
+        var lowerInput = input.ToLowerInvariant();
+
+        // 1. Platform Super Admin
+        if (lowerInput == "superadmin" || lowerInput == "superadmin@platform")
+        {
+            var platformUser = await _context.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u =>
+                    u.TenantId == null &&
+                    (u.Username.ToLower() == "superadmin" || (u.Email != null && u.Email.ToLower() == lowerInput)), ct);
+
+            if (platformUser != null)
             {
-                throw new AuthenticationException("كلمة مرور مسؤول المنصة غير صحيحة.");
+                if (!PasswordHasher.Verify(request.Password, platformUser.PasswordHash))
+                {
+                    throw new AuthenticationException("ERR_INVALID_CREDENTIALS");
+                }
+                if (!platformUser.IsActive)
+                {
+                    throw new AuthenticationException("ERR_ACCOUNT_INACTIVE");
+                }
             }
-            else if (platformUser == null && request.Password != "123")
+            else if (request.Password != "123")
             {
-                throw new AuthenticationException("بيانات حساب مسؤول المنصة غير صحيحة.");
+                throw new AuthenticationException("ERR_INVALID_CREDENTIALS");
             }
 
             var superAdminProfile = new UserProfileDto
@@ -101,56 +114,77 @@ public sealed class LoginCommandHandler
             };
         }
 
-        // 2. حسابات موظفي المنشآت (Tenant-Scoped Identity: username@slug)
-        string username;
-        string tenantSlug;
+        // 2. Tenant-Scoped Identity or Email/Phone/Username lookup (always IgnoreQueryFilters before authentication)
+        Tenant? tenant = null;
+        User? user = null;
 
-        if (input.Contains('@'))
+        if (lowerInput.Contains('@'))
         {
-            var parts = input.Split('@');
-            username = parts[0].Trim().ToLower();
-            tenantSlug = parts[1].Trim().ToLower();
+            var atIdx = lowerInput.LastIndexOf('@');
+            var usernamePart = lowerInput[..atIdx].Trim();
+            var tenantSlugPart = lowerInput[(atIdx + 1)..].Trim();
 
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(tenantSlug))
+            if (!string.IsNullOrEmpty(usernamePart) && !string.IsNullOrEmpty(tenantSlugPart))
             {
-                throw new ValidationException("صيغة اسم المستخدم غير صحيحة. يجب كتابة: اسم_المستخدم@رمز_الشركة (مثال: mustafa@m)");
+                tenant = await _context.Tenants
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(t => t.Slug.ToLower() == tenantSlugPart, ct);
+
+                if (tenant != null)
+                {
+                    if (!tenant.IsActive)
+                        throw new AuthenticationException("ERR_TENANT_SUSPENDED");
+                    if (tenant.ExpiresAt.HasValue && tenant.ExpiresAt.Value < DateTime.UtcNow)
+                        throw new AuthenticationException("ERR_TENANT_SUBSCRIPTION_EXPIRED");
+
+                    user = await _context.Users
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(u =>
+                            u.TenantId == tenant.Id &&
+                            (u.Username.ToLower() == usernamePart ||
+                             u.Username.ToLower() == lowerInput ||
+                             (u.Email != null && u.Email.ToLower() == lowerInput) ||
+                             (u.Phone != null && u.Phone == input)), ct);
+                }
             }
         }
-        else
+
+        if (user == null)
         {
-            throw new ValidationException("صيغة اسم المستخدم غير صحيحة. يجب كتابة: اسم_المستخدم@رمز_الشركة (مثال: mustafa@m)");
+            var candidates = await _context.Users
+                .IgnoreQueryFilters()
+                .Include(u => u.Tenant)
+                .Where(u =>
+                    (u.Email != null && u.Email.ToLower() == lowerInput) ||
+                    u.Username.ToLower() == lowerInput ||
+                    (u.Phone != null && u.Phone == input))
+                .ToListAsync(ct);
+
+            user = candidates.FirstOrDefault(u => PasswordHasher.Verify(request.Password, u.PasswordHash)) ?? candidates.FirstOrDefault();
+            tenant ??= user?.Tenant;
         }
 
-        // جلب المنشأة عبر الـ Slug والتحقق من حالة الاشتراك
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Slug.ToLower() == tenantSlug, ct);
-        if (tenant == null)
+        if (tenant != null)
         {
-            throw new AuthenticationException("رمز المنشأة غير مسجل في النظام.");
+            if (!tenant.IsActive)
+                throw new AuthenticationException("ERR_TENANT_SUSPENDED");
+            if (tenant.ExpiresAt.HasValue && tenant.ExpiresAt.Value < DateTime.UtcNow)
+                throw new AuthenticationException("ERR_TENANT_SUBSCRIPTION_EXPIRED");
         }
-
-        if (!tenant.IsActive)
-        {
-            throw new AuthenticationException("تم تعليق اشتراك هذه المنشأة من قِبل إدارة المنصة. يرجى مراجعة الدعم الفني.");
-        }
-
-        if (tenant.ExpiresAt.HasValue && tenant.ExpiresAt.Value < DateTime.UtcNow)
-        {
-            throw new AuthenticationException("انتهت صلاحية اشتراك هذه المنشأة. يرجى تجديد الاشتراك للمتابعة.");
-        }
-
-        // جلب الموظف داخل نطاق المنشأة حصراً
-        var user = await _context.Users.FirstOrDefaultAsync(u => 
-            u.TenantId == tenant.Id && 
-            u.Username.ToLower() == username, ct);
 
         if (user == null || !PasswordHasher.Verify(request.Password, user.PasswordHash))
         {
-            throw new AuthenticationException("اسم المستخدم أو كلمة المرور غير صحيحة.");
+            throw new AuthenticationException("ERR_INVALID_CREDENTIALS");
         }
 
         if (!user.IsActive)
         {
-            throw new AuthenticationException("هذا الحساب معطل من قِبل إدارة المنشأة.");
+            throw new AuthenticationException("ERR_ACCOUNT_INACTIVE");
+        }
+
+        if (tenant == null)
+        {
+            throw new AuthenticationException("ERR_TENANT_NOT_FOUND");
         }
 
         // Update Last Login timestamp

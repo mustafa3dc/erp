@@ -63,8 +63,15 @@ import {
   getStoredWarehouses,
   resetToCleanSlate,
   getStoredProducts,
+  saveStoredProducts,
   getStoredInvoices,
+  saveStoredInvoices,
   getStoredTransactions,
+  saveStoredTransactions,
+  saveStoredWarehouses,
+  getStoredCustomers,
+  saveStoredCustomers,
+  recordLocalAuditLog,
   getStoredAuthSession,
   saveStoredAuthSession,
   safeSet,
@@ -706,42 +713,61 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     setIsExportingBackup(true);
     try {
       const token = getAuthToken();
+      let downloadedFromServer = false;
       if (token) {
         const headers = getTenantAuthHeaders();
         delete headers['Content-Type'];
-        const res = await fetch('/api/tenant/backup/export', { headers });
-        if (!res.ok) {
+        const res = await fetch('/api/tenant/backup/export', { headers }).catch(() => null);
+        if (res && res.ok) {
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition') || '';
+          const match = disposition.match(/filename="?([^"]+)"?/i);
+          const filename = match?.[1] || `zilox_backup_${new Date().toISOString().slice(0, 10)}.json`;
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          downloadedFromServer = true;
+        } else if (res && res.status < 500) {
           const errJson = await res.json().catch(() => null);
           const errCode = errJson?.errorCode || 'ERR_INVALID_BACKUP_FILE';
           toast.error(getTranslation(settingsLang, `errors.ERR.BACKUP.${errCode}`, getTranslation(settingsLang, 'backup.downloadErrorToast')));
           return;
         }
+      }
 
-        const blob = await res.blob();
-        const disposition = res.headers.get('Content-Disposition') || '';
-        const match = disposition.match(/filename="?([^"]+)"?/i);
-        const filename = match?.[1] || `zilox_backup_${new Date().toISOString().slice(0, 10)}.json`;
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } else {
-        const data = {
-          schemaVersion: '1.0',
-          exportedAtUtc: new Date().toISOString(),
-          data: {
-            settings,
-            products: getStoredProducts(),
-            invoices: getStoredInvoices(),
-            transactions: getStoredTransactions(),
-          },
+      if (!downloadedFromServer) {
+        const session = getStoredAuthSession();
+        const backupPayload = {
+          settings,
+          warehouses: getStoredWarehouses(),
+          products: getStoredProducts(),
+          customers: getStoredCustomers(),
+          sales: getStoredInvoices(),
+          invoices: getStoredInvoices(),
+          transactions: getStoredTransactions(),
         };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const rawPayload = JSON.stringify(backupPayload);
+        let checksumHex = `local-${rawPayload.length.toString(16)}`;
+        if (typeof window !== 'undefined' && window.crypto?.subtle) {
+          const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawPayload));
+          checksumHex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        const archive = {
+          schemaVersion: '1.0',
+          tenantId: session?.tenantId || 'local',
+          tenantSlug: session?.tenantSlug || 'local',
+          tenantName: session?.tenantName || settings.organizationName || 'ZiloX Store',
+          exportedAtUtc: new Date().toISOString(),
+          checksumSha256: checksumHex,
+          data: backupPayload,
+        };
+        const blob = new Blob([JSON.stringify(archive, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -750,6 +776,12 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        recordLocalAuditLog({
+          actionType: 'BACKUP_EXPORT',
+          entityName: 'tenants',
+          entityId: archive.tenantSlug,
+          newValues: { checksumSha256: checksumHex, productsCount: backupPayload.products.length }
+        });
       }
 
       const nowIso = new Date().toISOString();
@@ -808,6 +840,7 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
     setRestoreErrorMsg('');
     try {
       const token = getAuthToken();
+      let restoredOnServer = false;
       if (token) {
         const headers = getTenantAuthHeaders();
         delete headers['Content-Type'];
@@ -818,13 +851,37 @@ export default function SettingsView({ warehouses: propWarehouses }: SettingsVie
           method: 'POST',
           headers,
           body: formData,
-        });
-        const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.success) {
+        }).catch(() => null);
+        if (res && res.ok) {
+          const json = await res.json().catch(() => null);
+          if (!json?.success) {
+            const code = json?.errorCode || 'ERR_BACKUP_RESTORE_FAILED';
+            setRestoreErrorMsg(getTranslation(settingsLang, `errors.ERR.BACKUP.${code}`, code));
+            return;
+          }
+          restoredOnServer = true;
+        } else if (res && res.status < 500) {
+          const json = await res.json().catch(() => null);
           const code = json?.errorCode || 'ERR_BACKUP_RESTORE_FAILED';
           setRestoreErrorMsg(getTranslation(settingsLang, `errors.ERR.BACKUP.${code}`, code));
           return;
         }
+      }
+
+      if (!restoredOnServer) {
+        const parsed = JSON.parse(await restoreFile.text());
+        const d = parsed?.data || {};
+        if (Array.isArray(d.products)) saveStoredProducts(d.products);
+        if (Array.isArray(d.invoices) || Array.isArray(d.sales)) saveStoredInvoices(d.invoices || d.sales);
+        if (Array.isArray(d.transactions)) saveStoredTransactions(d.transactions);
+        if (Array.isArray(d.warehouses)) saveStoredWarehouses(d.warehouses);
+        if (Array.isArray(d.customers)) saveStoredCustomers(d.customers);
+        recordLocalAuditLog({
+          actionType: 'BACKUP_RESTORE',
+          entityName: 'tenants',
+          entityId: parsed?.tenantSlug || 'local',
+          newValues: { productsCount: Array.isArray(d.products) ? d.products.length : 0 }
+        });
       }
 
       toast.success(getTranslation(settingsLang, 'backup.restoreSuccessToast'));

@@ -774,6 +774,7 @@ export default function UsersStaffView({ currentUser, lang, showToast }: UsersSt
                 <Input
                   id="resetPassword"
                   type="password"
+                  data-no-digit-normalize="true"
                   required
                   value={newResetPasswordValue}
                   onChange={e => setNewResetPasswordValue(e.target.value)}

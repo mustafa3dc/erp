@@ -1910,6 +1910,7 @@
     "loadError": "Unable to load audit logs from the server. Please try again.",
     "sessionRequiredError": "Please sign in with an online server session to view the Audit Log.",
     "reloginBtn": "Sign In Again",
+    "localModeBadge": "Local Offline Mode",
     "actions": {
       "PRICE_CHANGE": "Price Change",
       "POS_DISCOUNT": "POS Manual Discount",

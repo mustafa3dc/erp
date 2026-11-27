@@ -678,6 +678,8 @@ export default function CreateTenantModal({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete="new-password"
+                    data-no-digit-normalize="true"
                     value={form.adminPassword}
                     onChange={e => setForm({ ...form, adminPassword: e.target.value })}
                     placeholder="••••••••••"

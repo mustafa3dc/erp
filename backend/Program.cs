@@ -618,6 +618,54 @@ using (var scope = app.Services.CreateScope())
             // Backfill missing LOY- member codes, card tokens, and normalized phones for existing registered customers
             var loyaltyRewardsService = scope.ServiceProvider.GetRequiredService<ILoyaltyRewardsService>();
             loyaltyRewardsService.BackfillCustomerLoyaltyIdentifiersAsync().GetAwaiter().GetResult();
+
+            // Non-destructive verification of users/tenants persistence + fresh dev DB default admin check
+            try
+            {
+                var totalUsers = dbContext.Users.IgnoreQueryFilters().Count();
+                var totalTenants = dbContext.Tenants.IgnoreQueryFilters().Count();
+                logger.LogInformation("Database identity check: {UsersCount} users and {TenantsCount} tenants verified intact.", totalUsers, totalTenants);
+
+                if (totalUsers == 0)
+                {
+                    var defaultAdmin = new ERP.Warehouse.Api.Models.User
+                    {
+                        Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+                        TenantId = null,
+                        Username = "superadmin",
+                        PasswordHash = ERP.Warehouse.Api.Services.PasswordHasher.Hash("123"),
+                        FullName = "المدير العام للمنصة (SaaS Platform Owner)",
+                        Email = "owner@zilox.cloud",
+                        Phone = "+9647700000000",
+                        Role = ERP.Warehouse.Api.Models.UserRole.PlatformSuperAdmin,
+                        BranchId = "PLATFORM",
+                        DefaultWarehouseId = "PLATFORM",
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    dbContext.Users.Add(defaultAdmin);
+                    dbContext.SaveChanges();
+                    logger.LogInformation("Fresh database detected (0 users). Seeded default platform admin account identifier: {Identifier}", defaultAdmin.Username);
+                }
+                else
+                {
+                    // Repair only corrupted placeholder seed literal if present from legacy SQL init, without touching any real user passwords
+                    var brokenSeedAdmin = dbContext.Users.IgnoreQueryFilters()
+                        .FirstOrDefault(u => u.TenantId == null
+                            && u.Username.ToLower() == "superadmin"
+                            && u.PasswordHash == "AQAAAAIAAYagAAAAEG3g1Vz5jXk...");
+                    if (brokenSeedAdmin != null)
+                    {
+                        brokenSeedAdmin.PasswordHash = ERP.Warehouse.Api.Services.PasswordHasher.Hash("123");
+                        dbContext.SaveChanges();
+                        logger.LogInformation("Repaired placeholder seed hash for platform admin identifier: {Identifier}", brokenSeedAdmin.Username);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Non-destructive user seed/verification check warning.");
+            }
         }
     }
     catch (Exception ex)

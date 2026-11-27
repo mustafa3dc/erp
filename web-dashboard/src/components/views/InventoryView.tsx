@@ -373,6 +373,34 @@ export default function InventoryView({
 
   // Handle saving product edit
   const handleSaveProductEdit = async (updatedProduct: Product) => {
+    const prevProd = products.find(p => p.id === updatedProduct.id);
+    if (prevProd && (
+      prevProd.sellingPrice !== updatedProduct.sellingPrice ||
+      prevProd.costPrice !== updatedProduct.costPrice ||
+      prevProd.minSellingPrice !== updatedProduct.minSellingPrice
+    )) {
+      const { recordLocalAuditLog } = await import('../../services/storageService');
+      recordLocalAuditLog({
+        actionType: 'PRICE_CHANGE',
+        entityName: 'products',
+        entityId: updatedProduct.id,
+        oldValues: {
+          sku: prevProd.sku,
+          name: prevProd.nameAr || prevProd.nameEn,
+          costPrice: prevProd.costPrice,
+          sellingPrice: prevProd.sellingPrice,
+          minSellingPrice: prevProd.minSellingPrice
+        },
+        newValues: {
+          sku: updatedProduct.sku,
+          name: updatedProduct.nameAr || updatedProduct.nameEn,
+          costPrice: updatedProduct.costPrice,
+          sellingPrice: updatedProduct.sellingPrice,
+          minSellingPrice: updatedProduct.minSellingPrice
+        }
+      });
+    }
+
     if (onUpdateProducts) {
       const updatedList = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
       saveStoredProducts(updatedList);

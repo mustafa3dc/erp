@@ -41,7 +41,8 @@ import {
   saveStoredPastShifts,
   getStoredInvoices,
   getLocalShiftBreakdown,
-  transferShiftDrawerToMainSafe
+  transferShiftDrawerToMainSafe,
+  recordLocalAuditLog
 } from '../../services/storageService';
 import { SalesInvoice } from '../../types/warehouse';
 import { getTranslation } from '../../lib/i18n';
@@ -605,6 +606,23 @@ export default function ShiftsView({ lang, currentUser }: ShiftsViewProps) {
     setCurrentZReport(zReport);
     setShowCloseShiftModal(false);
     setShowZReportModal(true);
+
+    recordLocalAuditLog({
+      actionType: 'SHIFT_CLOSE',
+      entityName: 'pos_shifts',
+      entityId: activeShift.id,
+      oldValues: {
+        openingFloat: activeShift.openingFloat,
+        expectedCash
+      },
+      newValues: {
+        zReportNumber: zReport.zReportNumber,
+        cashierName: activeShift.cashierName,
+        actualCash: countedNum,
+        difference: countedNum - expectedCash
+      },
+      userName: activeShift.cashierName
+    });
 
     // Sync closure audit record with .NET Core Backend (verifies ShiftId-isolated totals server-side)
     try {

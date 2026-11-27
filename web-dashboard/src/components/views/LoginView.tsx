@@ -18,6 +18,7 @@ import { getStoredUsers, getAllStoredUsersMaster } from '../../services/storageS
 import { getStoredTenants, createDefaultFeaturesForPreset } from '../../services/tenantService';
 import { getRoleDefaultNav } from '../../auth/login-handler';
 import { saveStoredJwtToken } from '../../lib/api-client';
+import { getTranslation } from '../../lib/i18n';
 
 interface LoginViewProps {
   onLoginSuccess: (profile: UserProfile, account: UserAccount) => void;
@@ -84,10 +85,19 @@ export default function LoginView({
           onLoginSuccess(serverProfile, data.user);
           return;
         }
-      } else if (apiRes.status === 401 || apiRes.status === 403) {
+      } else if (apiRes.status === 401 || apiRes.status === 400 || apiRes.status === 403) {
         const err = await apiRes.json().catch(() => ({}));
         setIsLoading(false);
-        setErrorMessage(err.message || (isAr ? 'اسم المستخدم أو كلمة المرور غير صحيحة.' : 'Invalid credentials.'));
+        const errCode = (err.errorCode || err.error_code) as string | undefined;
+        const locale = isAr ? 'ar' : 'en';
+        const fallbackMsg = isAr ? 'اسم المستخدم أو كلمة المرور غير صحيحة.' : 'Invalid username or password.';
+        if (errCode) {
+          // e.g. errCode = "ERR_INVALID_CREDENTIALS" → key "errors.ERR.AUTH.ERR_INVALID_CREDENTIALS"
+          const translated = getTranslation(locale, `errors.ERR.AUTH.${errCode}`);
+          setErrorMessage(translated !== `errors.ERR.AUTH.${errCode}` ? translated : (err.message || fallbackMsg));
+        } else {
+          setErrorMessage(err.message || fallbackMsg);
+        }
         return;
       }
     } catch {

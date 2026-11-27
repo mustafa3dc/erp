@@ -159,6 +159,15 @@
       "ERR_SHELF_NOT_FOUND": "Selected shelf was not found in this warehouse.",
       "ERR_SHELF_SAVE_FAILED": "Failed to save shelf details.",
       "ERR_SHELF_ASSIGN_FAILED": "Failed to assign items to the selected shelf."
+    },
+    "AUTH": {
+      "ERR_AUTH_IDENTIFIER_REQUIRED": "Please enter your username, email, or phone number.",
+      "ERR_AUTH_PASSWORD_REQUIRED": "Please enter your password.",
+      "ERR_INVALID_CREDENTIALS": "Invalid username or password.",
+      "ERR_ACCOUNT_INACTIVE": "This account has been deactivated by your company administrator.",
+      "ERR_TENANT_SUSPENDED": "This organization subscription has been suspended. Please contact support.",
+      "ERR_TENANT_SUBSCRIPTION_EXPIRED": "This organization subscription has expired. Please renew to continue.",
+      "ERR_TENANT_NOT_FOUND": "Tenant organization code was not found."
     }
   }
 }

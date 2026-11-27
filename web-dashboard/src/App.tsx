@@ -168,7 +168,8 @@ import {
   getStoredCustomers,
   getInstallmentStats,
   getStoredExpenseVouchers,
-  getStoredQuickExpenses
+  getStoredQuickExpenses,
+  recordLocalAuditLog
 } from './services/storageService';
 import './App.css';
 
@@ -1028,6 +1029,46 @@ function DashboardApp() {
     };
 
     setInvoices(prev => [finalizedInvoice, ...prev]);
+
+    (finalizedInvoice.items || []).forEach(it => {
+      if (it.baseUnitPrice !== undefined && it.unitPrice !== it.baseUnitPrice && !it.isQuantityTierApplied) {
+        recordLocalAuditLog({
+          actionType: 'POS_PRICE_OVERRIDE',
+          entityName: 'sales_invoice_items',
+          entityId: finalizedInvoice.invoiceNo,
+          oldValues: {
+            itemName: it.nameAr || it.nameEn || it.sku,
+            originalPrice: it.baseUnitPrice,
+            qty: it.quantity
+          },
+          newValues: {
+            itemName: it.nameAr || it.nameEn || it.sku,
+            customPrice: it.unitPrice,
+            qty: it.quantity,
+            sku: it.sku
+          },
+          userName: effectiveOperator
+        });
+      }
+    });
+
+    if (Number(finalizedInvoice.discount) > 0) {
+      recordLocalAuditLog({
+        actionType: 'POS_INVOICE_DISCOUNT',
+        entityName: 'sales_invoices',
+        entityId: finalizedInvoice.invoiceNo,
+        oldValues: {
+          subtotal: finalizedInvoice.subtotal,
+          itemsCount: finalizedInvoice.itemsCount
+        },
+        newValues: {
+          discountAmount: finalizedInvoice.discount,
+          totalAfterDiscount: finalizedInvoice.total,
+          shiftId: finalizedInvoice.shiftId
+        },
+        userName: effectiveOperator
+      });
+    }
 
     const isWarehouseDispatch = finalizedInvoice.dispenseMode === 'WAREHOUSE_DISPATCH';
 

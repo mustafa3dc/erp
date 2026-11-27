@@ -20,6 +20,7 @@ import { getTranslation } from '../../lib/i18n';
 import { formatLatinDateTime, formatLatinNumber, toLatinDigits } from '../../lib/formatters';
 import { getTenantAuthHeaders } from '../../lib/api-client';
 import { getAuthToken } from '../../services/purchasesService';
+import { getStoredAuditLogs } from '../../services/storageService';
 import { useTenantPlan } from '../../hooks/useTenantPlan';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -87,6 +88,7 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
   const [availableActionTypes, setAvailableActionTypes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLocalMode, setIsLocalMode] = useState(false);
 
   // Filters
   const [userFilter, setUserFilter] = useState('');
@@ -97,11 +99,58 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
 
   const pageSize = 20;
 
+  const applyLocalAuditFallback = useCallback(() => {
+    const allLogs = getStoredAuditLogs();
+    const usersSet = new Set<string>();
+    const actionsSet = new Set<string>();
+    allLogs.forEach((l) => {
+      if (l.userName || l.userId) usersSet.add(l.userName || l.userId);
+      if (l.actionType) actionsSet.add(l.actionType);
+    });
+
+    const normSearch = toLatinDigits(searchTerm).trim().toLowerCase();
+    const normUser = userFilter.trim().toLowerCase();
+    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00Z`).getTime() : null;
+    const toExclusiveTime = dateTo
+      ? new Date(`${dateTo}T00:00:00Z`).getTime() + 24 * 60 * 60 * 1000
+      : null;
+
+    const filtered = allLogs.filter((al) => {
+      if (normUser && !`${al.userName} ${al.userId}`.toLowerCase().includes(normUser)) {
+        return false;
+      }
+      if (actionFilter && actionFilter !== 'ALL' && al.actionType.toUpperCase() !== actionFilter.toUpperCase()) {
+        return false;
+      }
+      if (normSearch) {
+        const hay = `${al.entityId} ${al.entityName} ${al.actionType} ${al.userName} ${al.userId} ${al.oldValuesJson || ''} ${al.newValuesJson || ''}`.toLowerCase();
+        if (!hay.includes(normSearch)) return false;
+      }
+      const ts = new Date(al.createdAt).getTime();
+      if (fromTime !== null && !Number.isNaN(ts) && ts < fromTime) return false;
+      if (toExclusiveTime !== null && !Number.isNaN(ts) && ts >= toExclusiveTime) return false;
+      return true;
+    });
+
+    const total = filtered.length;
+    const computedTotalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, computedTotalPages);
+    const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+    setEntries(paged);
+    setTotalCount(total);
+    setTotalPages(computedTotalPages);
+    setAvailableUsers(Array.from(usersSet).sort());
+    setAvailableActionTypes(Array.from(actionsSet).sort());
+    setIsLocalMode(true);
+    setErrorMsg('');
+  }, [page, userFilter, actionFilter, searchTerm, dateFrom, dateTo]);
+
   const loadAuditLogs = useCallback(async () => {
     if (!isAuditAllowed) return;
     const token = getAuthToken();
     if (!token) {
-      setErrorMsg(t('sessionRequiredError'));
+      applyLocalAuditFallback();
       return;
     }
 
@@ -124,32 +173,46 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
       if (!res.ok) {
         if (res.status === 403 && json?.errorCode === 'ERR_PLAN_FEATURE_LOCKED') {
           openUpgradeModal('Pro', 'AuditLog');
+          setErrorMsg(getTranslation(lang, 'errors.ERR_PLAN_FEATURE_LOCKED', t('loadError')));
+          return;
         }
-        const errCode = json?.errorCode;
-        setErrorMsg(
-          errCode
-            ? getTranslation(lang, `errors.ERR.AUDIT.${errCode}`, getTranslation(lang, `errors.${errCode}`, t('loadError')))
-            : t('loadError')
-        );
+        if (res.status === 403) {
+          const errCode = json?.errorCode || 'ERR_FORBIDDEN_ACTION';
+          setErrorMsg(getTranslation(lang, `errors.ERR.AUDIT.${errCode}`, getTranslation(lang, `errors.${errCode}`, t('loadError'))));
+          return;
+        }
+        // Backend server offline / proxy error / unauthenticated local mode -> use local audit ledger seamlessly
+        applyLocalAuditFallback();
         return;
       }
       const data: AuditLogPageResponse | undefined = json?.data;
       if (data) {
+        setIsLocalMode(false);
         setEntries(Array.isArray(data.items) ? data.items : []);
         setTotalCount(Number(data.totalCount) || 0);
         setTotalPages(Math.max(1, Number(data.totalPages) || 1));
         setAvailableUsers(Array.isArray(data.availableUsers) ? data.availableUsers : []);
         setAvailableActionTypes(Array.isArray(data.availableActionTypes) ? data.availableActionTypes : []);
+      } else {
+        applyLocalAuditFallback();
       }
     } catch {
-      setErrorMsg(t('loadError'));
+      applyLocalAuditFallback();
     } finally {
       setIsLoading(false);
     }
-  }, [isAuditAllowed, lang, openUpgradeModal, page, userFilter, actionFilter, searchTerm, dateFrom, dateTo]);
+  }, [isAuditAllowed, lang, openUpgradeModal, page, userFilter, actionFilter, searchTerm, dateFrom, dateTo, applyLocalAuditFallback]);
 
   useEffect(() => {
     loadAuditLogs();
+  }, [loadAuditLogs]);
+
+  useEffect(() => {
+    const onLocalUpdated = () => {
+      loadAuditLogs();
+    };
+    window.addEventListener('zilox_audit_logs_updated', onLocalUpdated);
+    return () => window.removeEventListener('zilox_audit_logs_updated', onLocalUpdated);
   }, [loadAuditLogs]);
 
   const getActionLabel = (action: string) => {
@@ -263,17 +326,24 @@ export default function AuditLogView({ lang }: AuditLogViewProps) {
           </div>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={loadAuditLogs}
-          disabled={isLoading}
-          className="h-9 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border/80 self-start sm:self-center"
-        >
-          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          <span>{t('refreshBtn')}</span>
-        </Button>
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          {isLocalMode && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-bold">
+              {t('localModeBadge')}
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={loadAuditLogs}
+            disabled={isLoading}
+            className="h-9 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border/80"
+          >
+            {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            <span>{t('refreshBtn')}</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filter Panel */}

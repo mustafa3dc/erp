@@ -256,6 +256,7 @@ export default function CreateStaffModal({
                   name="staff_security_field"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
+                  data-no-digit-normalize="true"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"

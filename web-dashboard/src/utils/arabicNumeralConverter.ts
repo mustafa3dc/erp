@@ -61,13 +61,27 @@ export function computeLatinCaretPosition(rawValue: string, caretIndex: number |
 }
 
 /**
+ * Returns true if the target input is a password field (masked or visibility-toggled to text)
+ * so global digit normalization NEVER alters passwords.
+ */
+export function isPasswordField(target: EventTarget | null | undefined): boolean {
+  if (!(target instanceof HTMLInputElement)) return false;
+  if (target.type === 'password') return true;
+  if (target.dataset?.noDigitNormalize === 'true' || target.getAttribute('data-no-digit-normalize') === 'true') {
+    return true;
+  }
+  const ac = (target.getAttribute('autocomplete') || '').toLowerCase();
+  return ac === 'current-password';
+}
+
+/**
  * Normalizes an HTMLInputElement or HTMLTextAreaElement value in-place while preserving selectionStart/selectionEnd.
  * Returns true if the value changed.
  */
 export function normalizeElementDigitsInPlace(
   target: HTMLInputElement | HTMLTextAreaElement
 ): boolean {
-  if (target instanceof HTMLInputElement && target.type === 'password') {
+  if (isPasswordField(target)) {
     return false;
   }
   const raw = target.value;
@@ -227,7 +241,7 @@ export function initializeGlobalNumeralConverter(): () => void {
   const handleKeyDown = (e: KeyboardEvent) => {
     const target = e.target;
     if (!isEditableElement(target)) return;
-    if (target instanceof HTMLInputElement && target.type === 'password') return;
+    if (isPasswordField(target)) return;
     if (target.readOnly || target.disabled) return;
 
     const asciiChar = resolveLatinDigitFromKeyboardEvent(e, target);
@@ -241,7 +255,7 @@ export function initializeGlobalNumeralConverter(): () => void {
   const handleBeforeInput = (e: InputEvent) => {
     const target = e.target;
     if (!isEditableElement(target)) return;
-    if (target instanceof HTMLInputElement && target.type === 'password') return;
+    if (isPasswordField(target)) return;
     if (target.readOnly || target.disabled) return;
 
     if (e.data && /[\u0660-\u0669\u06F0-\u06F9\u066B]/.test(e.data)) {
@@ -255,7 +269,7 @@ export function initializeGlobalNumeralConverter(): () => void {
   const handlePaste = (e: ClipboardEvent) => {
     const target = e.target;
     if (!isEditableElement(target)) return;
-    if (target instanceof HTMLInputElement && target.type === 'password') return;
+    if (isPasswordField(target)) return;
     if (target.readOnly || target.disabled) return;
 
     const pastedText = e.clipboardData?.getData('text');
@@ -270,6 +284,7 @@ export function initializeGlobalNumeralConverter(): () => void {
   const handleInput = (e: Event) => {
     const target = e.target;
     if (!isEditableElement(target)) return;
+    if (isPasswordField(target)) return;
     if (normalizeElementDigitsInPlace(target)) {
       // Re-dispatch synchronously so downstream React/custom listeners read normalized value
       target.dispatchEvent(new Event('input', { bubbles: true }));

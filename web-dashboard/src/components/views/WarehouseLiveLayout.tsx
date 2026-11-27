@@ -81,7 +81,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
   const [shelfNameInput, setShelfNameInput] = useState<string>('');
   const [shelfCodeInput, setShelfCodeInput] = useState<string>('');
   const [shelfNotesInput, setShelfNotesInput] = useState<string>('');
-  const [shelfFormError, setShelfFormError] = useState<string>('');
+  const [shelfFormError, setShelfFormError] = useState<{ message: string; meta?: string } | null>(null);
   const [isSavingShelf, setIsSavingShelf] = useState<boolean>(false);
 
   // Assign items inside drawer
@@ -248,7 +248,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     setShelfNameInput('');
     setShelfCodeInput('');
     setShelfNotesInput('');
-    setShelfFormError('');
+    setShelfFormError(null);
     setIsShelfModalOpen(true);
   };
 
@@ -257,7 +257,7 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     setShelfNameInput(shelf.name);
     setShelfCodeInput(shelf.code || '');
     setShelfNotesInput(shelf.notes || '');
-    setShelfFormError('');
+    setShelfFormError(null);
     setIsShelfModalOpen(true);
   };
 
@@ -265,21 +265,25 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
     e.preventDefault();
     const trimmedName = shelfNameInput.trim();
     if (!trimmedName) {
-      setShelfFormError(resolveShelfError('ERR_SHELF_NAME_REQUIRED'));
+      setShelfFormError({
+        message: resolveShelfError('ERR_SHELF_NAME_REQUIRED'),
+        meta: 'ERR_SHELF_NAME_REQUIRED'
+      });
       return;
     }
 
     setIsSavingShelf(true);
-    setShelfFormError('');
+    setShelfFormError(null);
     try {
       const headers = {
         ...getTenantAuthHeaders(),
         'Content-Type': 'application/json'
       };
       const isEdit = Boolean(editingShelf && !editingShelf.id.startsWith('shelf-'));
+      const warehouseRef = warehouse.id || warehouse.code;
       const url = isEdit
-        ? `/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves/${encodeURIComponent(editingShelf!.id)}`
-        : `/api/warehouses/${encodeURIComponent(warehouse.id)}/shelves`;
+        ? `/api/warehouses/${encodeURIComponent(warehouseRef)}/shelves/${encodeURIComponent(editingShelf!.id)}`
+        : `/api/warehouses/${encodeURIComponent(warehouseRef)}/shelves`;
       const method = isEdit ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -300,14 +304,21 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
           (res.status === 404
             ? 'ERR_WAREHOUSE_NOT_FOUND'
             : 'ERR_SHELF_SAVE_FAILED');
-        setShelfFormError(resolveShelfError(code));
+        const pgPart = err?.details?.pgCode ? ` • PG:${err.details.pgCode}` : '';
+        setShelfFormError({
+          message: resolveShelfError(code),
+          meta: `${code} (HTTP ${res.status}${pgPart})`
+        });
         return;
       }
 
       setIsShelfModalOpen(false);
       await fetchShelves(true);
     } catch {
-      setShelfFormError(resolveShelfError('ERR_SHELF_SAVE_FAILED'));
+      setShelfFormError({
+        message: resolveShelfError('ERR_SHELF_SAVE_FAILED'),
+        meta: 'ERR_SHELF_SAVE_FAILED (NETWORK)'
+      });
     } finally {
       setIsSavingShelf(false);
     }
@@ -580,8 +591,13 @@ export const WarehouseLiveLayout: React.FC<WarehouseLiveLayoutProps> = ({
 
               <form onSubmit={handleSaveShelf} className="space-y-3.5">
                 {shelfFormError && (
-                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-xs font-semibold text-red-600 dark:text-red-400">
-                    {shelfFormError}
+                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-xs font-semibold text-red-600 dark:text-red-400 flex flex-wrap items-center justify-between gap-2">
+                    <span>{shelfFormError.message}</span>
+                    {shelfFormError.meta && (
+                      <span dir="ltr" className="font-mono text-[10px] opacity-80 bg-red-500/10 px-1.5 py-0.5 rounded">
+                        {shelfFormError.meta}
+                      </span>
+                    )}
                   </div>
                 )}
 

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using ERP.Warehouse.Api.Data;
 using ERP.Warehouse.Api.Models;
 
@@ -24,8 +25,8 @@ public class AssignShelfItemsRequest
 }
 
 [ApiController]
-[Route("api/warehouses/{warehouseId}/shelves")]
-[Route("api/v1/warehouses/{warehouseId}/shelves")]
+[Route("api/warehouses/{warehouseIdOrCode}/shelves")]
+[Route("api/v1/warehouses/{warehouseIdOrCode}/shelves")]
 public class WarehouseShelvesController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -60,19 +61,47 @@ public class WarehouseShelvesController : ControllerBase
             {
                 await _context.Database.ExecuteSqlRawAsync(@"
                     ALTER TABLE IF EXISTS warehouse_shelves
-                        ALTER COLUMN code DROP NOT NULL,
-                        ALTER COLUMN notes DROP NOT NULL,
-                        ALTER COLUMN max_capacity DROP NOT NULL;");
+                        ADD COLUMN IF NOT EXISTS tenant_id UUID NULL,
+                        ADD COLUMN IF NOT EXISTS warehouse_id UUID NULL,
+                        ADD COLUMN IF NOT EXISTS name VARCHAR(150) NULL,
+                        ADD COLUMN IF NOT EXISTS code VARCHAR(50) NULL,
+                        ADD COLUMN IF NOT EXISTS notes TEXT NULL,
+                        ADD COLUMN IF NOT EXISTS max_capacity INT NULL,
+                        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL;");
+            }
+            catch { }
+            try
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    DO $$
+                    DECLARE
+                        col_name TEXT;
+                    BEGIN
+                        FOREACH col_name IN ARRAY ARRAY['code', 'notes', 'max_capacity', 'zone', 'bay', 'row_code', 'level_code', 'shelf_type']
+                        LOOP
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'warehouse_shelves'
+                                  AND column_name = col_name
+                                  AND is_nullable = 'NO'
+                            ) THEN
+                                EXECUTE format('ALTER TABLE warehouse_shelves ALTER COLUMN %I DROP NOT NULL', col_name);
+                            END IF;
+                        END LOOP;
+                    END $$;");
             }
             catch { }
             try
             {
                 await _context.Database.ExecuteSqlRawAsync(
                     "CREATE INDEX IF NOT EXISTS ix_warehouse_shelves_tenant_wh ON warehouse_shelves (tenant_id, warehouse_id);");
+                await _context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ux_warehouse_shelves_tenant_wh_code;");
                 await _context.Database.ExecuteSqlRawAsync(@"
-                    CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code
+                    CREATE UNIQUE INDEX IF NOT EXISTS ux_warehouse_shelves_tenant_wh_code_partial
                         ON warehouse_shelves (tenant_id, warehouse_id, LOWER(code))
-                        WHERE code IS NOT NULL AND is_active = TRUE;");
+                        WHERE code IS NOT NULL AND code <> '' AND is_active = TRUE;");
             }
             catch { }
             try
@@ -135,11 +164,11 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetShelves(string warehouseId)
+    public async Task<ActionResult> GetShelves(string warehouseIdOrCode)
     {
         await EnsureShelvesSchemaAsync();
         var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
 
         if (warehouse == null)
         {
@@ -203,20 +232,20 @@ public class WarehouseShelvesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult> CreateShelf(string warehouseId, [FromBody] UpsertWarehouseShelfRequest? request)
+    public async Task<ActionResult> CreateShelf(string warehouseIdOrCode, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
-            return BadRequest(new { errorCode = "ERR_SHELF_NAME_REQUIRED" });
+            return BadRequest(new { success = false, errorCode = "ERR_SHELF_NAME_REQUIRED" });
         }
 
         await EnsureShelvesSchemaAsync();
         var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
 
         if (warehouse == null)
         {
-            return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
+            return NotFound(new { success = false, errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
         }
 
         var normalizedCode = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
@@ -274,35 +303,55 @@ public class WarehouseShelvesController : ControllerBase
                 items = Array.Empty<object>()
             });
         }
-        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("23505") == true)
+        catch (DbUpdateException dbEx)
         {
-            return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
+            var pgEx = dbEx.InnerException as PostgresException;
+            _logger.LogError(dbEx, "CreateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Constraint={Constraint})",
+                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ConstraintName);
+
+            if (pgEx?.SqlState == "23505")
+            {
+                return Conflict(new
+                {
+                    success = false,
+                    errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS",
+                    details = new { pgCode = pgEx.SqlState, constraint = pgEx.ConstraintName }
+                });
+            }
+
+            return StatusCode(500, new
+            {
+                success = false,
+                errorCode = "ERR_SHELF_SAVE_FAILED",
+                details = new { pgCode = pgEx?.SqlState, constraint = pgEx?.ConstraintName }
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseId}", warehouseId);
+            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseIdOrCode}", warehouseIdOrCode);
             return StatusCode(500, new
             {
+                success = false,
                 errorCode = "ERR_SHELF_SAVE_FAILED",
-                detail = ex.InnerException?.Message ?? ex.Message
+                details = new { pgCode = (string?)null, constraint = (string?)null }
             });
         }
     }
 
     [HttpPut("{shelfId:guid}")]
-    public async Task<ActionResult> UpdateShelf(string warehouseId, Guid shelfId, [FromBody] UpsertWarehouseShelfRequest? request)
+    public async Task<ActionResult> UpdateShelf(string warehouseIdOrCode, Guid shelfId, [FromBody] UpsertWarehouseShelfRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
-            return BadRequest(new { errorCode = "ERR_SHELF_NAME_REQUIRED" });
+            return BadRequest(new { success = false, errorCode = "ERR_SHELF_NAME_REQUIRED" });
         }
 
         await EnsureShelvesSchemaAsync();
         var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
         if (warehouse == null)
         {
-            return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
+            return NotFound(new { success = false, errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
         }
 
         var shelf = await _context.WarehouseShelves
@@ -360,23 +409,43 @@ public class WarehouseShelvesController : ControllerBase
                 isActive = shelf.IsActive
             });
         }
-        catch (DbUpdateException dbEx) when (dbEx.InnerException?.Message.Contains("23505") == true)
+        catch (DbUpdateException dbEx)
         {
-            return Conflict(new { errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS" });
+            var pgEx = dbEx.InnerException as PostgresException;
+            _logger.LogError(dbEx, "CreateShelf DbUpdateException for warehouse {WarehouseIdOrCode} (SqlState={SqlState}, Constraint={Constraint})",
+                warehouseIdOrCode, pgEx?.SqlState, pgEx?.ConstraintName);
+
+            if (pgEx?.SqlState == "23505")
+            {
+                return Conflict(new
+                {
+                    success = false,
+                    errorCode = "ERR_SHELF_CODE_ALREADY_EXISTS",
+                    details = new { pgCode = pgEx.SqlState, constraint = pgEx.ConstraintName }
+                });
+            }
+
+            return StatusCode(500, new
+            {
+                success = false,
+                errorCode = "ERR_SHELF_SAVE_FAILED",
+                details = new { pgCode = pgEx?.SqlState, constraint = pgEx?.ConstraintName }
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseId}", warehouseId);
+            _logger.LogError(ex, "CreateShelf failed for warehouse {WarehouseIdOrCode}", warehouseIdOrCode);
             return StatusCode(500, new
             {
+                success = false,
                 errorCode = "ERR_SHELF_SAVE_FAILED",
-                detail = ex.InnerException?.Message ?? ex.Message
+                details = new { pgCode = (string?)null, constraint = (string?)null }
             });
         }
     }
 
     [HttpPost("{shelfId:guid}/assign-items")]
-    public async Task<ActionResult> AssignItemsToShelf(string warehouseId, Guid shelfId, [FromBody] AssignShelfItemsRequest? request)
+    public async Task<ActionResult> AssignItemsToShelf(string warehouseIdOrCode, Guid shelfId, [FromBody] AssignShelfItemsRequest? request)
     {
         var distinctProductIds = (request?.ProductIds ?? new List<Guid>())
             .Where(id => id != Guid.Empty)
@@ -385,15 +454,15 @@ public class WarehouseShelvesController : ControllerBase
 
         if (distinctProductIds.Count == 0)
         {
-            return BadRequest(new { errorCode = "ERR_INVALID_PAYLOAD" });
+            return BadRequest(new { success = false, errorCode = "ERR_INVALID_PAYLOAD" });
         }
 
         await EnsureShelvesSchemaAsync();
         var tenantId = await ResolveTenantIdAsync();
-        var warehouse = await ResolveWarehouseAsync(warehouseId, tenantId);
+        var warehouse = await ResolveWarehouseAsync(warehouseIdOrCode, tenantId);
         if (warehouse == null)
         {
-            return NotFound(new { errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
+            return NotFound(new { success = false, errorCode = "ERR_WAREHOUSE_NOT_FOUND" });
         }
 
         var shelf = await _context.WarehouseShelves
